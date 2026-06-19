@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "init-agent"
+version = "0.5.5"
+description = "A local Project Orientation Layer for future AI CLI agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "init-agent contributors"}
+]
+keywords = ["cli", "sqlite", "code-index", "ai-agents", "repository-map"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+]
+dependencies = []
+
+[project.scripts]
+init-agent = "init_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["init_agent*"]
