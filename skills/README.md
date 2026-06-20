@@ -36,12 +36,12 @@ init-agent --version
 ```
 
 For local development without installing a package, create a small shim.
-Replace `/Users/alessandroserpe/Desktop/init-agent` with your checkout path:
+Replace `/path/to/init-agent` with your checkout path:
 
 ```bash
 mkdir -p ~/.local/bin
 printf '%s\n' '#!/usr/bin/env bash' \
-  'exec env PYTHONPATH="/Users/alessandroserpe/Desktop/init-agent" python3 -m init_agent.cli "$@"' \
+  'exec env PYTHONPATH="/path/to/init-agent" python3 -m init_agent.cli "$@"' \
   > ~/.local/bin/init-agent
 chmod +x ~/.local/bin/init-agent
 ```
@@ -84,7 +84,7 @@ redirection wrote to the wrong path.
 Recreate it with the `printf` command above. Avoid manually wrapping this line:
 
 ```bash
-exec env PYTHONPATH="/Users/alessandroserpe/Desktop/init-agent" python3 -m init_agent.cli "$@"
+exec env PYTHONPATH="/path/to/init-agent" python3 -m init_agent.cli "$@"
 ```
 
 ### The skill runs but ranking is noisy

@@ -16,7 +16,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 - [x] Store call counts per `(source file, target symbol name)` or expose aggregated counts in `related`.
 - [x] Add `init-agent callers <symbol>` to show files that call a function name.
 - [x] Add `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
-- [x] Add benchmark cases from `fc5` for `creaForm`, `aggiornaForm`, discussion helpers and CRUD builder helpers.
+- [x] Add benchmark cases from a private PHP codebase for procedural calls, discussion helpers and CRUD builder helpers.
 
 ## Phase 2: Documentation And Config Extraction
 
@@ -38,7 +38,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 - [x] Add a benchmark case runner filter: `experiments/evaluate.py --case <name>`.
 - [x] Add benchmark setup notes for cloning required repositories.
-- [x] Add `fc5` as an optional local benchmark path, skipped when absent.
+- [x] Add a private PHP optional local benchmark path, skipped when absent.
 - [x] Track per-case failure notes for known weak areas such as Vue compiler transforms.
 - [x] Add elapsed-time comparison between manual broad scan estimates and init-agent context generation.
 

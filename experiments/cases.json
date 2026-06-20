@@ -303,8 +303,8 @@
     ]
   },
   {
-    "name": "fc5-creaform-callers",
-    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "name": "private-php-creaform-callers",
+    "repo": "/tmp/init-agent-bench-private-php",
     "query": "dove viene chiamata creaForm",
     "expected_files": [
       "include/creaForm.php",
@@ -318,8 +318,8 @@
     ]
   },
   {
-    "name": "fc5-aggiornaform-callers",
-    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "name": "private-php-aggiornaform-callers",
+    "repo": "/tmp/init-agent-bench-private-php",
     "query": "dove viene chiamata aggiornaForm",
     "expected_files": [
       "include/creaForm.php",
@@ -333,8 +333,8 @@
     ]
   },
   {
-    "name": "fc5-discussion-badge-unread",
-    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "name": "private-php-discussion-badge-unread",
+    "repo": "/tmp/init-agent-bench-private-php",
     "query": "debug badge messaggi discussioni dopo risposta unread count",
     "expected_files": [
       "include/discussioni/unread.php",
@@ -348,8 +348,8 @@
     ]
   },
   {
-    "name": "fc5-crud-builder-fields",
-    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "name": "private-php-crud-builder-fields",
+    "repo": "/tmp/init-agent-bench-private-php",
     "query": "CRUD builder campi modulo tabella",
     "expected_files": [
       "moduli/fc/builder.php",

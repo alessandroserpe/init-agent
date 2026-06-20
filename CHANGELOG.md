@@ -13,7 +13,7 @@ All notable changes to `init-agent` are documented here.
 
 - Added `experiments/evaluate.py --case <name>` for isolating individual benchmark cases.
 - Added optional broad indexed-file read timing with `--measure-manual-scan`.
-- Added benchmark setup notes, optional local `fc5` guidance and per-case notes for known weak areas.
+- Added benchmark setup notes, optional local private PHP guidance and per-case notes for known weak areas.
 - Added benchmark summary fields for candidate count, indexed-file count and scan reduction.
 
 ## 0.11.0
@@ -44,7 +44,7 @@ All notable changes to `init-agent` are documented here.
 - Added `init-agent callers <symbol>` to show definitions and files that call a function or symbol name.
 - Added `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
 - Aggregated caller output with call counts and first call line per file.
-- Added optional fc5 benchmark cases for PHP procedural calls, discussion badge flow and CRUD builder orientation.
+- Added optional private PHP benchmark cases for procedural calls, discussion badge flow and CRUD builder orientation.
 
 ## 0.9.0
 

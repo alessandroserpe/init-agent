@@ -549,7 +549,7 @@ python3 experiments/evaluate.py
 python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
-python3 experiments/evaluate.py --case fc5-creaform-callers --measure-manual-scan
+python3 experiments/evaluate.py --case private-php-creaform-callers --measure-manual-scan
 ```
 
 The script reports top-1/top-3/top-5 hits, obvious noise matches and elapsed
