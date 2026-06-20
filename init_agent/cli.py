@@ -17,7 +17,7 @@ from .query import callers_for_symbol, related as related_query
 from .query import search
 from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
-from .scanner import scan_project
+from .scanner import INDEX_VERSION, scan_project
 from .utils import config_path, ensure_agent_dir, has_project_marker, project_root, utc_now, write_json
 
 
@@ -46,14 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_parser.set_defaults(handler=cmd_refresh)
 
     run_parser = subparsers.add_parser("run", help="Prepare the project and build a context pack.")
-    run_parser.add_argument("text", help="Free-text request.")
+    run_parser.add_argument("text", nargs="+", help="Free-text request.")
     run_output = run_parser.add_mutually_exclusive_group()
     run_output.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     run_output.add_argument("--markdown", action="store_true", help="Print compact Markdown.")
     run_parser.set_defaults(handler=cmd_run)
 
     estimate_parser = subparsers.add_parser("estimate", help="Estimate token savings for a context pack.")
-    estimate_parser.add_argument("text", help="Free-text request.")
+    estimate_parser.add_argument("text", nargs="+", help="Free-text request.")
     estimate_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     estimate_parser.set_defaults(handler=cmd_estimate)
 
@@ -64,11 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.set_defaults(handler=cmd_status)
 
     query_parser = subparsers.add_parser("query", help="Search paths, symbols, roles and commit messages.")
-    query_parser.add_argument("text", help="Search text.")
+    query_parser.add_argument("text", nargs="+", help="Search text.")
     query_parser.set_defaults(handler=cmd_query)
 
     context_parser = subparsers.add_parser("context", help="Build a compact context pack for an AI agent.")
-    context_parser.add_argument("text", help="Free-text request.")
+    context_parser.add_argument("text", nargs="+", help="Free-text request.")
     context_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     context_parser.set_defaults(handler=cmd_context)
 
@@ -182,7 +182,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = project_root()
-    result = run_query(root, args.text)
+    result = run_query(root, _text_arg(args.text))
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.markdown:
@@ -194,7 +194,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_estimate(args: argparse.Namespace) -> int:
     root = project_root()
-    report = estimate_query(root, args.text)
+    report = estimate_query(root, _text_arg(args.text))
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -262,7 +262,7 @@ def cmd_query(args: argparse.Namespace) -> int:
     root = project_root()
     if not _ensure_initialized(root):
         return 1
-    results = search(root, args.text)
+    results = search(root, _text_arg(args.text))
     if not results:
         print("No results.")
         return 0
@@ -276,7 +276,7 @@ def cmd_context(args: argparse.Namespace) -> int:
     root = project_root()
     if not _ensure_initialized(root):
         return 1
-    pack = build_context_pack(root, args.text)
+    pack = build_context_pack(root, _text_arg(args.text))
     if args.json:
         print(json.dumps(pack, indent=2, sort_keys=True))
         return 0
@@ -412,6 +412,7 @@ def cmd_callers(args: argparse.Namespace) -> int:
     root = project_root()
     if not _ensure_initialized(root):
         return 1
+    _warn_stale_index(root)
     data = callers_for_symbol(root, args.symbol)
     print(f"Symbol: {data['symbol']}")
     print("Definitions:")
@@ -432,6 +433,7 @@ def cmd_symbol(args: argparse.Namespace) -> int:
     root = project_root()
     if not _ensure_initialized(root):
         return 1
+    _warn_stale_index(root)
     symbol_name = args.symbol.strip()
     data = callers_for_symbol(root, symbol_name, limit=20)
     pack = build_context_pack(root, symbol_name)
@@ -471,6 +473,22 @@ def _ensure_initialized(root: Path) -> bool:
         print("init-agent is not initialized here. Run: init-agent init", file=sys.stderr)
         return False
     return True
+
+
+def _text_arg(value: str | list[str]) -> str:
+    if isinstance(value, list):
+        return " ".join(value)
+    return value
+
+
+def _warn_stale_index(root: Path) -> None:
+    try:
+        with GraphStore(root) as store:
+            store.initialize()
+            if store.counts()["files"] > 0 and store.get_meta("index_version") != INDEX_VERSION:
+                print("Warning: index was created with an older extractor. Run: init-agent map", file=sys.stderr)
+    except Exception:
+        return
 
 
 def _ok_label(checks: dict[str, dict[str, object]], name: str) -> str:

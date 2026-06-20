@@ -10,6 +10,9 @@ from .symbol_extractor import extract_symbols_and_relations
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
+INDEX_VERSION = "2"
+
+
 def scan_project(root: Path, store: Any) -> dict[str, int]:
     indexed_files = 0
     indexed_symbols = 0
@@ -34,6 +37,8 @@ def scan_project(root: Path, store: Any) -> dict[str, int]:
 
     if hasattr(store, "rebuild_term_stats"):
         store.rebuild_term_stats()
+    if hasattr(store, "set_meta"):
+        store.set_meta("index_version", INDEX_VERSION)
     store.connection.commit()
     return {"files": indexed_files, "symbols": indexed_symbols, "relations": indexed_relations, "removed": removed_files}
 

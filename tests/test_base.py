@@ -726,6 +726,22 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_doctor_warns_when_index_version_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                _mark_index_stale(root)
+                report = run_doctor(root)
+                self.assertEqual(report["status"], "READY_WITH_WARNINGS")
+                self.assertIn("init-agent map", report["suggested_commands"])
+                self.assertTrue(any("older extractor" in warning for warning in report["warnings"]))
+            finally:
+                os.chdir(previous)
+
     def test_doctor_no_crash_outside_git_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -773,6 +789,22 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(report["added"], [])
                 self.assertEqual(report["updated"], [])
                 self.assertEqual(report["removed"], [])
+            finally:
+                os.chdir(previous)
+
+    def test_refresh_reports_stale_index_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                _mark_index_stale(root)
+                report = refresh_index(root)
+                self.assertEqual(report["status"], "ERROR")
+                self.assertIn("init-agent map", report["suggested_commands"])
+                self.assertTrue(any("older extractor" in error for error in report["errors"]))
             finally:
                 os.chdir(previous)
 
@@ -1063,6 +1095,32 @@ class InitAgentBaseTests(unittest.TestCase):
                 rendered = output.getvalue()
                 self.assertIn("- Map: skipped", rendered)
                 self.assertIn("- Refresh: OK", rendered)
+            finally:
+                os.chdir(previous)
+
+    def test_run_rebuilds_stale_index_and_accepts_unquoted_query_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                _mark_index_stale(root)
+                with GraphStore(root) as store:
+                    store.connection.execute("DELETE FROM relations WHERE relation = 'calls'")
+                    store.connection.commit()
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["run", "dove", "viene", "chiamata", "creaForm", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["query"], "dove viene chiamata creaForm")
+                self.assertEqual(data["preparation"]["map"], "done")
+                self.assertTrue(any("older extractor" in warning for warning in data["preparation"]["warnings"]))
+                paths = [item["path"] for item in data["context"]["candidate_files"]]
+                self.assertIn("index.php", paths)
+                index_item = next(item for item in data["context"]["candidate_files"] if item["path"] == "index.php")
+                self.assertIn('calls "creaForm"', index_item["reasons"])
             finally:
                 os.chdir(previous)
 
@@ -1482,6 +1540,12 @@ def _create_ignore_fixture(root: Path) -> Path:
 def _indexed_paths(root: Path) -> set[str]:
     with GraphStore(root) as store:
         return {row["path"] for row in store.connection.execute("SELECT path FROM files").fetchall()}
+
+
+def _mark_index_stale(root: Path) -> None:
+    with GraphStore(root) as store:
+        store.connection.execute("DELETE FROM project_meta WHERE key = 'index_version'")
+        store.connection.commit()
 
 
 if __name__ == "__main__":

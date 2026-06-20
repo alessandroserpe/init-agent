@@ -105,6 +105,9 @@ init-agent callers creaForm
 init-agent symbol creaForm
 ```
 
+Quoted queries are recommended for shell clarity, but `run`, `context`, `query`
+and `estimate` also accept unquoted multi-word text.
+
 ### `init-agent init`
 
 Creates:
@@ -409,6 +412,7 @@ Runs the automatic mini-harness:
 - initializes `.agent/` if needed
 - creates config/database if missing
 - runs `map` when no files are indexed
+- rebuilds the map when the existing index was created with an older extractor
 - runs `refresh` when an index already exists
 - imports Git metadata when Git is available
 - generates a context pack
@@ -417,6 +421,7 @@ Examples:
 
 ```bash
 init-agent run "login sessione admin"
+init-agent run login sessione admin
 init-agent run "login sessione admin" --json
 init-agent run "login sessione admin" --markdown
 ```

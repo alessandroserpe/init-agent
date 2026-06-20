@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
-from .scanner import index_file, iter_project_files
+from .scanner import INDEX_VERSION, index_file, iter_project_files
 from .utils import agent_dir, db_path, relative_path, sha256_file, utc_now
 
 
@@ -35,6 +35,17 @@ def refresh_index(root: Path) -> dict[str, Any]:
                 "updated": [],
                 "removed": [],
                 "errors": ["No files are indexed yet. Run: init-agent map"],
+                "suggested_commands": ["init-agent map"],
+            }
+        if store.get_meta("index_version") != INDEX_VERSION:
+            return {
+                "status": "ERROR",
+                "scanned_files": 0,
+                "unchanged": 0,
+                "added": [],
+                "updated": [],
+                "removed": [],
+                "errors": ["Index was created with an older extractor. Run: init-agent map"],
                 "suggested_commands": ["init-agent map"],
             }
 

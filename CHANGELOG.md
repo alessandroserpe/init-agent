@@ -2,6 +2,12 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.9.2
+
+- Added internal index versioning so `run` rebuilds stale indexes after extractor changes instead of trusting unchanged file hashes.
+- `refresh` and `doctor` now report stale indexes clearly and suggest `init-agent map`.
+- `run`, `context`, `query` and `estimate` now accept unquoted multi-word queries.
+
 ## 0.9.1
 
 - Expanded PHP builtin exclusions so common runtime/helper calls do not dominate call graph output.

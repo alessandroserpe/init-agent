@@ -9,7 +9,7 @@ from .context_builder import build_context_pack
 from .git_reader import collect_git, has_git
 from .graph_store import GraphStore
 from .refresh import refresh_index
-from .scanner import scan_project
+from .scanner import INDEX_VERSION, scan_project
 from .utils import config_path, ensure_agent_dir, has_project_marker, write_json, utc_now
 
 
@@ -32,13 +32,13 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
             return {"query": query, "preparation": preparation, "context": _empty_context(query)}
 
     try:
-        file_count = _indexed_file_count(root)
+        index_state = _index_state(root)
     except Exception as exc:
         preparation["map"] = "failed"
         preparation["warnings"].append(f"database check failed: {exc}")
         return {"query": query, "preparation": preparation, "context": _empty_context(query)}
 
-    if file_count == 0:
+    if index_state["files"] == 0 or not index_state["current"]:
         try:
             with GraphStore(root) as store:
                 store.initialize()
@@ -46,6 +46,8 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
                 summary = scan_project(root, store)
                 store.finish_run(run_id, "ok", summary)
             preparation["map"] = "done"
+            if index_state["files"] > 0 and not index_state["current"]:
+                preparation["warnings"].append("index was rebuilt because it was created with an older extractor")
         except Exception as exc:
             preparation["map"] = "failed"
             preparation["warnings"].append(f"map failed: {exc}")
@@ -194,10 +196,13 @@ def _initialize_project(root: Path) -> None:
         store.connection.commit()
 
 
-def _indexed_file_count(root: Path) -> int:
+def _index_state(root: Path) -> dict[str, Any]:
     with GraphStore(root) as store:
         store.initialize()
-        return store.counts()["files"]
+        return {
+            "files": store.counts()["files"],
+            "current": store.get_meta("index_version") == INDEX_VERSION,
+        }
 
 
 def _empty_context(query: str) -> dict[str, Any]:

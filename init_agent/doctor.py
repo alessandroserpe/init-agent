@@ -9,7 +9,7 @@ from typing import Any
 
 from .git_reader import git_available, status_short
 from .graph_store import SCHEMA
-from .scanner import iter_project_files
+from .scanner import INDEX_VERSION, iter_project_files
 from .utils import agent_dir, config_path, db_path, relative_path
 
 
@@ -70,6 +70,7 @@ def run_doctor(root: Path) -> dict[str, Any]:
 
         stats = _stats(conn)
         indexed_paths = _indexed_paths(conn)
+        index_version = _project_meta(conn, "index_version")
         git_run_indexed = _successful_run_exists(conn, "git")
     except sqlite3.Error as exc:
         _add_check(checks, "database_readable", False, "error", f"Database is not readable: {exc}.")
@@ -92,6 +93,13 @@ def run_doctor(root: Path) -> dict[str, Any]:
     _add_check(checks, "git_commits", True, "info", f"Git commits indexed: {stats['git_commits']}.")
     if not files_indexed_ok:
         _suggest(suggested_commands, "init-agent map")
+
+    if files_indexed_ok and index_version != INDEX_VERSION:
+        message = "Index was created with an older extractor. Run: init-agent map"
+        _add_warning(checks, warnings, "index_version", message)
+        _suggest(suggested_commands, "init-agent map")
+    else:
+        _add_check(checks, "index_version", True, "info", "Index extractor version is current.")
 
     git_indexed = bool(has_git and (stats["git_commits"] > 0 or git_run_indexed))
     if has_git and not git_indexed:
@@ -163,6 +171,11 @@ def _stats(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def _indexed_paths(conn: sqlite3.Connection) -> set[str]:
     return {row["path"] for row in conn.execute("SELECT path FROM files").fetchall()}
+
+
+def _project_meta(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM project_meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
 
 
 def _successful_run_exists(conn: sqlite3.Connection, command: str) -> bool:
