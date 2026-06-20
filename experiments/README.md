@@ -31,6 +31,7 @@ By default it expects local benchmark repositories under `/tmp`, for example:
 - `/tmp/init-agent-bench-vite`
 - `/tmp/init-agent-bench-pytest`
 - `/tmp/init-agent-bench-vue-core`
+- `/tmp/init-agent-bench-fc5-calls` for optional PHP procedural call-graph cases
 
 Missing repositories are skipped.
 

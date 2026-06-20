@@ -89,6 +89,47 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
         }
 
 
+def callers_for_symbol(root: Path, symbol_name: str, limit: int = 50) -> dict[str, object]:
+    name = symbol_name.strip()
+    if not name:
+        return {"symbol": symbol_name, "definitions": [], "callers": []}
+    with GraphStore(root) as store:
+        conn = store.connection
+        definitions = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT s.name, s.kind, s.line, f.path, f.language
+                FROM symbols s
+                JOIN files f ON f.id = s.file_id
+                WHERE s.name = ?
+                ORDER BY f.path, s.line
+                LIMIT 20
+                """,
+                (name,),
+            )
+        ]
+        callers = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT f.path, f.language, f.role, COUNT(*) AS call_count, MIN(json_extract(r.metadata_json, '$.line')) AS first_line
+                FROM relations r
+                JOIN files f ON f.id = r.source_id
+                WHERE r.source_type = 'file'
+                  AND r.relation = 'calls'
+                  AND r.target_type = 'symbol_name'
+                  AND r.target_id = ?
+                GROUP BY f.id
+                ORDER BY call_count DESC, f.path
+                LIMIT ?
+                """,
+                (name, limit),
+            )
+        ]
+        return {"symbol": name, "definitions": definitions, "callers": callers}
+
+
 def _resolved_calls(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
     source_row = conn.execute("SELECT language FROM files WHERE id = ?", (file_id,)).fetchone()
     source_language = str(source_row["language"] or "") if source_row else ""
@@ -136,11 +177,17 @@ def _definition_rows_for_call(conn: sqlite3.Connection, name: str, source_langua
 def _callers_for_file_symbols(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
     symbols = conn.execute("SELECT name FROM symbols WHERE file_id = ? ORDER BY name", (file_id,)).fetchall()
     callers: list[dict[str, object]] = []
-    seen: set[tuple[str, str]] = set()
     for symbol in symbols:
         rows = conn.execute(
             """
-            SELECT f.path, r.target_id AS name, r.confidence, r.metadata_json
+            SELECT
+              f.path,
+              f.language,
+              f.role,
+              r.target_id AS name,
+              MAX(r.confidence) AS confidence,
+              COUNT(*) AS call_count,
+              MIN(json_extract(r.metadata_json, '$.line')) AS first_line
             FROM relations r
             JOIN files f ON f.id = r.source_id
             WHERE r.source_type = 'file'
@@ -148,18 +195,15 @@ def _callers_for_file_symbols(conn: sqlite3.Connection, file_id: int) -> list[di
               AND r.target_type = 'symbol_name'
               AND r.target_id = ?
               AND f.id != ?
-            ORDER BY f.path
+            GROUP BY f.id, r.target_id
+            ORDER BY call_count DESC, f.path
             LIMIT 20
             """,
             (symbol["name"], file_id),
         ).fetchall()
         for row in rows:
-            key = (row["path"], row["name"])
-            if key in seen:
-                continue
-            seen.add(key)
             callers.append(dict(row))
-    return callers[:20]
+    return sorted(callers, key=lambda item: (-int(item["call_count"]), str(item["path"]), str(item["name"])))[:20]
 
 
 def _search_files(conn: sqlite3.Connection, term: str) -> list[dict[str, object]]:

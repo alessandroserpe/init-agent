@@ -298,5 +298,65 @@
       "packages-private/",
       ".github/"
     ]
+  },
+  {
+    "name": "fc5-creaform-callers",
+    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "query": "dove viene chiamata creaForm",
+    "expected_files": [
+      "include/creaForm.php",
+      "include/gst/addPage.php",
+      "include/gst/loadModuli.php"
+    ],
+    "noise_patterns": [
+      ".agent/",
+      ".agents/",
+      "vendor/"
+    ]
+  },
+  {
+    "name": "fc5-aggiornaform-callers",
+    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "query": "dove viene chiamata aggiornaForm",
+    "expected_files": [
+      "include/creaForm.php",
+      "include/gst/addModAdv.php",
+      "include/gst/addModulo.php"
+    ],
+    "noise_patterns": [
+      ".agent/",
+      ".agents/",
+      "vendor/"
+    ]
+  },
+  {
+    "name": "fc5-discussion-badge-unread",
+    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "query": "debug badge messaggi discussioni dopo risposta unread count",
+    "expected_files": [
+      "include/discussioni/unread.php",
+      "include/core/discussions.php",
+      "js/flexcore.footer.js"
+    ],
+    "noise_patterns": [
+      ".agent/",
+      ".agents/",
+      "vendor/"
+    ]
+  },
+  {
+    "name": "fc5-crud-builder-fields",
+    "repo": "/tmp/init-agent-bench-fc5-calls",
+    "query": "CRUD builder campi modulo tabella",
+    "expected_files": [
+      "moduli/fc/builder.php",
+      "moduli/fc/functions.php",
+      "moduli/fc/table_builder.php"
+    ],
+    "noise_patterns": [
+      ".agent/",
+      ".agents/",
+      "vendor/"
+    ]
   }
 ]

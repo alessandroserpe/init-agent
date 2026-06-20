@@ -2,6 +2,14 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.9.1
+
+- Expanded PHP builtin exclusions so common runtime/helper calls do not dominate call graph output.
+- Added `init-agent callers <symbol>` to show definitions and files that call a function or symbol name.
+- Added `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
+- Aggregated caller output with call counts and first call line per file.
+- Added optional fc5 benchmark cases for PHP procedural calls, discussion badge flow and CRUD builder orientation.
+
 ## 0.9.0
 
 - Added conservative PHP global function call extraction as `calls` relations.

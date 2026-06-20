@@ -90,7 +90,9 @@ class InitAgentBaseTests(unittest.TestCase):
             "require_once 'functions.php';\n"
             "function pageController() { return renderDashboard(); }\n"
             "$result = creaForm($record);\n"
-            "if (isset($result)) { echo sanitizeOutput($result); }\n"
+            "if (isset($result)) { echo sanitizeOutput(trim($result)); }\n"
+            "$rows = mysqli_num_rows($query);\n"
+            "$json = json_decode(file_get_contents($path), true);\n"
             "$service->methodCall();\n"
             "ClassName::staticCall();\n"
         )
@@ -101,6 +103,10 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("creaForm", calls)
         self.assertIn("sanitizeOutput", calls)
         self.assertNotIn("isset", calls)
+        self.assertNotIn("trim", calls)
+        self.assertNotIn("mysqli_num_rows", calls)
+        self.assertNotIn("json_decode", calls)
+        self.assertNotIn("file_get_contents", calls)
         self.assertNotIn("methodCall", calls)
         self.assertNotIn("staticCall", calls)
 
@@ -419,6 +425,50 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertIsNotNone(functions_related)
                 callers = {(item["path"], item["name"]) for item in functions_related["callers"]}
                 self.assertIn(("index.php", "creaForm"), callers)
+                index_caller = next(item for item in functions_related["callers"] if item["path"] == "index.php" and item["name"] == "creaForm")
+                self.assertEqual(index_caller["call_count"], 1)
+                self.assertEqual(index_caller["first_line"], 3)
+            finally:
+                os.chdir(previous)
+
+    def test_callers_command_shows_php_callers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["callers", "creaForm"]), 0)
+                rendered = output.getvalue()
+                self.assertIn("Symbol: creaForm", rendered)
+                self.assertIn("function include/functions.php:2", rendered)
+                self.assertIn("index.php:3 calls creaForm (1x)", rendered)
+            finally:
+                os.chdir(previous)
+
+    def test_symbol_command_shows_definitions_callers_and_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["symbol", "creaForm"]), 0)
+                rendered = output.getvalue()
+                self.assertIn("Symbol: creaForm", rendered)
+                self.assertIn("Definitions:", rendered)
+                self.assertIn("function include/functions.php:2", rendered)
+                self.assertIn("Callers:", rendered)
+                self.assertIn("index.php:3 calls creaForm (1x)", rendered)
+                self.assertIn("Candidate files:", rendered)
+                self.assertIn("include/functions.php", rendered)
+                self.assertIn("Recent commits:", rendered)
             finally:
                 os.chdir(previous)
 

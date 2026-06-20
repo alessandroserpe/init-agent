@@ -13,7 +13,7 @@ from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
-from .query import related as related_query
+from .query import callers_for_symbol, related as related_query
 from .query import search
 from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
@@ -79,6 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     related_parser = subparsers.add_parser("related", help="Show symbols, links and commits related to a file.")
     related_parser.add_argument("path", help="Project-relative file path.")
     related_parser.set_defaults(handler=cmd_related)
+
+    callers_parser = subparsers.add_parser("callers", help="Show files that call a function or symbol name.")
+    callers_parser.add_argument("symbol", help="Function or symbol name.")
+    callers_parser.set_defaults(handler=cmd_callers)
+
+    symbol_parser = subparsers.add_parser("symbol", help="Show orientation details for a function or symbol name.")
+    symbol_parser.add_argument("symbol", help="Function or symbol name.")
+    symbol_parser.set_defaults(handler=cmd_symbol)
     return parser
 
 
@@ -383,7 +391,8 @@ def cmd_related(args: argparse.Namespace) -> int:
         print("  -")
     print("Called by:")
     for caller in data["callers"]:
-        print(f"  {caller['path']} calls {caller['name']}")
+        first_line = caller["first_line"] or "-"
+        print(f"  {caller['path']}:{first_line} calls {caller['name']} ({caller['call_count']}x)")
     if not data["callers"]:
         print("  -")
     print("Recent commits:")
@@ -395,6 +404,64 @@ def cmd_related(args: argparse.Namespace) -> int:
     for file_item in data["cochanged_files"]:
         print(f"  {file_item['path']} ({file_item['commits_together']})")
     if not data["cochanged_files"]:
+        print("  -")
+    return 0
+
+
+def cmd_callers(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    data = callers_for_symbol(root, args.symbol)
+    print(f"Symbol: {data['symbol']}")
+    print("Definitions:")
+    for definition in data["definitions"]:
+        print(f"  {definition['kind']} {definition['path']}:{definition['line']} ({definition['language']})")
+    if not data["definitions"]:
+        print("  -")
+    print("Callers:")
+    for caller in data["callers"]:
+        first_line = caller["first_line"] or "-"
+        print(f"  {caller['path']}:{first_line} calls {data['symbol']} ({caller['call_count']}x)")
+    if not data["callers"]:
+        print("  -")
+    return 0
+
+
+def cmd_symbol(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    symbol_name = args.symbol.strip()
+    data = callers_for_symbol(root, symbol_name, limit=20)
+    pack = build_context_pack(root, symbol_name)
+
+    print(f"Symbol: {data['symbol']}")
+    print("Definitions:")
+    for definition in data["definitions"]:
+        print(f"  {definition['kind']} {definition['path']}:{definition['line']} ({definition['language']})")
+    if not data["definitions"]:
+        print("  -")
+
+    print("Callers:")
+    for caller in data["callers"]:
+        first_line = caller["first_line"] or "-"
+        print(f"  {caller['path']}:{first_line} calls {data['symbol']} ({caller['call_count']}x)")
+    if not data["callers"]:
+        print("  -")
+
+    print("Candidate files:")
+    for item in pack["candidate_files"]:
+        print(f"  {item['path']} score {item['score']:.2f}")
+        for reason in item["reasons"][:3]:
+            print(f"    - {reason}")
+    if not pack["candidate_files"]:
+        print("  -")
+
+    print("Recent commits:")
+    for commit in pack["recent_commits"]:
+        print(f"  {commit['hash'][:10]} {commit['message']}")
+    if not pack["recent_commits"]:
         print("  -")
     return 0
 

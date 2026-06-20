@@ -101,6 +101,8 @@ init-agent query auth
 init-agent context "fix login session bug"
 init-agent context "fix login session bug" --json
 init-agent related path/to/file.py
+init-agent callers creaForm
+init-agent symbol creaForm
 ```
 
 ### `init-agent init`
@@ -453,6 +455,25 @@ Shows:
 - recent commits that changed the file
 - other files changed in the same commits
 
+### `init-agent callers <symbol>`
+
+Shows indexed definitions for a function or symbol name and files that call it.
+
+For PHP procedural projects, this is useful when starting from a global helper
+such as `creaForm` and asking where it is used.
+
+### `init-agent symbol <symbol>`
+
+Shows a compact symbol orientation view:
+
+- indexed definitions
+- caller files with call counts and first call line
+- candidate files from the context scorer
+- recent commits related to those candidates
+
+This is useful when you know a function name and want both directions: where it
+is defined and where to start reading around it.
+
 ## Examples
 
 ```bash
@@ -470,6 +491,8 @@ init-agent query migration
 init-agent context "add graph export"
 init-agent context "add graph export" --json
 init-agent related init_agent/scanner.py
+init-agent callers creaForm
+init-agent symbol creaForm
 ```
 
 ## Validation Experiments

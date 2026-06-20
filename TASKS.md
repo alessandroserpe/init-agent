@@ -12,11 +12,11 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 1: PHP Call Graph Quality
 
-- [ ] Expand PHP builtin/function exclusions for noisy calls such as `mysqli_query`, `htmlspecialchars`, `trim`, `json_decode`, `file_exists`, `count`, `in_array`, `array_map`, `date`, `time`.
-- [ ] Store call counts per `(source file, target symbol name)` or expose aggregated counts in `related`.
-- [ ] Add `init-agent callers <symbol>` to show files that call a function name.
-- [ ] Add `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
-- [ ] Add benchmark cases from `fc5` for `creaForm`, `aggiornaForm`, discussion helpers and CRUD builder helpers.
+- [x] Expand PHP builtin/function exclusions for noisy calls such as `mysqli_query`, `htmlspecialchars`, `trim`, `json_decode`, `file_exists`, `count`, `in_array`, `array_map`, `date`, `time`.
+- [x] Store call counts per `(source file, target symbol name)` or expose aggregated counts in `related`.
+- [x] Add `init-agent callers <symbol>` to show files that call a function name.
+- [x] Add `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
+- [x] Add benchmark cases from `fc5` for `creaForm`, `aggiornaForm`, discussion helpers and CRUD builder helpers.
 
 ## Phase 2: Documentation And Config Extraction
 
