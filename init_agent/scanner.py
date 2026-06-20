@@ -32,6 +32,8 @@ def scan_project(root: Path, store: Any) -> dict[str, int]:
             store.delete_file_by_path(rel_path)
             removed_files += 1
 
+    if hasattr(store, "rebuild_term_stats"):
+        store.rebuild_term_stats()
     store.connection.commit()
     return {"files": indexed_files, "symbols": indexed_symbols, "relations": indexed_relations, "removed": removed_files}
 

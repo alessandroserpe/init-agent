@@ -1,0 +1,302 @@
+[
+  {
+    "name": "django-auth-session-middleware",
+    "repo": "/tmp/init-agent-bench-django",
+    "query": "how does Django handle session authentication middleware login",
+    "expected_files": [
+      "django/contrib/auth/middleware.py",
+      "django/contrib/sessions/middleware.py",
+      "django/conf/global_settings.py"
+    ],
+    "noise_patterns": [
+      "/docs/",
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "express-application-router",
+    "repo": "/tmp/init-agent-bench-express",
+    "query": "application handle request middleware router",
+    "expected_files": [
+      "lib/application.js",
+      "lib/request.js",
+      "examples/route-middleware/index.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "flask-routing-dispatch",
+    "repo": "/tmp/init-agent-bench-flask",
+    "query": "where does Flask register routes and dispatch requests to view functions",
+    "expected_files": [
+      "src/flask/app.py",
+      "src/flask/views.py",
+      "src/flask/sansio/app.py",
+      "src/flask/sansio/blueprints.py"
+    ],
+    "noise_patterns": [
+      "docs/_static/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "fastify-hooks-lifecycle",
+    "repo": "/tmp/init-agent-bench-fastify",
+    "query": "where does Fastify register routes and handle request lifecycle hooks",
+    "expected_files": [
+      "fastify.js",
+      "lib/hooks.js",
+      "lib/request.js",
+      "lib/handle-request.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "gin-routing-context",
+    "repo": "/tmp/init-agent-bench-gin",
+    "query": "where does Gin register routes and handle HTTP middleware context",
+    "expected_files": [
+      "gin.go",
+      "context.go",
+      "routergroup.go"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "mini-redis-connection-frame",
+    "repo": "/tmp/init-agent-bench-mini-redis",
+    "query": "where does mini redis handle client commands connection server frame parsing",
+    "expected_files": [
+      "src/connection.rs",
+      "src/frame.rs",
+      "src/server.rs",
+      "src/clients/client.rs"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "target/"
+    ]
+  },
+  {
+    "name": "requests-session-adapters",
+    "repo": "/tmp/init-agent-bench-requests",
+    "query": "where does Requests prepare and send HTTP requests sessions adapters",
+    "expected_files": [
+      "src/requests/sessions.py",
+      "src/requests/adapters.py",
+      "src/requests/models.py"
+    ],
+    "noise_patterns": [
+      "ext/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "vite-dev-server-transform",
+    "repo": "/tmp/init-agent-bench-vite",
+    "query": "where does Vite resolve plugins transform modules dev server middleware",
+    "expected_files": [
+      "packages/vite/src/node/server/middlewares/transform.ts",
+      "packages/vite/src/node/server/index.ts",
+      "packages/vite/src/node/plugins/resolve.ts",
+      "packages/vite/src/node/server/transformRequest.ts"
+    ],
+    "noise_patterns": [
+      "playground/",
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "django-csrf-validation",
+    "repo": "/tmp/init-agent-bench-django",
+    "query": "why csrf token validation fails",
+    "expected_files": [
+      "django/middleware/csrf.py",
+      "django/views/decorators/csrf.py",
+      "django/views/csrf.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "flask-request-hooks",
+    "repo": "/tmp/init-agent-bench-flask",
+    "query": "where are request hooks before after handled",
+    "expected_files": [
+      "src/flask/app.py",
+      "src/flask/ctx.py",
+      "src/flask/sansio/scaffold.py",
+      "src/flask/sansio/blueprints.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "requests-redirects-cookies",
+    "repo": "/tmp/init-agent-bench-requests",
+    "query": "where are redirects and cookies handled",
+    "expected_files": [
+      "src/requests/sessions.py",
+      "src/requests/cookies.py",
+      "src/requests/exceptions.py"
+    ],
+    "noise_patterns": [
+      "ext/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "express-static-send-file",
+    "repo": "/tmp/init-agent-bench-express",
+    "query": "where are static files served and send file headers set",
+    "expected_files": [
+      "lib/response.js",
+      "examples/static-files/index.js",
+      "test/express.static.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "django-migrations-loader",
+    "repo": "/tmp/init-agent-bench-django",
+    "query": "where are database migrations loaded and applied",
+    "expected_files": [
+      "django/db/migrations/loader.py",
+      "django/db/migrations/recorder.py",
+      "django/db/migrations/executor.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "vite-dep-optimizer-cache",
+    "repo": "/tmp/init-agent-bench-vite",
+    "query": "where is dependency pre bundling optimized deps cache handled",
+    "expected_files": [
+      "packages/vite/src/node/optimizer/optimizer.ts",
+      "packages/vite/src/node/optimizer/index.ts",
+      "packages/vite/src/node/plugins/resolve.ts"
+    ],
+    "noise_patterns": [
+      "docs/",
+      "playground/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "vite-docs-dep-pre-bundling",
+    "repo": "/tmp/init-agent-bench-vite",
+    "query": "docs dependency pre bundling guide",
+    "expected_files": [
+      "docs/guide/dep-pre-bundling.md"
+    ],
+    "noise_patterns": [
+      "playground/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "express-example-static-files",
+    "repo": "/tmp/init-agent-bench-express",
+    "query": "example static files express app",
+    "expected_files": [
+      "examples/static-files/index.js",
+      "examples/static-files/public/js/app.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "express-css-static-style",
+    "repo": "/tmp/init-agent-bench-express",
+    "query": "css style for static files example",
+    "expected_files": [
+      "examples/static-files/public/css/style.css",
+      "examples/static-files/index.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "pytest-fixtures-setup",
+    "repo": "/tmp/init-agent-bench-pytest",
+    "query": "where are pytest fixtures resolved and setup executed",
+    "expected_files": [
+      "src/_pytest/fixtures.py",
+      "src/_pytest/setupplan.py",
+      "testing/python/fixtures.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "doc/"
+    ]
+  },
+  {
+    "name": "pytest-assertion-rewrite",
+    "repo": "/tmp/init-agent-bench-pytest",
+    "query": "where does pytest assertion rewrite import modules",
+    "expected_files": [
+      "src/_pytest/assertion/rewrite.py",
+      "src/_pytest/assertion/__init__.py",
+      "testing/test_assertrewrite.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "doc/"
+    ]
+  },
+  {
+    "name": "vue-compiler-vmodel-dom-ssr",
+    "repo": "/tmp/init-agent-bench-vue-core",
+    "query": "where does Vue compile v-model directive for DOM and SSR",
+    "expected_files": [
+      "packages/compiler-dom/src/transforms/vModel.ts",
+      "packages/compiler-ssr/src/transforms/ssrVModel.ts",
+      "packages/runtime-dom/src/directives/vModel.ts"
+    ],
+    "noise_patterns": [
+      "playground/",
+      "packages-private/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "vue-renderer-patch-component",
+    "repo": "/tmp/init-agent-bench-vue-core",
+    "query": "where does Vue renderer patch component updates",
+    "expected_files": [
+      "packages/runtime-core/src/renderer.ts",
+      "packages/runtime-core/src/component.ts",
+      "packages/runtime-core/src/scheduler.ts"
+    ],
+    "noise_patterns": [
+      "playground/",
+      "packages-private/",
+      ".github/"
+    ]
+  }
+]

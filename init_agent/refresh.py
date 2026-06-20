@@ -73,6 +73,8 @@ def refresh_index(root: Path) -> dict[str, Any]:
                 store.delete_file_by_path(rel_path)
                 result["removed"].append(rel_path)
 
+            if result["added"] or result["updated"] or result["removed"]:
+                store.rebuild_term_stats()
             store.set_meta("last_refresh", utc_now())
             store.finish_run(
                 run_id,

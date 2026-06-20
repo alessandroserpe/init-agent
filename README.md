@@ -44,8 +44,8 @@ Token estimates use a simple `ceil(characters / 4)` heuristic.
 - Stores an interrogable SQLite index
 - Scans project files while skipping heavy directories, generated files and binaries
 - Detects likely language and file role
-- Extracts basic symbols from Python, PHP, JavaScript and TypeScript
-- Records simple relations such as imports/includes, file language and file role
+- Extracts basic symbols from Python, PHP, JavaScript, TypeScript, Go and Rust
+- Records simple relations such as imports/includes, PHP function calls, file language and file role
 - Reads Git branch, status and recent commit timeline without modifying the repository
 - Produces terminal, JSON and Markdown context packs
 - Estimates token savings
@@ -118,12 +118,14 @@ It records basic metadata such as project name, root path and whether `.git` exi
 Scans files and skips:
 
 ```text
-.git, .agent, .agents, .codex, .cursor, .vscode, .idea, .history,
+.git, .github, .agent, .agents, .codex, .cursor, .vscode, .idea, .history,
 node_modules, vendor, dist, build, .venv, __pycache__, .next,
 storage, cache, logs, tmp, temp
 ```
 
 It also skips common OS metadata files such as `.DS_Store`, `Thumbs.db` and `desktop.ini`, plus binary or graph-noisy extensions such as images, archives, fonts, media files, PDFs and local database files.
+
+Python packaging metadata directories such as `*.egg-info` and `*.dist-info` are also skipped.
 
 Extra ignores can be added to `.agent/config.json`:
 
@@ -149,6 +151,8 @@ For each file, it stores:
 - indexed timestamp
 
 It reads file contents only during mapping and does not store full source code in the database.
+
+For PHP projects, `map` also records conservative global function call relations such as `index.php calls creaForm`, while skipping common language constructs and method/static calls.
 
 ### `init-agent refresh`
 
@@ -375,10 +379,12 @@ Shape:
 }
 ```
 
-Scoring is intentionally simple and metadata-only:
+Scoring is intentionally simple, metadata-only and repository-adaptive:
 
-- query tokens are weighted by rarity across indexed paths, symbol names and commit messages
+- query tokens are weighted by local rarity across indexed paths, filenames, symbol names, roles, languages and commit messages
+- `map`, changed-file `refresh` and Git import rebuild local `term_stats` so common vocabulary in one repository does not dominate every query
 - generic request words such as `file`, `repo`, `repository` and `project` are ignored as query noise
+- small language function words such as `why`, `where`, `and`, `are`, `not`, `after`, `perché`, `dove` and similar terms are filtered before scoring
 - direct path matches are strong signals
 - filename matches are stronger than generic path matches
 - path and filename matches are boundary-aware, so tiny incidental substrings do not dominate natural-language queries
@@ -387,8 +393,8 @@ Scoring is intentionally simple and metadata-only:
 - commit message matches are secondary signals
 - relation boosts are capped so linked files cannot beat direct path matches only through many relations
 - role and language matches contribute a small relevance boost
-- test files are reduced by 30% for non-test-aware queries, so operational searches prefer source files; query words such as `test`, `pytest`, `coverage`, `spec` or `fixture` keep test files fully ranked
-- asset/style files are reduced for non-UI queries, migration/SQL files for non-database queries, and documentation for non-docs queries
+- test files are reduced for non-test-aware queries, so operational searches prefer source files; query words such as `test`, `pytest`, `coverage`, `spec` or `fixture` keep test files fully ranked
+- asset/style files are reduced for non-UI queries, migration/SQL files for non-database queries, documentation for non-docs queries, and examples/playgrounds for non-example queries
 - source files with backend/code extensions get a small preference
 
 The command returns at most 10 candidate files, 10 related symbols and 5 recent commits.
@@ -442,6 +448,8 @@ Shows:
 
 - symbols defined in the file
 - file relations
+- PHP function calls from this file, resolved to definitions when indexed
+- other files that call symbols defined in this file
 - recent commits that changed the file
 - other files changed in the same commits
 
@@ -464,6 +472,26 @@ init-agent context "add graph export" --json
 init-agent related init_agent/scanner.py
 ```
 
+## Validation Experiments
+
+This repository includes a small local evaluation harness in `experiments/`.
+It compares context-pack candidates against expected useful files for real
+repositories such as Django, Express, Flask, Fastify, Gin, mini-redis,
+Requests, Vite, pytest and Vue Core. The manifest also includes counter-cases
+where docs, examples, CSS or tests are intentionally relevant, so scoring
+changes are checked against both noise reduction and recall.
+
+```bash
+python3 experiments/evaluate.py
+python3 experiments/evaluate.py --strict
+python3 experiments/evaluate.py --strict --rebuild-index
+```
+
+The script reports top-1/top-3/top-5 hits, obvious noise matches and elapsed
+time. Missing benchmark repositories under `/tmp` are skipped. Use
+`--rebuild-index` after changing scanner, symbol extraction, role detection or
+scoring code.
+
 SQLite can also be inspected directly:
 
 ```bash
@@ -482,6 +510,7 @@ The SQLite database includes:
 - `git_commits`
 - `git_commit_files`
 - `runs`
+- `term_stats`
 
 The database stores metadata, symbols and relationships. It intentionally does not store full file contents.
 

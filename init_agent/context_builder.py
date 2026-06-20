@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .text_tokens import is_query_noise_token
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
@@ -17,23 +18,12 @@ MAX_COMMIT_FILES = 10
 UI_INTENT_TOKENS = {"css", "style", "stile", "layout", "design", "ui", "frontend", "colore", "colori"}
 DB_INTENT_TOKENS = {"sql", "migration", "migrations", "database", "db", "tabella", "schema"}
 DOCS_INTENT_TOKENS = {"readme", "docs", "documentazione", "guida"}
+EXAMPLE_INTENT_TOKENS = {"example", "examples", "demo", "sample", "tutorial", "playground"}
 ASSET_EXTENSIONS = {".css", ".scss", ".less"}
 MIGRATION_EXTENSIONS = {".sql"}
 DOCS_EXTENSIONS = {".md", ".rst", ".txt"}
-SOURCE_BACKEND_EXTENSIONS = {".php", ".py", ".js", ".ts"}
-SHORT_TECH_TOKENS = {"ai", "api", "css", "db", "go", "js", "php", "py", "sql", "ts", "ui"}
-QUERY_NOISE_TOKENS = {
-    "capire",
-    "codice",
-    "code",
-    "file",
-    "progetto",
-    "project",
-    "repo",
-    "repository",
-    "skill",
-    "usando",
-}
+SOURCE_BACKEND_EXTENSIONS = {".php", ".py", ".js", ".ts", ".go", ".rs"}
+EXAMPLE_PATH_PARTS = {"example", "examples", "demo", "demos", "sample", "samples", "playground"}
 
 
 def build_context_pack(root: Path, query: str) -> dict[str, Any]:
@@ -73,15 +63,17 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
                 """
             )
         ]
+        term_weights = _load_term_weights(conn, tokens)
 
     file_by_id = {int(item["id"]): item for item in files}
-    token_weights = _token_weights(tokens, files, symbols, commits)
+    token_weights = term_weights or _token_weights(tokens, files, symbols, commits)
     file_scores: dict[str, float] = defaultdict(float)
     reasons: dict[str, list[str]] = defaultdict(list)
 
     _score_files_by_path_role_language(files, tokens, token_weights, file_scores, reasons)
     _score_files_by_symbols(symbols, tokens, token_weights, file_scores, reasons)
     query_commits = _score_files_by_commits(commits, tokens, token_weights, file_scores, reasons)
+    _score_files_by_calls(relations, file_by_id, tokens, token_weights, file_scores, reasons)
     _score_related_files(relations, file_by_id, file_scores, reasons)
     _adjust_test_file_scores(files, tokens, file_scores, reasons)
     _adjust_role_type_scores(files, tokens, file_scores, reasons)
@@ -131,9 +123,7 @@ def _tokens(query: str) -> list[str]:
     for token in TOKEN_RE.findall(query.lower()):
         if token in seen:
             continue
-        if token in QUERY_NOISE_TOKENS:
-            continue
-        if len(token) < 3 and token not in SHORT_TECH_TOKENS:
+        if is_query_noise_token(token):
             continue
         seen.add(token)
         result.append(token)
@@ -145,7 +135,7 @@ def _token_weights(
     files: list[dict[str, Any]],
     symbols: list[dict[str, Any]],
     commit_rows: list[dict[str, Any]],
-) -> dict[str, float]:
+) -> dict[str, dict[str, float]]:
     if not tokens:
         return {}
     commit_messages = {}
@@ -159,14 +149,38 @@ def _token_weights(
     for token in tokens:
         frequency = sum(1 for document in documents if token in document)
         raw = 0.65 + log((total + 1) / (frequency + 1))
-        weights[token] = max(0.35, min(2.4, raw))
+        weights[token] = {"all": max(0.35, min(2.4, raw))}
     return weights
+
+
+def _load_term_weights(conn: Any, tokens: list[str]) -> dict[str, dict[str, float]]:
+    if not tokens:
+        return {}
+    try:
+        placeholders = ",".join("?" for _ in tokens)
+        rows = conn.execute(
+            f"SELECT term, source, weight FROM term_stats WHERE term IN ({placeholders})",
+            tokens,
+        ).fetchall()
+    except Exception:
+        return {}
+    weights: dict[str, dict[str, float]] = defaultdict(dict)
+    for row in rows:
+        weights[str(row["term"])][str(row["source"])] = float(row["weight"])
+    return {token: weights.get(token, {"all": 0.25}) for token in tokens} if weights else {}
+
+
+def _weight(token_weights: dict[str, Any], token: str, source: str = "all") -> float:
+    value = token_weights.get(token, 1.0)
+    if isinstance(value, dict):
+        return float(value.get(source, value.get("all", 1.0)))
+    return float(value)
 
 
 def _score_files_by_path_role_language(
     files: list[dict[str, Any]],
     tokens: list[str],
-    token_weights: dict[str, float],
+    token_weights: dict[str, Any],
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
@@ -177,28 +191,32 @@ def _score_files_by_path_role_language(
         language = str(file_item.get("language") or "").lower()
         role = str(file_item.get("role") or "").lower()
         for token in tokens:
-            weight = token_weights.get(token, 1.0)
+            path_weight = _weight(token_weights, token, "path")
+            filename_weight = _weight(token_weights, token, "filename")
             exact_path = token in path_parts
             exact_filename = token in filename_parts
             if exact_path:
-                file_scores[path] += 7 * weight
+                file_scores[path] += 7 * path_weight
                 _add_reason(reasons[path], f'path matches "{token}"')
-                _add_weight_reason(reasons[path], token, weight)
+                _add_weight_reason(reasons[path], token, path_weight)
             if exact_filename:
-                file_scores[path] += 5 * weight
+                file_scores[path] += 5 * filename_weight
                 _add_reason(reasons[path], f'filename matches "{token}"')
-                _add_weight_reason(reasons[path], token, weight)
+                _add_weight_reason(reasons[path], token, filename_weight)
             if not exact_path:
                 path_soft = _best_soft_match(token, path_parts)
                 if path_soft >= 0.78:
-                    file_scores[path] += 2.5 * weight * path_soft
+                    file_scores[path] += 2.5 * path_weight * path_soft
                     _add_reason(reasons[path], f'path softly matches "{token}"')
             if not exact_filename:
                 filename_soft = _best_soft_match(token, filename_parts)
                 if filename_soft >= 0.78:
-                    file_scores[path] += 2.0 * weight * filename_soft
+                    file_scores[path] += 2.0 * filename_weight * filename_soft
                     _add_reason(reasons[path], f'filename softly matches "{token}"')
             if token and (token in role or token in language):
+                role_weight = _weight(token_weights, token, "role")
+                language_weight = _weight(token_weights, token, "language")
+                weight = max(role_weight, language_weight)
                 file_scores[path] += 1.5 * weight
                 _add_reason(reasons[path], f'role/language matches "{token}"')
                 _add_weight_reason(reasons[path], token, weight)
@@ -207,7 +225,7 @@ def _score_files_by_path_role_language(
 def _score_files_by_symbols(
     symbols: list[dict[str, Any]],
     tokens: list[str],
-    token_weights: dict[str, float],
+    token_weights: dict[str, Any],
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
@@ -219,7 +237,7 @@ def _score_files_by_symbols(
         for token in tokens:
             if token in name_lower and token not in matched_by_file[path]:
                 matched_by_file[path].add(token)
-                weight = token_weights.get(token, 1.0)
+                weight = _weight(token_weights, token, "symbol")
                 file_scores[path] += 3.5 * weight
                 _add_reason(reasons[path], f'symbol matches "{token}"')
                 _add_weight_reason(reasons[path], token, weight)
@@ -228,7 +246,7 @@ def _score_files_by_symbols(
 def _score_files_by_commits(
     commit_rows: list[dict[str, Any]],
     tokens: list[str],
-    token_weights: dict[str, float],
+    token_weights: dict[str, Any],
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> list[dict[str, Any]]:
@@ -263,7 +281,7 @@ def _score_files_by_commits(
                 if (path, token) in scored_paths:
                     continue
                 scored_paths.add((path, token))
-                weight = token_weights.get(token, 1.0)
+                weight = _weight(token_weights, token, "commit")
                 file_scores[path] += 1.2 * weight
                 _add_reason(reasons[path], f'commit message matches "{token}"')
                 _add_weight_reason(reasons[path], token, weight)
@@ -271,6 +289,33 @@ def _score_files_by_commits(
             _add_reason(reasons[path], "modified in recent query-related commit")
     query_commits.sort(key=lambda item: str(item.get("date") or ""), reverse=True)
     return query_commits
+
+
+def _score_files_by_calls(
+    relations: list[dict[str, Any]],
+    file_by_id: dict[int, dict[str, Any]],
+    tokens: list[str],
+    token_weights: dict[str, Any],
+    file_scores: dict[str, float],
+    reasons: dict[str, list[str]],
+) -> None:
+    matched_by_file: dict[str, set[str]] = defaultdict(set)
+    for relation in relations:
+        if relation.get("relation") != "calls" or relation.get("target_type") != "symbol_name":
+            continue
+        source = file_by_id.get(int(relation["source_id"]))
+        if not source:
+            continue
+        path = str(source["path"])
+        target = str(relation["target_id"])
+        target_lower = target.lower()
+        for token in tokens:
+            if token in target_lower and token not in matched_by_file[path]:
+                matched_by_file[path].add(token)
+                weight = _weight(token_weights, token, "symbol")
+                file_scores[path] += 2.2 * weight
+                _add_reason(reasons[path], f'calls "{target}"')
+                _add_weight_reason(reasons[path], token, weight)
 
 
 def _score_related_files(
@@ -282,6 +327,7 @@ def _score_related_files(
     candidate_paths = {path for path, score in file_scores.items() if score > 0}
     if not candidate_paths:
         return
+    target_index = _relation_target_index(candidate_paths)
     related_boosts: dict[str, float] = defaultdict(float)
     related_reason_counts: dict[str, int] = defaultdict(int)
     for relation in relations:
@@ -291,7 +337,7 @@ def _score_related_files(
         source_path = str(source["path"])
         target = str(relation["target_id"])
         if source_path in candidate_paths:
-            linked_path = _resolve_relation_target(target, candidate_paths)
+            linked_path = _resolve_relation_target(target, target_index)
             if linked_path and linked_path != source_path and related_boosts[linked_path] < 1.5:
                 boost = min(0.5, 1.5 - related_boosts[linked_path])
                 file_scores[linked_path] += boost
@@ -300,7 +346,7 @@ def _score_related_files(
                     related_reason_counts[linked_path] += 1
                     _add_reason(reasons[linked_path], f"related to {source_path}")
         else:
-            target_candidate = _resolve_relation_target(target, candidate_paths)
+            target_candidate = _resolve_relation_target(target, target_index)
             if not target_candidate or related_boosts[source_path] >= 1.5:
                 continue
             boost = min(0.5, 1.5 - related_boosts[source_path])
@@ -325,7 +371,7 @@ def _adjust_test_file_scores(
         if test_aware:
             _prepend_reason(reasons[path], "test-aware query")
             continue
-        file_scores[path] *= 0.7
+        file_scores[path] *= 0.45
         _prepend_reason(reasons[path], "test file deprioritized for non-test query")
 
 
@@ -338,6 +384,7 @@ def _adjust_role_type_scores(
     has_ui_intent = any(token in UI_INTENT_TOKENS for token in tokens)
     has_db_intent = any(token in DB_INTENT_TOKENS for token in tokens)
     has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in tokens)
+    has_example_intent = any(token in EXAMPLE_INTENT_TOKENS for token in tokens)
     for file_item in files:
         path = str(file_item["path"])
         if file_scores[path] <= 0:
@@ -351,22 +398,45 @@ def _adjust_role_type_scores(
             file_scores[path] *= 0.75
             _prepend_reason(reasons[path], "migration file deprioritized for non-database query")
         if (role == "documentation" or extension in DOCS_EXTENSIONS) and not has_docs_intent:
-            file_scores[path] *= 0.8
+            file_scores[path] *= 0.6
             _prepend_reason(reasons[path], "documentation deprioritized for non-docs query")
+        if _is_example_path(path) and not has_example_intent:
+            file_scores[path] *= 0.5
+            _prepend_reason(reasons[path], "example/playground deprioritized for non-example query")
         if role == "source" and extension in SOURCE_BACKEND_EXTENSIONS:
             file_scores[path] = file_scores[path] * 1.05 + 0.1
             _add_reason(reasons[path], "source file preferred")
 
 
-def _resolve_relation_target(target: str, candidate_paths: set[str]) -> str | None:
+def _is_example_path(path: str) -> bool:
+    for part in Path(path).parts:
+        lowered = part.lower()
+        if lowered in EXAMPLE_PATH_PARTS:
+            return True
+        if any(marker in lowered for marker in ("playground", "example", "demo")):
+            return True
+    return False
+
+
+def _relation_target_index(candidate_paths: set[str]) -> dict[str, str]:
+    index: dict[str, str] = {}
+    for path in sorted(candidate_paths):
+        normalized = path.lstrip("./")
+        parts = normalized.split("/")
+        for offset in range(len(parts)):
+            index.setdefault("/".join(parts[offset:]), path)
+        if parts:
+            index.setdefault(parts[-1], path)
+    return index
+
+
+def _resolve_relation_target(target: str, target_index: dict[str, str]) -> str | None:
     normalized = target.lstrip("./")
-    if normalized in candidate_paths:
-        return normalized
-    target_name = Path(normalized).name
-    for path in candidate_paths:
-        if path.endswith(normalized) or Path(path).name == target_name:
-            return path
-    return None
+    return target_index.get(normalized) or target_index.get(_basename(normalized))
+
+
+def _basename(path: str) -> str:
+    return path.rsplit("/", 1)[-1]
 
 
 def _path_tokens(value: str) -> list[str]:
@@ -383,20 +453,23 @@ def _split_camel_like(token: str) -> list[str]:
 
 
 def _best_soft_match(query_token: str, candidates: list[str]) -> float:
-    if len(query_token) < 5:
+    if len(query_token) < 6 or is_query_noise_token(query_token):
         return 0.0
     best = 0.0
     for candidate in candidates:
-        if len(candidate) < 4:
+        if len(candidate) < 5 or is_query_noise_token(candidate):
             continue
         shorter, longer = sorted((query_token, candidate), key=len)
-        if len(shorter) >= 5 and longer.startswith(shorter):
+        coverage = len(shorter) / max(len(longer), 1)
+        if len(shorter) >= 6 and coverage >= 0.5 and longer.startswith(shorter):
             best = max(best, 0.9)
             continue
-        if len(shorter) >= 5 and shorter in longer:
+        if len(shorter) >= 6 and coverage >= 0.65 and shorter in longer:
             best = max(best, 0.84)
             continue
-        best = max(best, SequenceMatcher(None, query_token, candidate).ratio())
+        ratio = SequenceMatcher(None, query_token, candidate).ratio()
+        if ratio >= 0.82:
+            best = max(best, ratio)
     return best
 
 

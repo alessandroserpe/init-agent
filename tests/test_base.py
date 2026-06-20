@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import argparse
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -13,11 +14,46 @@ from init_agent.cli import main
 from init_agent.doctor import run_doctor
 from init_agent.estimate import estimate_tokens
 from init_agent.graph_store import GraphStore
+from init_agent.language_detector import detect_role
+from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
+from experiments.evaluate import strict_failures_for, summarize
 
 
 class InitAgentBaseTests(unittest.TestCase):
+    def test_experiment_cases_manifest_is_valid(self) -> None:
+        cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"
+        cases = json.loads(cases_path.read_text(encoding="utf-8"))
+        self.assertGreater(len(cases), 0)
+        for case in cases:
+            self.assertIn("name", case)
+            self.assertIn("repo", case)
+            self.assertIn("query", case)
+            self.assertIsInstance(case.get("expected_files"), list)
+            self.assertIsInstance(case.get("noise_patterns"), list)
+
+    def test_experiment_summary_and_strict_thresholds(self) -> None:
+        summary = summarize(
+            [
+                {"status": "ok", "top1_hit": True, "top3_hit": True, "top5_hit": True, "noise_hit_count": 0, "elapsed_seconds": 1.0},
+                {"status": "ok", "top1_hit": False, "top3_hit": False, "top5_hit": True, "noise_hit_count": 1, "elapsed_seconds": 2.0},
+            ]
+        )
+        self.assertEqual(summary["cases"], 2)
+        self.assertEqual(summary["top3_rate"], 0.5)
+        self.assertEqual(summary["top5_rate"], 1.0)
+        args = argparse.Namespace(min_top3_rate=0.85, min_top5_rate=1.0, max_noise=2)
+        failures = strict_failures_for(summary, args)
+        self.assertIn("top3_rate 0.5 < 0.85", failures)
+        self.assertNotIn("top5_rate 1.0 < 1.0", failures)
+
+    def test_role_detection_does_not_treat_pytest_package_as_test(self) -> None:
+        self.assertEqual(detect_role("src/_pytest/fixtures.py"), "source")
+        self.assertEqual(detect_role("testing/python/fixtures.py"), "test")
+        self.assertEqual(detect_role("src/pkg/test_example.py"), "test")
+        self.assertEqual(detect_role("src/pkg/component.spec.ts"), "test")
+
     def test_python_symbol_extraction(self) -> None:
         content = "import os\nfrom pathlib import Path\nclass Runner:\n    pass\ndef run(value):\n    return value\n"
         symbols, relations = extract_symbols_and_relations(content, "python")
@@ -25,6 +61,48 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn(("run", "function"), [(item.name, item.kind) for item in symbols])
         self.assertIn("os", [item.target for item in relations])
         self.assertIn("pathlib", [item.target for item in relations])
+
+    def test_python_multiline_function_signature_extraction(self) -> None:
+        content = "class Session:\n    def resolve_redirects(\n        self,\n        response,\n    ):\n        return []\n"
+        symbols, _ = extract_symbols_and_relations(content, "python")
+        self.assertIn(("Session", "class"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("resolve_redirects", "method"), [(item.name, item.kind) for item in symbols])
+
+    def test_go_symbol_extraction(self) -> None:
+        content = 'package main\nimport (\n  "net/http"\n)\ntype Engine struct {}\nfunc (e *Engine) ServeHTTP() {}\nfunc New() {}\n'
+        symbols, relations = extract_symbols_and_relations(content, "go")
+        self.assertIn(("Engine", "struct"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("ServeHTTP", "function"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("New", "function"), [(item.name, item.kind) for item in symbols])
+        self.assertIn("net/http", [item.target for item in relations])
+
+    def test_rust_symbol_extraction(self) -> None:
+        content = "use tokio::net::TcpListener;\nstruct Listener {}\nimpl Listener {}\npub async fn run() {}\n"
+        symbols, relations = extract_symbols_and_relations(content, "rust")
+        self.assertIn(("Listener", "struct"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("Listener", "impl"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("run", "function"), [(item.name, item.kind) for item in symbols])
+        self.assertIn("tokio", [item.target for item in relations])
+
+    def test_php_function_call_relation_extraction(self) -> None:
+        content = (
+            "<?php\n"
+            "require_once 'functions.php';\n"
+            "function pageController() { return renderDashboard(); }\n"
+            "$result = creaForm($record);\n"
+            "if (isset($result)) { echo sanitizeOutput($result); }\n"
+            "$service->methodCall();\n"
+            "ClassName::staticCall();\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "php")
+        self.assertIn(("pageController", "function"), [(item.name, item.kind) for item in symbols])
+        calls = [item.target for item in relations if item.relation == "calls"]
+        self.assertIn("renderDashboard", calls)
+        self.assertIn("creaForm", calls)
+        self.assertIn("sanitizeOutput", calls)
+        self.assertNotIn("isset", calls)
+        self.assertNotIn("methodCall", calls)
+        self.assertNotIn("staticCall", calls)
 
     def test_cli_init_and_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,9 +116,41 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(main(["map"]), 0)
                 with GraphStore(root) as store:
                     counts = store.counts()
+                    term_count = store.connection.execute("SELECT COUNT(*) AS count FROM term_stats").fetchone()["count"]
                 self.assertGreaterEqual(counts["files"], 2)
                 self.assertGreaterEqual(counts["symbols"], 2)
                 self.assertGreaterEqual(counts["relations"], 2)
+                self.assertGreater(term_count, 0)
+            finally:
+                os.chdir(previous)
+
+    def test_term_stats_downweight_common_repo_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "composer.json").write_text('{"name": "sample/app"}\n', encoding="utf-8")
+            include = root / "include"
+            include.mkdir()
+            (include / "login.php").write_text("<?php\nfunction loginUser() { return true; }\n", encoding="utf-8")
+            for index in range(8):
+                (include / f"admin_{index}.php").write_text(
+                    f"<?php\nfunction adminHelper{index}() {{ return true; }}\n",
+                    encoding="utf-8",
+                )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                with GraphStore(root) as store:
+                    rows = {
+                        row["term"]: row["weight"]
+                        for row in store.connection.execute(
+                            "SELECT term, weight FROM term_stats WHERE source = 'all' AND term IN ('admin', 'login')"
+                        ).fetchall()
+                    }
+                self.assertLess(rows["admin"], rows["login"])
+                pack = build_context_pack(root, "login admin")
+                self.assertEqual(pack["candidate_files"][0]["path"], "include/login.php")
             finally:
                 os.chdir(previous)
 
@@ -271,6 +381,47 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_context_php_call_relation_finds_caller_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "creaForm")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertIn("index.php", paths)
+                self.assertIn("include/functions.php", paths)
+                index_item = next(item for item in pack["candidate_files"] if item["path"] == "index.php")
+                self.assertIn('calls "creaForm"', index_item["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_related_php_call_relation_resolves_definition_and_callers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                index_related = related_query(root, "index.php")
+                self.assertIsNotNone(index_related)
+                raw_relation_names = {item["relation"] for item in index_related["relations"]}
+                self.assertNotIn("calls", raw_relation_names)
+                self.assertNotIn("defines", raw_relation_names)
+                resolved = index_related["resolved_calls"]
+                crea_form = next(item for item in resolved if item["name"] == "creaForm")
+                self.assertEqual(crea_form["definitions"][0]["path"], "include/functions.php")
+
+                functions_related = related_query(root, "include/functions.php")
+                self.assertIsNotNone(functions_related)
+                callers = {(item["path"], item["name"]) for item in functions_related["callers"]}
+                self.assertIn(("index.php", "creaForm"), callers)
+            finally:
+                os.chdir(previous)
+
     def test_context_soft_path_match_finds_installazione(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -331,6 +482,126 @@ class InitAgentBaseTests(unittest.TestCase):
                 if "js/flexcore.footer.js" in paths:
                     self.assertLess(paths.index("install/index.php"), paths.index("js/flexcore.footer.js"))
                 self.assertIn("install/README.md", paths[:5])
+            finally:
+                os.chdir(previous)
+
+    def test_context_ignores_function_words_for_django_like_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            for directory in [
+                "django/contrib/admin/static/admin/js",
+                "django/contrib/admin/templatetags",
+                "django/core",
+                "tests/validation",
+                "django/contrib/auth/migrations",
+            ]:
+                (root / directory).mkdir(parents=True)
+            (root / "django/contrib/admin/static/admin/js/change_form.js").write_text(
+                "const form = document.querySelector('form');\nfunction displayMessages() { return form; }\n",
+                encoding="utf-8",
+            )
+            (root / "django/contrib/admin/templatetags/admin_modify.py").write_text(
+                "def render_change_form():\n    return 'form validation error messages'\n",
+                encoding="utf-8",
+            )
+            (root / "django/core/exceptions.py").write_text(
+                "class ValidationError(Exception):\n    pass\n\ndef not_are_after_noise():\n    return None\n",
+                encoding="utf-8",
+            )
+            (root / "tests/validation/test_error_messages.py").write_text(
+                "def test_validation_error_messages():\n    assert True\n",
+                encoding="utf-8",
+            )
+            (root / "django/contrib/auth/migrations/0007_alter_validators_add_error_messages.py").write_text(
+                "def alter_validators_add_error_messages():\n    return None\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "why are messages not displayed after form validation error in Django admin")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertLess(
+                    paths.index("django/contrib/admin/static/admin/js/change_form.js"),
+                    paths.index("tests/validation/test_error_messages.py"),
+                )
+                if "django/contrib/auth/migrations/0007_alter_validators_add_error_messages.py" in paths:
+                    self.assertLess(
+                        paths.index("django/contrib/admin/static/admin/js/change_form.js"),
+                        paths.index("django/contrib/auth/migrations/0007_alter_validators_add_error_messages.py"),
+                    )
+                rendered_reasons = "\n".join(reason for item in pack["candidate_files"] for reason in item["reasons"])
+                self.assertNotIn('"are"', rendered_reasons)
+                self.assertNotIn('"not"', rendered_reasons)
+                self.assertNotIn('"after"', rendered_reasons)
+                self.assertNotIn('"why"', rendered_reasons)
+            finally:
+                os.chdir(previous)
+
+    def test_context_ignores_function_words_for_express_like_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text('{"name": "sample"}\n', encoding="utf-8")
+            (root / "lib").mkdir()
+            (root / "examples").mkdir()
+            (root / "lib" / "application.js").write_text(
+                "function dispatch(req, res) { return req; }\nfunction middleware(fn) { return fn; }\n",
+                encoding="utf-8",
+            )
+            (root / "examples" / "route-middleware.js").write_text(
+                "function andRestrictToSelf(req, res) { return true; }\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "where routes and middleware requests are dispatched")
+                rendered_reasons = "\n".join(reason for item in pack["candidate_files"] for reason in item["reasons"])
+                self.assertNotIn('"and"', rendered_reasons)
+                self.assertNotIn('"where"', rendered_reasons)
+                self.assertNotIn('"are"', rendered_reasons)
+                self.assertIn("lib/application.js", [item["path"] for item in pack["candidate_files"]])
+            finally:
+                os.chdir(previous)
+
+    def test_context_deprioritizes_examples_and_docs_for_operational_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text('{"name": "sample"}\n', encoding="utf-8")
+            for directory in ("src/optimizer", "playground/optimizer", "docs/guide"):
+                (root / directory).mkdir(parents=True)
+            (root / "src/optimizer/cache.ts").write_text(
+                "export function optimizeDepsCache() { return true; }\n",
+                encoding="utf-8",
+            )
+            (root / "playground/optimizer/cache-demo.ts").write_text(
+                "export function optimizeDepsCacheDemo() { return true; }\n",
+                encoding="utf-8",
+            )
+            (root / "docs/guide/dep-pre-bundling.md").write_text(
+                "# Optimize deps cache\n\nDependency optimizer cache guide.\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "debug optimizer cache invalidation")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertLess(paths.index("src/optimizer/cache.ts"), paths.index("playground/optimizer/cache-demo.ts"))
+                if "docs/guide/dep-pre-bundling.md" in paths:
+                    self.assertLess(paths.index("src/optimizer/cache.ts"), paths.index("docs/guide/dep-pre-bundling.md"))
+                playground = next(item for item in pack["candidate_files"] if item["path"] == "playground/optimizer/cache-demo.ts")
+                self.assertIn("example/playground deprioritized for non-example query", playground["reasons"])
+                docs = next((item for item in pack["candidate_files"] if item["path"] == "docs/guide/dep-pre-bundling.md"), None)
+                if docs:
+                    self.assertIn("documentation deprioritized for non-docs query", docs["reasons"])
             finally:
                 os.chdir(previous)
 
@@ -574,6 +845,20 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_ignore_excludes_github_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_ignore_fixture(Path(tmp))
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                self.assertNotIn(".github/workflows/ci.yml", _indexed_paths(root))
+            finally:
+                os.chdir(previous)
+
     def test_ignore_excludes_ds_store(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_ignore_fixture(Path(tmp))
@@ -596,8 +881,24 @@ class InitAgentBaseTests(unittest.TestCase):
                 main(["map"])
                 paths = _indexed_paths(root)
                 self.assertNotIn("public/logo.png", paths)
+                self.assertNotIn("public/icon.svg", paths)
+                self.assertNotIn("public/logo.ai", paths)
                 self.assertNotIn("docs/manual.pdf", paths)
                 self.assertNotIn("data/cache.sqlite", paths)
+            finally:
+                os.chdir(previous)
+
+    def test_ignore_excludes_python_package_metadata_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_ignore_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                paths = _indexed_paths(root)
+                self.assertNotIn("sample.egg-info/PKG-INFO", paths)
+                self.assertNotIn("sample-1.0.dist-info/METADATA", paths)
             finally:
                 os.chdir(previous)
 
@@ -646,15 +947,20 @@ class InitAgentBaseTests(unittest.TestCase):
                 (agents / "new_tool.py").write_text("def ignored():\n    return True\n", encoding="utf-8")
                 (root / ".DS_Store").write_text("ignored", encoding="utf-8")
                 (root / "graph.sqlite").write_text("ignored", encoding="utf-8")
+                egg_info = root / "sample.egg-info"
+                egg_info.mkdir()
+                (egg_info / "PKG-INFO").write_text("ignored", encoding="utf-8")
                 report = refresh_index(root)
                 self.assertEqual(report["status"], "OK")
                 self.assertNotIn(".agents/skills/new_tool.py", report["added"])
                 self.assertNotIn(".DS_Store", report["added"])
                 self.assertNotIn("graph.sqlite", report["added"])
+                self.assertNotIn("sample.egg-info/PKG-INFO", report["added"])
                 paths = _indexed_paths(root)
                 self.assertNotIn(".agents/skills/new_tool.py", paths)
                 self.assertNotIn(".DS_Store", paths)
                 self.assertNotIn("graph.sqlite", paths)
+                self.assertNotIn("sample.egg-info/PKG-INFO", paths)
             finally:
                 os.chdir(previous)
 
@@ -1018,6 +1324,35 @@ def _create_php_login_fixture(root: Path) -> Path:
     return root
 
 
+def _create_php_call_fixture(root: Path) -> Path:
+    (root / "composer.json").write_text('{"name": "sample/app"}\n', encoding="utf-8")
+    include = root / "include"
+    include.mkdir()
+    (root / "index.php").write_text(
+        "<?php\n"
+        "require_once 'include/bootstrap.php';\n"
+        "$html = creaForm($record);\n"
+        "echo renderPage($html);\n",
+        encoding="utf-8",
+    )
+    (include / "bootstrap.php").write_text(
+        "<?php\n"
+        "require_once 'crm.php';\n"
+        "require_once 'db.php';\n"
+        "require_once 'functions.php';\n",
+        encoding="utf-8",
+    )
+    (include / "crm.php").write_text("<?php\nfunction crmTitle() { return 'CRM'; }\n", encoding="utf-8")
+    (include / "db.php").write_text("<?php\nfunction dbConnect() { return true; }\n", encoding="utf-8")
+    (include / "functions.php").write_text(
+        "<?php\n"
+        "function creaForm($record) { return '<form></form>'; }\n"
+        "function renderPage($html) { return $html; }\n",
+        encoding="utf-8",
+    )
+    return root
+
+
 def _add_admin_commit_noise(root: Path) -> None:
     with GraphStore(root) as store:
         store.replace_git_history(
@@ -1032,6 +1367,7 @@ def _add_admin_commit_noise(root: Path) -> None:
                 for index in range(5)
             ]
         )
+        store.rebuild_term_stats()
 
 
 def _create_many_commit_files_fixture(root: Path, total_files: int) -> Path:
@@ -1078,10 +1414,18 @@ def _create_ignore_fixture(root: Path) -> Path:
     docs.mkdir()
     data.mkdir()
     private.mkdir()
+    egg_info = root / "sample.egg-info"
+    dist_info = root / "sample-1.0.dist-info"
+    egg_info.mkdir()
+    dist_info.mkdir()
     (public / "logo.png").write_bytes(b"png")
+    (public / "icon.svg").write_text("<svg></svg>\n", encoding="utf-8")
+    (public / "logo.ai").write_bytes(b"ai")
     (docs / "manual.pdf").write_bytes(b"pdf")
     (data / "cache.sqlite").write_bytes(b"sqlite")
     (private / "secret.php").write_text("<?php\nfunction privateSecret() { return true; }\n", encoding="utf-8")
+    (egg_info / "PKG-INFO").write_text("ignored", encoding="utf-8")
+    (dist_info / "METADATA").write_text("ignored", encoding="utf-8")
     return root
 
 

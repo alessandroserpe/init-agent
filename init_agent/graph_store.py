@@ -72,6 +72,15 @@ CREATE TABLE IF NOT EXISTS runs (
     status TEXT,
     summary_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS term_stats (
+    term TEXT NOT NULL,
+    source TEXT NOT NULL,
+    document_count INTEGER NOT NULL,
+    total_count INTEGER NOT NULL,
+    weight REAL NOT NULL,
+    PRIMARY KEY(term, source)
+);
 """
 
 
@@ -202,6 +211,14 @@ class GraphStore:
                 [(commit_id, path) for path in commit.get("files", [])],
             )
         self.connection.commit()
+
+    def rebuild_term_stats(self) -> int:
+        from .term_stats import rebuild_term_stats
+
+        rows = rebuild_term_stats(self.connection)
+        self.set_meta("term_stats_updated_at", utc_now())
+        self.connection.commit()
+        return rows
 
     def file_hashes(self) -> dict[str, str]:
         rows = self.connection.execute("SELECT path, sha256 FROM files").fetchall()

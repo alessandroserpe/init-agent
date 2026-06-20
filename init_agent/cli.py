@@ -209,6 +209,7 @@ def cmd_git(args: argparse.Namespace) -> int:
             print("Git repository not found. Nothing to import.")
             return 0
         store.replace_git_history(data["commits"])
+        store.rebuild_term_stats()
         store.finish_run(
             run_id,
             "ok",
@@ -364,6 +365,26 @@ def cmd_related(args: argparse.Namespace) -> int:
     for relation in data["relations"]:
         print(f"  {relation['relation']} -> {relation['target_type']}:{relation['target_id']}")
     if not data["relations"]:
+        print("  -")
+    print("Calls:")
+    unresolved_calls = 0
+    printed_calls = 0
+    for call in data["resolved_calls"]:
+        definitions = call["definitions"]
+        if definitions:
+            for definition in definitions:
+                print(f"  {call['name']} -> {definition['path']}:{definition['line']} ({definition['kind']})")
+                printed_calls += 1
+        else:
+            unresolved_calls += 1
+    if unresolved_calls:
+        print(f"  {unresolved_calls} unresolved calls omitted")
+    if not printed_calls and not unresolved_calls:
+        print("  -")
+    print("Called by:")
+    for caller in data["callers"]:
+        print(f"  {caller['path']} calls {caller['name']}")
+    if not data["callers"]:
         print("  -")
     print("Recent commits:")
     for commit in data["commits"]:

@@ -12,6 +12,7 @@ from typing import Any
 
 DEFAULT_EXCLUDED_DIRS = {
     ".git",
+    ".github",
     ".agent",
     ".agents",
     ".codex",
@@ -33,6 +34,11 @@ DEFAULT_EXCLUDED_DIRS = {
     "temp",
 }
 
+DEFAULT_EXCLUDED_DIR_SUFFIXES = {
+    ".egg-info",
+    ".dist-info",
+}
+
 DEFAULT_EXCLUDED_FILES = {
     ".DS_Store",
     "Thumbs.db",
@@ -45,7 +51,9 @@ DEFAULT_EXCLUDED_EXTENSIONS = {
     ".jpeg",
     ".gif",
     ".webp",
+    ".svg",
     ".ico",
+    ".ai",
     ".pdf",
     ".zip",
     ".tar",
@@ -178,6 +186,8 @@ def is_indexable_path(path: Path, root: Path, rules: dict[str, set[str]] | None 
         return False
     if any(part in ignore["exclude_dirs"] for part in rel_parts[:-1]):
         return False
+    if any(_is_excluded_dir_part(part) for part in rel_parts[:-1]):
+        return False
     if path.name in ignore["exclude_files"]:
         return False
     if path.suffix.lower() in ignore["exclude_extensions"]:
@@ -193,7 +203,9 @@ def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -
         dirnames[:] = [
             dirname
             for dirname in dirnames
-            if dirname not in ignore["exclude_dirs"] and is_indexable_path(current / dirname, root, ignore)
+            if dirname not in ignore["exclude_dirs"]
+            and not _is_excluded_dir_part(dirname)
+            and is_indexable_path(current / dirname, root, ignore)
         ]
         for filename in filenames:
             path = current / filename
@@ -208,6 +220,10 @@ def is_hidden_or_excluded_dir(path: Path, root: Path, excluded: set[str]) -> boo
     except ValueError:
         return True
     return any(part in excluded for part in rel_parts)
+
+
+def _is_excluded_dir_part(part: str) -> bool:
+    return any(part.endswith(suffix) for suffix in DEFAULT_EXCLUDED_DIR_SUFFIXES)
 
 
 def format_count(label: str, count: int) -> str:

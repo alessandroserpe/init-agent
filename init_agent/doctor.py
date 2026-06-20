@@ -21,6 +21,7 @@ REQUIRED_TABLES = {
     "git_commits",
     "git_commit_files",
     "runs",
+    "term_stats",
 }
 
 

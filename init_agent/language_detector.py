@@ -27,6 +27,8 @@ LANGUAGE_BY_EXTENSION = {
     ".sh": "shell",
     ".bat": "batch",
     ".ps1": "powershell",
+    ".go": "go",
+    ".rs": "rust",
 }
 
 ASSET_EXTENSIONS = {
@@ -75,7 +77,7 @@ def detect_role(path: str | Path) -> str:
         return "documentation"
     if suffix in ASSET_EXTENSIONS:
         return "asset"
-    if "test" in lower or "spec" in lower:
+    if _is_test_path(file_path):
         return "test"
     if "migration" in lower or "/migrations/" in lower:
         return "migration"
@@ -83,6 +85,21 @@ def detect_role(path: str | Path) -> str:
         return "route"
     if "/views/" in lower or "/templates/" in lower or suffix in {".html", ".tsx", ".jsx"}:
         return "view"
-    if suffix in {".py", ".php", ".js", ".jsx", ".ts", ".tsx", ".sql", ".sh"}:
+    if suffix in {".py", ".php", ".js", ".jsx", ".ts", ".tsx", ".sql", ".sh", ".go", ".rs"}:
         return "source"
     return "unknown"
+
+
+def _is_test_path(path: Path) -> bool:
+    parts = {part.lower() for part in path.parts}
+    name = path.name.lower()
+    stem = path.stem.lower()
+    if parts.intersection({"test", "tests", "testing", "__tests__"}):
+        return True
+    if name.startswith("test_") or name.endswith("_test.py") or name.endswith("_test.go") or name.endswith("_test.rs"):
+        return True
+    if ".test." in name or ".spec." in name:
+        return True
+    if stem.endswith(".test") or stem.endswith(".spec"):
+        return True
+    return False

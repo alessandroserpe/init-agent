@@ -34,14 +34,18 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
             dict(row)
             for row in conn.execute(
                 """
-                SELECT relation, target_type, target_id, confidence, metadata_json
+                SELECT relation, target_type, target_id, MAX(confidence) AS confidence, metadata_json
                 FROM relations
                 WHERE source_type = 'file' AND source_id = ?
+                  AND relation NOT IN ('defines', 'calls')
+                GROUP BY relation, target_type, target_id
                 ORDER BY confidence DESC, relation
                 """,
                 (file_row["id"],),
             )
         ]
+        resolved_calls = _resolved_calls(conn, int(file_row["id"]))
+        callers = _callers_for_file_symbols(conn, int(file_row["id"]))
         commits = [
             dict(row)
             for row in conn.execute(
@@ -78,9 +82,84 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
             "file": dict(file_row),
             "symbols": symbols,
             "relations": relations,
+            "resolved_calls": resolved_calls,
+            "callers": callers,
             "commits": commits,
             "cochanged_files": cochanged,
         }
+
+
+def _resolved_calls(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
+    source_row = conn.execute("SELECT language FROM files WHERE id = ?", (file_id,)).fetchone()
+    source_language = str(source_row["language"] or "") if source_row else ""
+    rows = conn.execute(
+        """
+        SELECT r.target_id AS name, MAX(r.confidence) AS confidence
+        FROM relations r
+        WHERE r.source_type = 'file'
+          AND r.source_id = ?
+          AND r.relation = 'calls'
+          AND r.target_type = 'symbol_name'
+        GROUP BY r.target_id
+        ORDER BY r.target_id
+        """,
+        (file_id,),
+    ).fetchall()
+    result = []
+    for row in rows:
+        definitions = [
+            dict(item)
+            for item in _definition_rows_for_call(conn, str(row["name"]), source_language)
+        ]
+        result.append({"name": row["name"], "confidence": row["confidence"], "definitions": definitions})
+    return result
+
+
+def _definition_rows_for_call(conn: sqlite3.Connection, name: str, source_language: str) -> list[sqlite3.Row]:
+    language_clause = "AND f.language = ?" if source_language == "php" else ""
+    params: tuple[object, ...] = (name, source_language) if source_language == "php" else (name,)
+    return conn.execute(
+        f"""
+        SELECT s.name, s.kind, s.line, f.path
+        FROM symbols s
+        JOIN files f ON f.id = s.file_id
+        WHERE s.name = ?
+          AND s.kind IN ('function', 'method')
+          {language_clause}
+        ORDER BY f.path, s.line
+        LIMIT 10
+        """,
+        params,
+    ).fetchall()
+
+
+def _callers_for_file_symbols(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
+    symbols = conn.execute("SELECT name FROM symbols WHERE file_id = ? ORDER BY name", (file_id,)).fetchall()
+    callers: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for symbol in symbols:
+        rows = conn.execute(
+            """
+            SELECT f.path, r.target_id AS name, r.confidence, r.metadata_json
+            FROM relations r
+            JOIN files f ON f.id = r.source_id
+            WHERE r.source_type = 'file'
+              AND r.relation = 'calls'
+              AND r.target_type = 'symbol_name'
+              AND r.target_id = ?
+              AND f.id != ?
+            ORDER BY f.path
+            LIMIT 20
+            """,
+            (symbol["name"], file_id),
+        ).fetchall()
+        for row in rows:
+            key = (row["path"], row["name"])
+            if key in seen:
+                continue
+            seen.add(key)
+            callers.append(dict(row))
+    return callers[:20]
 
 
 def _search_files(conn: sqlite3.Connection, term: str) -> list[dict[str, object]]:

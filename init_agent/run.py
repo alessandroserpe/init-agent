@@ -68,6 +68,7 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
                     store.set_meta("git", "true")
                     store.set_meta("branch", data.get("branch") or "")
                     store.replace_git_history(data["commits"])
+                    store.rebuild_term_stats()
                     store.finish_run(
                         run_id,
                         "ok",
