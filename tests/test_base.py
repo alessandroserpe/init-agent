@@ -124,6 +124,69 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn(("name", "config_key"), [(item.name, item.kind) for item in yaml_symbols])
         self.assertIn(("services", "config_key"), [(item.name, item.kind) for item in yaml_symbols])
 
+    def test_php_route_extraction(self) -> None:
+        content = (
+            "<?php\n"
+            "Route::get('/login', 'AuthController@login');\n"
+            "$router->post('/sessions', 'SessionController@store');\n"
+            "$routes = ['/admin' => 'AdminController@index'];\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "php")
+        self.assertIn(("/login", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/sessions", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/admin", "route"), [(item.name, item.kind) for item in symbols])
+        handlers = [item.target for item in relations if item.relation == "route_to_handler"]
+        self.assertIn("login", handlers)
+        self.assertIn("store", handlers)
+        self.assertIn("index", handlers)
+
+    def test_js_express_and_fastify_route_extraction(self) -> None:
+        content = (
+            "function showUser(req, res) {}\n"
+            "app.get('/users/:id', showUser)\n"
+            "fastify.route({\n"
+            "  method: 'POST',\n"
+            "  url: '/sessions',\n"
+            "  handler: createSession\n"
+            "})\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "javascript")
+        self.assertIn(("/users/:id", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/sessions", "route"), [(item.name, item.kind) for item in symbols])
+        handlers = [item.target for item in relations if item.relation == "route_to_handler"]
+        self.assertIn("showUser", handlers)
+        self.assertIn("createSession", handlers)
+
+    def test_python_flask_and_django_route_extraction(self) -> None:
+        content = (
+            "@app.route('/login')\n"
+            "def login_view():\n"
+            "    return 'ok'\n"
+            "@bp.post('/sessions')\n"
+            "def create_session():\n"
+            "    return 'ok'\n"
+            "urlpatterns = [\n"
+            "    path('admin/', views.admin_dashboard),\n"
+            "]\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "python")
+        self.assertIn(("/login", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/sessions", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/admin", "route"), [(item.name, item.kind) for item in symbols])
+        handlers = [item.target for item in relations if item.relation == "route_to_handler"]
+        self.assertIn("login_view", handlers)
+        self.assertIn("create_session", handlers)
+        self.assertIn("admin_dashboard", handlers)
+
+    def test_go_gin_route_extraction(self) -> None:
+        content = 'package main\nfunc setup(r *gin.Engine) {\n  r.GET("/users/:id", getUser)\n  authorized.POST("/sessions", auth.CreateSession)\n}\n'
+        symbols, relations = extract_symbols_and_relations(content, "go")
+        self.assertIn(("/users/:id", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("/sessions", "route"), [(item.name, item.kind) for item in symbols])
+        handlers = [item.target for item in relations if item.relation == "route_to_handler"]
+        self.assertIn("getUser", handlers)
+        self.assertIn("CreateSession", handlers)
+
     def test_php_function_call_relation_extraction(self) -> None:
         content = (
             "<?php\n"
@@ -198,6 +261,30 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertIn(("test", "package_script", "package.json"), rows)
                 self.assertIn(("demo", "project_script", "pyproject.toml"), rows)
                 self.assertIn(("services", "config_key", "compose.yaml"), rows)
+            finally:
+                os.chdir(previous)
+
+    def test_map_indexes_route_symbols_and_handler_relations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text('{"name": "sample"}\n', encoding="utf-8")
+            (root / "server.js").write_text("function showUser(req, res) {}\napp.get('/users/:id', showUser)\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                with GraphStore(root) as store:
+                    symbols = {
+                        (row["name"], row["kind"])
+                        for row in store.connection.execute("SELECT name, kind FROM symbols").fetchall()
+                    }
+                    relations = {
+                        (row["relation"], row["target_type"], row["target_id"])
+                        for row in store.connection.execute("SELECT relation, target_type, target_id FROM relations").fetchall()
+                    }
+                self.assertIn(("/users/:id", "route"), symbols)
+                self.assertIn(("route_to_handler", "symbol_name", "showUser"), relations)
             finally:
                 os.chdir(previous)
 

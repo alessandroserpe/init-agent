@@ -46,6 +46,7 @@ Token estimates use a simple `ceil(characters / 4)` heuristic.
 - Detects likely language and file role
 - Extracts basic symbols from Python, PHP, JavaScript, TypeScript, Go and Rust
 - Extracts lightweight documentation/config signals such as Markdown headings, README command examples, config keys and package entry points
+- Extracts lightweight route signals for common PHP, Express/Fastify, Flask/Django and Gin patterns
 - Records simple relations such as imports/includes, PHP function calls, file language and file role
 - Reads Git branch, status and recent commit timeline without modifying the repository
 - Produces terminal, JSON and Markdown context packs

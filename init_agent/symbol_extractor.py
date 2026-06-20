@@ -41,6 +41,11 @@ PHP_INCLUDE_RE = re.compile(
     re.IGNORECASE,
 )
 PHP_CALL_RE = re.compile(r"(?<!->)(?<!::)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+PHP_ROUTE_ARRAY_RE = re.compile(r"""['"](?P<path>/[^'"]*)['"]\s*=>\s*['"](?P<handler>[A-Za-z_][A-Za-z0-9_:@\\.-]*)['"]""")
+PHP_ROUTE_CALL_RE = re.compile(
+    r"""\b(?:Route::|\$?(?:router|app)->)?(?P<method>get|post|put|patch|delete|any|match)\s*\(\s*['"](?P<path>/[^'"]*)['"]\s*,\s*(?P<handler>[^),]+)""",
+    re.IGNORECASE,
+)
 PHP_CALL_EXCLUDES = {
     "__",
     "array",
@@ -132,12 +137,23 @@ JS_CLASS_RE = re.compile(r"\bclass\s+([A-Za-z_$][A-Za-z0-9_$]*)\b")
 JS_IMPORT_RE = re.compile(r"\bimport\s+.*?\s+from\s+[\"']([^\"']+)[\"']")
 JS_SIDE_EFFECT_IMPORT_RE = re.compile(r"^\s*import\s+[\"']([^\"']+)[\"']")
 JS_REQUIRE_RE = re.compile(r"\brequire\s*\(\s*[\"']([^\"']+)[\"']\s*\)")
+JS_ROUTE_RE = re.compile(
+    r"""\b(?:app|router|server|fastify)\.(?P<method>get|post|put|patch|delete|all|route)\s*\(\s*['"](?P<path>/[^'"]*)['"]\s*,\s*(?P<handler>[A-Za-z_$][A-Za-z0-9_$]*)?""",
+    re.IGNORECASE,
+)
+JS_FASTIFY_ROUTE_RE = re.compile(r"""\b(?:fastify|server)\.route\s*\(\s*\{""")
+JS_OBJECT_METHOD_RE = re.compile(r"""\bmethod\s*:\s*['"](?P<method>[A-Z]+)['"]""")
+JS_OBJECT_URL_RE = re.compile(r"""\b(?:url|path)\s*:\s*['"](?P<path>/[^'"]*)['"]""")
+JS_OBJECT_HANDLER_RE = re.compile(r"""\bhandler\s*:\s*(?P<handler>[A-Za-z_$][A-Za-z0-9_$]*)""")
 
 GO_FUNCTION_RE = re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 GO_TYPE_RE = re.compile(r"^\s*type\s+([A-Za-z_][A-Za-z0-9_]*)\s+(struct|interface)\b")
 GO_CONST_VAR_RE = re.compile(r"^\s*(?:const|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 GO_IMPORT_SINGLE_RE = re.compile(r"^\s*import\s+(?:[A-Za-z_][A-Za-z0-9_]*\s+)?\"([^\"]+)\"")
 GO_IMPORT_GROUP_RE = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?\"([^\"]+)\"")
+GIN_ROUTE_RE = re.compile(
+    r"""\b[A-Za-z_][A-Za-z0-9_]*\.(?P<method>GET|POST|PUT|PATCH|DELETE|Any|Handle)\s*\(\s*"(?P<path>/[^"]*)"\s*,\s*(?P<handler>[A-Za-z_][A-Za-z0-9_.]*)""",
+)
 
 RUST_FUNCTION_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*[<(]")
 RUST_TYPE_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(struct|enum|trait)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
@@ -150,6 +166,10 @@ FENCE_RE = re.compile(r"^\s*```\s*([A-Za-z0-9_-]*)\s*$")
 COMMAND_LANGUAGES = {"", "bash", "sh", "shell", "console", "zsh", "powershell", "pwsh"}
 COMMAND_PROMPT_RE = re.compile(r"^\s*(?:[$#>]\s*)?(.+?)\s*$")
 YAML_TOP_LEVEL_KEY_RE = re.compile(r"^([A-Za-z0-9_.-]+)\s*:\s*(?:.*)$")
+FLASK_ROUTE_RE = re.compile(
+    r"""^\s*@(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:route|get|post|put|patch|delete)\s*\(\s*['"](?P<path>/[^'"]*)['"]"""
+)
+DJANGO_PATH_RE = re.compile(r"""^\s*(?:path|re_path)\s*\(\s*['"](?P<path>[^'"]*)['"]\s*,\s*(?P<handler>[A-Za-z_][A-Za-z0-9_.]*)""")
 
 
 def extract_symbols_and_relations(
@@ -299,14 +319,22 @@ def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[Extracted
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     class_indent: int | None = None
+    pending_flask_routes: list[tuple[str, int, str]] = []
     for line_no, line in enumerate(content.splitlines(), start=1):
         stripped = line.strip()
         indent = len(line) - len(line.lstrip())
         if class_indent is not None and stripped and indent <= class_indent and not stripped.startswith("@"):
             class_indent = None
+        if match := FLASK_ROUTE_RE.match(line):
+            route = _normalize_route_path(match.group("path"))
+            pending_flask_routes.append((route, line_no, stripped))
         if match := PY_DEF_RE.match(line):
             kind = "method" if class_indent is not None and indent > class_indent else "function"
             symbols.append(ExtractedSymbol(match.group(1), kind, line_no, stripped))
+            for route, route_line, route_signature in pending_flask_routes:
+                symbols.append(ExtractedSymbol(route, "route", route_line, route_signature))
+                relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group(1), route_line, 0.8))
+            pending_flask_routes = []
         if match := PY_CLASS_RE.match(line):
             class_indent = indent
             symbols.append(ExtractedSymbol(match.group(1), "class", line_no, stripped))
@@ -317,6 +345,10 @@ def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[Extracted
                 relations.append(ExtractedRelation("imports", "module", module, line_no, 0.65))
         if match := PY_FROM_RE.match(line):
             relations.append(ExtractedRelation("imports", "module", match.group(1), line_no, 0.75))
+        if match := DJANGO_PATH_RE.match(line):
+            route = _normalize_route_path("/" + match.group("path").strip("/"))
+            symbols.append(ExtractedSymbol(route, "route", line_no, stripped))
+            relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group("handler").split(".")[-1], line_no, 0.65))
     return symbols, relations
 
 
@@ -340,6 +372,10 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, line.strip()))
         if match := PHP_INCLUDE_RE.search(line):
             relations.append(ExtractedRelation(match.group(1).lower(), "file", match.group(2), line_no, 0.8))
+        for route, handler in _php_routes_in_line(line):
+            symbols.append(ExtractedSymbol(route, "route", line_no, line.strip()))
+            if handler:
+                relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler, line_no, 0.65))
         for call_name in _php_calls_in_line(line):
             relations.append(ExtractedRelation("calls", "symbol_name", call_name, line_no, 0.45))
         if in_class:
@@ -347,6 +383,16 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
             if class_brace_balance <= 0 and "}" in line:
                 in_class = False
     return symbols, relations
+
+
+def _php_routes_in_line(line: str) -> list[tuple[str, str | None]]:
+    routes: list[tuple[str, str | None]] = []
+    for match in PHP_ROUTE_ARRAY_RE.finditer(line):
+        routes.append((_normalize_route_path(match.group("path")), match.group("handler").split("@")[-1].split("::")[-1]))
+    for match in PHP_ROUTE_CALL_RE.finditer(line):
+        handler = _handler_name(match.group("handler"))
+        routes.append((_normalize_route_path(match.group("path")), handler))
+    return routes
 
 
 def _php_calls_in_line(line: str) -> list[str]:
@@ -371,13 +417,30 @@ def _strip_php_line_noise(line: str) -> str:
 def _extract_js_ts(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    lines = content.splitlines()
+    for line_no, line in enumerate(lines, start=1):
         if match := JS_FUNCTION_RE.search(line):
             symbols.append(ExtractedSymbol(match.group(1), "function", line_no, line.strip()))
         if match := JS_CONST_RE.match(line):
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, line.strip()))
         if match := JS_CLASS_RE.search(line):
             symbols.append(ExtractedSymbol(match.group(1), "class", line_no, line.strip()))
+        if match := JS_ROUTE_RE.search(line):
+            route = _normalize_route_path(match.group("path"))
+            symbols.append(ExtractedSymbol(route, "route", line_no, line.strip()))
+            if match.group("handler"):
+                relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group("handler"), line_no, 0.65))
+        if JS_FASTIFY_ROUTE_RE.search(line):
+            block = "\n".join(lines[line_no - 1 : min(line_no + 8, len(lines))])
+            method_match = JS_OBJECT_METHOD_RE.search(block)
+            path_match = JS_OBJECT_URL_RE.search(block)
+            handler_match = JS_OBJECT_HANDLER_RE.search(block)
+            if path_match:
+                method = method_match.group("method") if method_match else "ROUTE"
+                route = _normalize_route_path(path_match.group("path"))
+                symbols.append(ExtractedSymbol(route, "route", line_no, f"{method} {route}"))
+                if handler_match:
+                    relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler_match.group("handler"), line_no, 0.65))
         for pattern in (JS_IMPORT_RE, JS_SIDE_EFFECT_IMPORT_RE, JS_REQUIRE_RE):
             if match := pattern.search(line):
                 relations.append(ExtractedRelation("imports", "module", match.group(1), line_no, 0.75))
@@ -396,6 +459,10 @@ def _extract_go(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRela
             symbols.append(ExtractedSymbol(match.group(1), match.group(2), line_no, stripped))
         if match := GO_CONST_VAR_RE.match(line):
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, stripped))
+        if match := GIN_ROUTE_RE.search(line):
+            route = _normalize_route_path(match.group("path"))
+            symbols.append(ExtractedSymbol(route, "route", line_no, stripped))
+            relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group("handler").split(".")[-1], line_no, 0.65))
         if stripped.startswith("import ("):
             in_import_group = True
             continue
@@ -441,3 +508,24 @@ def _split_imports(value: str) -> list[str]:
         if name:
             names.append(name)
     return names
+
+
+def _normalize_route_path(path: str) -> str:
+    cleaned = path.strip() or "/"
+    if not cleaned.startswith("/"):
+        cleaned = "/" + cleaned
+    return cleaned
+
+
+def _handler_name(value: str) -> str | None:
+    cleaned = value.strip().strip("[]").strip()
+    if not cleaned:
+        return None
+    cleaned = cleaned.split("=>", 1)[0].strip()
+    cleaned = cleaned.strip("'\"")
+    if "::" in cleaned:
+        cleaned = cleaned.rsplit("::", 1)[-1]
+    if "@" in cleaned:
+        cleaned = cleaned.rsplit("@", 1)[-1]
+    match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)", cleaned)
+    return match.group(1) if match else None

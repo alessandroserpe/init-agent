@@ -28,11 +28,11 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 3: Framework-Aware Signals
 
-- [ ] Add lightweight route extraction for PHP route patterns when present.
-- [ ] Add Express/Fastify route extraction.
-- [ ] Add Flask/Django URL/route extraction.
-- [ ] Add Gin route extraction.
-- [ ] Keep framework extractors optional and regex-light unless a parser is introduced.
+- [x] Add lightweight route extraction for PHP route patterns when present.
+- [x] Add Express/Fastify route extraction.
+- [x] Add Flask/Django URL/route extraction.
+- [x] Add Gin route extraction.
+- [x] Keep framework extractors optional and regex-light unless a parser is introduced.
 
 ## Phase 4: Benchmark Hardening
 

@@ -2,6 +2,14 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.11.0
+
+- Added lightweight route extraction as `route` symbols for common PHP route patterns.
+- Added Express/Fastify route extraction and `route_to_handler` relations when handlers are recognizable.
+- Added Flask/Django route extraction.
+- Added Gin route extraction.
+- Bumped the internal index version so existing projects rebuild with route metadata.
+
 ## 0.10.0
 
 - Extracted Markdown headings as lightweight `heading` symbols.
