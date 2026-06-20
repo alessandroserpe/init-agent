@@ -50,7 +50,17 @@ This file tracks the next implementation steps for making `init-agent` more usef
 - [x] Add troubleshooting for `init-agent: command not found`.
 - [x] Add a copy-paste workflow for Codex, Claude Code, Aider and similar CLI agents.
 
-## Phase 6: Public Release Readiness
+## Phase 6: Repository Overview Mode
+
+- [ ] Add `init-agent overview` or `init-agent run --overview` for broad repository orientation.
+- [ ] Prefer manifest and entry-point files for overview queries: `pyproject.toml`, `package.json`, `composer.json`, `go.mod`, `Cargo.toml`, README, CLI modules, server/app modules, router files and config files.
+- [ ] Reduce noise from generic overview words such as `architecture`, `backend`, `frontend`, `test`, `entry point` when they are not specific enough.
+- [ ] Return a compact overview pack with likely entry points, major subsystems, package manifests and first files to read.
+- [ ] Add benchmark cases for general orientation on `init-agent`, OpenJarvis-style Python/frontend repos and at least one PHP repo.
+- [ ] Update `init-agent-orientation` skill to use overview mode before falling back to refined `run` queries.
+- [ ] Document clearly that overview is still heuristic and must be verified by reading files.
+
+## Phase 7: Public Release Readiness
 
 - [ ] Review `.gitignore` for generated indexes, build output and local benchmark folders.
 - [ ] Run `python3 -m unittest discover -s tests -v`.

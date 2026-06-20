@@ -608,14 +608,15 @@ Review `.agent/` before publishing a repository if you choose to commit generate
 
 ## Roadmap
 
-- Optional tree-sitter support.
-- Graph export JSON.
-- Future integration with AI agents.
-- Tool `repo_graph_search`.
-- Link chat and agent sessions to repository context.
+- Repository overview mode for broad "orient me in this repo" tasks.
+- Optional tree-sitter support for more precise parsing.
+- JSON graph export for external tools and visualization.
+- Direct agent integrations via MCP, plugins or tool APIs.
+- Tool `repo_graph_search` for agent runtimes.
+- Link chat and agent sessions to repository context packs.
 - Dependency-aware incremental updates.
 - Graph visualization.
-- Language plugin support.
+- Language and framework plugin support.
 
 ## Development
 
