@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -142,11 +145,29 @@ RUST_IMPL_RE = re.compile(r"^\s*impl(?:<[^>]+>)?\s+(?:[A-Za-z_][A-Za-z0-9_:<>]*\
 RUST_CONST_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 RUST_USE_RE = re.compile(r"^\s*(?:pub\s+)?use\s+([^;]+);")
 RUST_MOD_RE = re.compile(r"^\s*(?:pub\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;?")
+MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+FENCE_RE = re.compile(r"^\s*```\s*([A-Za-z0-9_-]*)\s*$")
+COMMAND_LANGUAGES = {"", "bash", "sh", "shell", "console", "zsh", "powershell", "pwsh"}
+COMMAND_PROMPT_RE = re.compile(r"^\s*(?:[$#>]\s*)?(.+?)\s*$")
+YAML_TOP_LEVEL_KEY_RE = re.compile(r"^([A-Za-z0-9_.-]+)\s*:\s*(?:.*)$")
 
 
-def extract_symbols_and_relations(content: str | None, language: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+def extract_symbols_and_relations(
+    content: str | None,
+    language: str,
+    path: str | None = None,
+) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     if content is None:
         return [], []
+    file_name = Path(path or "").name.lower()
+    if language == "markdown":
+        return _extract_markdown(content, file_name)
+    if language == "json":
+        return _extract_json_config(content, file_name)
+    if language == "toml":
+        return _extract_toml_config(content, file_name)
+    if language == "yaml":
+        return _extract_yaml_config(content)
     if language == "python":
         return _extract_python(content)
     if language == "php":
@@ -158,6 +179,120 @@ def extract_symbols_and_relations(content: str | None, language: str) -> tuple[l
     if language == "rust":
         return _extract_rust(content)
     return [], []
+
+
+def _extract_markdown(content: str, file_name: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    symbols: list[ExtractedSymbol] = []
+    in_fence = False
+    fence_language = ""
+    collect_commands = file_name.startswith("readme")
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        if match := FENCE_RE.match(line):
+            in_fence = not in_fence
+            fence_language = match.group(1).lower() if in_fence else ""
+            continue
+        if in_fence:
+            if collect_commands and fence_language in COMMAND_LANGUAGES:
+                command = _command_from_line(line)
+                if command:
+                    symbols.append(ExtractedSymbol(command[:120], "command_example", line_no, command[:200]))
+            continue
+        if match := MARKDOWN_HEADING_RE.match(line):
+            heading = _clean_heading(match.group(2))
+            if heading:
+                symbols.append(ExtractedSymbol(heading[:120], "heading", line_no, line.strip()[:200]))
+    return symbols, []
+
+
+def _extract_json_config(content: str, file_name: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    symbols: list[ExtractedSymbol] = []
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return symbols, []
+    if isinstance(data, dict):
+        for key in sorted(data):
+            symbols.append(ExtractedSymbol(str(key), "config_key", 1, str(key)))
+        if file_name == "package.json":
+            scripts = data.get("scripts")
+            if isinstance(scripts, dict):
+                for name, command in sorted(scripts.items()):
+                    symbols.append(ExtractedSymbol(str(name), "package_script", 1, str(command)[:200]))
+    return symbols, []
+
+
+def _extract_toml_config(content: str, file_name: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    symbols: list[ExtractedSymbol] = []
+    try:
+        data = tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return symbols, []
+    for key in sorted(data):
+        symbols.append(ExtractedSymbol(str(key), "config_key", 1, str(key)))
+    if file_name == "pyproject.toml":
+        symbols.extend(_pyproject_scripts(data))
+    return symbols, []
+
+
+def _extract_yaml_config(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    symbols: list[ExtractedSymbol] = []
+    seen: set[str] = set()
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[:1].isspace():
+            continue
+        if match := YAML_TOP_LEVEL_KEY_RE.match(line):
+            key = match.group(1)
+            if key not in seen:
+                seen.add(key)
+                symbols.append(ExtractedSymbol(key, "config_key", line_no, key))
+    return symbols, []
+
+
+def _pyproject_scripts(data: dict[str, object]) -> list[ExtractedSymbol]:
+    symbols: list[ExtractedSymbol] = []
+    project = data.get("project")
+    if isinstance(project, dict):
+        for table_name in ("scripts", "gui-scripts"):
+            table = project.get(table_name)
+            if isinstance(table, dict):
+                for name, target in sorted(table.items()):
+                    symbols.append(ExtractedSymbol(str(name), "project_script", 1, str(target)[:200]))
+        entry_points = project.get("entry-points")
+        if isinstance(entry_points, dict):
+            for group_name, table in sorted(entry_points.items()):
+                if isinstance(table, dict):
+                    for name, target in sorted(table.items()):
+                        symbols.append(ExtractedSymbol(f"{group_name}:{name}", "project_entry_point", 1, str(target)[:200]))
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            scripts = poetry.get("scripts")
+            if isinstance(scripts, dict):
+                for name, target in sorted(scripts.items()):
+                    symbols.append(ExtractedSymbol(str(name), "project_script", 1, str(target)[:200]))
+    return symbols
+
+
+def _command_from_line(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    match = COMMAND_PROMPT_RE.match(stripped)
+    if not match:
+        return None
+    command = match.group(1).strip()
+    if not command or command in {"```", "..."}:
+        return None
+    return command
+
+
+def _clean_heading(text: str) -> str:
+    text = text.strip().strip("#").strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
 
 
 def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:

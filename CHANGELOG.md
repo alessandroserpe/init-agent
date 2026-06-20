@@ -2,6 +2,14 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.10.0
+
+- Extracted Markdown headings as lightweight `heading` symbols.
+- Extracted README fenced command lines as `command_example` symbols without storing full prose.
+- Extracted top-level JSON/TOML/YAML keys as `config_key` symbols.
+- Extracted `package.json` scripts and `pyproject.toml` project scripts/entry points.
+- Bumped the internal index version so existing projects rebuild with the new extractor.
+
 ## 0.9.2
 
 - Added internal index versioning so `run` rebuilds stale indexes after extractor changes instead of trusting unchanged file hashes.

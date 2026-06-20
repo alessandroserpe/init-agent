@@ -10,7 +10,7 @@ from .symbol_extractor import extract_symbols_and_relations
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "2"
+INDEX_VERSION = "3"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:
@@ -49,7 +49,7 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
     language = detect_language(path)
     role = detect_role(path)
     content = read_text_safely(path)
-    symbols, extracted_relations = extract_symbols_and_relations(content, language)
+    symbols, extracted_relations = extract_symbols_and_relations(content, language, rel_path)
     file_id = store.upsert_file(
         {
             "path": rel_path,

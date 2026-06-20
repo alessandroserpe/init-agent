@@ -20,11 +20,11 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 2: Documentation And Config Extraction
 
-- [ ] Extract Markdown headings as `heading` symbols.
-- [ ] Extract README command blocks as lightweight `command_example` symbols without storing full prose.
-- [ ] Extract top-level JSON/TOML/YAML keys as config symbols.
-- [ ] Extract package scripts from `package.json`.
-- [ ] Extract project scripts/entry points from `pyproject.toml`.
+- [x] Extract Markdown headings as `heading` symbols.
+- [x] Extract README command blocks as lightweight `command_example` symbols without storing full prose.
+- [x] Extract top-level JSON/TOML/YAML keys as config symbols.
+- [x] Extract package scripts from `package.json`.
+- [x] Extract project scripts/entry points from `pyproject.toml`.
 
 ## Phase 3: Framework-Aware Signals
 
@@ -44,6 +44,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 5: Agent Skill Packaging
 
+- [ ] Update the `init-agent-orientation` skill to route agent questions through `run`, `symbol`, `callers` and `related` automatically.
 - [ ] Create a minimal `init-agent-orientation` skill template in the repo.
 - [ ] Document shim installation for local development.
 - [ ] Add troubleshooting for `init-agent: command not found`.

@@ -84,6 +84,46 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn(("run", "function"), [(item.name, item.kind) for item in symbols])
         self.assertIn("tokio", [item.target for item in relations])
 
+    def test_markdown_heading_and_readme_command_extraction(self) -> None:
+        content = "# Project\n\n## Install\n\n```bash\npython3 -m pip install -e .\ninit-agent run login\n```\n"
+        symbols, relations = extract_symbols_and_relations(content, "markdown", "README.md")
+        pairs = {(item.name, item.kind) for item in symbols}
+        self.assertIn(("Project", "heading"), pairs)
+        self.assertIn(("Install", "heading"), pairs)
+        self.assertIn(("python3 -m pip install -e .", "command_example"), pairs)
+        self.assertIn(("init-agent run login", "command_example"), pairs)
+        self.assertEqual(relations, [])
+
+    def test_non_readme_markdown_only_extracts_headings(self) -> None:
+        content = "# Guide\n\n```bash\nmake publish\n```\n"
+        symbols, _ = extract_symbols_and_relations(content, "markdown", "docs/guide.md")
+        pairs = {(item.name, item.kind) for item in symbols}
+        self.assertIn(("Guide", "heading"), pairs)
+        self.assertNotIn(("make publish", "command_example"), pairs)
+
+    def test_json_toml_yaml_config_symbol_extraction(self) -> None:
+        json_symbols, _ = extract_symbols_and_relations(
+            '{"name": "demo", "scripts": {"test": "pytest", "build": "vite build"}}',
+            "json",
+            "package.json",
+        )
+        self.assertIn(("name", "config_key"), [(item.name, item.kind) for item in json_symbols])
+        self.assertIn(("test", "package_script"), [(item.name, item.kind) for item in json_symbols])
+        self.assertIn(("build", "package_script"), [(item.name, item.kind) for item in json_symbols])
+
+        toml_symbols, _ = extract_symbols_and_relations(
+            "[project]\nname = 'demo'\n[project.scripts]\ndemo = 'demo.cli:main'\n[tool.demo]\nflag = true\n",
+            "toml",
+            "pyproject.toml",
+        )
+        self.assertIn(("project", "config_key"), [(item.name, item.kind) for item in toml_symbols])
+        self.assertIn(("tool", "config_key"), [(item.name, item.kind) for item in toml_symbols])
+        self.assertIn(("demo", "project_script"), [(item.name, item.kind) for item in toml_symbols])
+
+        yaml_symbols, _ = extract_symbols_and_relations("name: demo\nservices:\n  web: {}\n", "yaml", "compose.yaml")
+        self.assertIn(("name", "config_key"), [(item.name, item.kind) for item in yaml_symbols])
+        self.assertIn(("services", "config_key"), [(item.name, item.kind) for item in yaml_symbols])
+
     def test_php_function_call_relation_extraction(self) -> None:
         content = (
             "<?php\n"
@@ -127,6 +167,37 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertGreaterEqual(counts["symbols"], 2)
                 self.assertGreaterEqual(counts["relations"], 2)
                 self.assertGreater(term_count, 0)
+            finally:
+                os.chdir(previous)
+
+    def test_map_indexes_documentation_and_config_symbols(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Demo\n\n## Quick Start\n\n```bash\ninit-agent run login\n```\n", encoding="utf-8")
+            (root / "package.json").write_text('{"name": "demo", "scripts": {"test": "node test.js"}}\n', encoding="utf-8")
+            (root / "pyproject.toml").write_text("[project]\nname = 'demo'\n[project.scripts]\ndemo = 'demo.cli:main'\n", encoding="utf-8")
+            (root / "compose.yaml").write_text("services:\n  web: {}\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                with GraphStore(root) as store:
+                    rows = {
+                        (row["name"], row["kind"], row["path"])
+                        for row in store.connection.execute(
+                            """
+                            SELECT s.name, s.kind, f.path
+                            FROM symbols s
+                            JOIN files f ON f.id = s.file_id
+                            """
+                        ).fetchall()
+                    }
+                self.assertIn(("Quick Start", "heading", "README.md"), rows)
+                self.assertIn(("init-agent run login", "command_example", "README.md"), rows)
+                self.assertIn(("test", "package_script", "package.json"), rows)
+                self.assertIn(("demo", "project_script", "pyproject.toml"), rows)
+                self.assertIn(("services", "config_key", "compose.yaml"), rows)
             finally:
                 os.chdir(previous)
 
@@ -652,6 +723,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 docs = next((item for item in pack["candidate_files"] if item["path"] == "docs/guide/dep-pre-bundling.md"), None)
                 if docs:
                     self.assertIn("documentation deprioritized for non-docs query", docs["reasons"])
+                docs_pack = build_context_pack(root, "docs optimizer cache guide")
+                self.assertEqual(docs_pack["candidate_files"][0]["path"], "docs/guide/dep-pre-bundling.md")
             finally:
                 os.chdir(previous)
 

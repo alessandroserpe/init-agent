@@ -45,6 +45,7 @@ Token estimates use a simple `ceil(characters / 4)` heuristic.
 - Scans project files while skipping heavy directories, generated files and binaries
 - Detects likely language and file role
 - Extracts basic symbols from Python, PHP, JavaScript, TypeScript, Go and Rust
+- Extracts lightweight documentation/config signals such as Markdown headings, README command examples, config keys and package entry points
 - Records simple relations such as imports/includes, PHP function calls, file language and file role
 - Reads Git branch, status and recent commit timeline without modifying the repository
 - Produces terminal, JSON and Markdown context packs
@@ -57,6 +58,7 @@ Token estimates use a simple `ceil(characters / 4)` heuristic.
 - Not an LLM wrapper
 - Not a replacement for Codex, Claude Code, Aider, OpenCode or Pi
 - Not a semantic code analyzer
+- Not a documentation ingester that stores full prose
 - Not a tool that modifies your source code
 
 It is a local orientation layer that helps those tools start from better context.

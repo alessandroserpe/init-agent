@@ -35,7 +35,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
             dict(row)
             for row in conn.execute(
                 """
-                SELECT s.id, s.name, s.kind, s.line, f.id AS file_id, f.path AS file
+                SELECT s.id, s.name, s.kind, s.line, f.id AS file_id, f.path AS file, f.role AS file_role
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 """
@@ -230,15 +230,21 @@ def _score_files_by_symbols(
     reasons: dict[str, list[str]],
 ) -> None:
     matched_by_file: dict[str, set[str]] = defaultdict(set)
+    has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in tokens)
     for symbol in symbols:
         name = str(symbol["name"])
         name_lower = name.lower()
         path = str(symbol["file"])
+        file_role = str(symbol.get("file_role") or "")
+        kind = str(symbol.get("kind") or "")
         for token in tokens:
             if token in name_lower and token not in matched_by_file[path]:
                 matched_by_file[path].add(token)
                 weight = _weight(token_weights, token, "symbol")
-                file_scores[path] += 3.5 * weight
+                multiplier = 1.0
+                if file_role == "documentation" and not has_docs_intent:
+                    multiplier = 0.25 if kind in {"heading", "command_example"} else 0.5
+                file_scores[path] += 3.5 * weight * multiplier
                 _add_reason(reasons[path], f'symbol matches "{token}"')
                 _add_weight_reason(reasons[path], token, weight)
 
@@ -400,6 +406,9 @@ def _adjust_role_type_scores(
         if (role == "documentation" or extension in DOCS_EXTENSIONS) and not has_docs_intent:
             file_scores[path] *= 0.6
             _prepend_reason(reasons[path], "documentation deprioritized for non-docs query")
+        if (role == "documentation" or extension in DOCS_EXTENSIONS) and has_docs_intent:
+            file_scores[path] = file_scores[path] * 1.35 + 1.0
+            _add_reason(reasons[path], "documentation preferred for docs query")
         if _is_example_path(path) and not has_example_intent:
             file_scores[path] *= 0.5
             _prepend_reason(reasons[path], "example/playground deprioritized for non-example query")
