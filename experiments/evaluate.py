@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ CASES_PATH = ROOT / "experiments" / "cases.json"
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    cases = load_cases(args.case)
     results = []
     skipped = []
     rebuilt_repos: set[Path] = set()
@@ -31,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
             _rebuild_index(repo)
             rebuilt_repos.add(repo)
         try:
-            results.append(evaluate_case(case))
+            results.append(evaluate_case(case, measure_manual_scan=args.measure_manual_scan))
         except subprocess.CalledProcessError as exc:
             results.append(
                 {
@@ -63,15 +65,29 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate init-agent against local benchmark repositories.")
+    parser.add_argument("--case", action="append", default=[], help="Run only cases with this exact name. Can be passed more than once.")
     parser.add_argument("--strict", action="store_true", help="Fail when summary metrics do not meet thresholds.")
     parser.add_argument("--rebuild-index", action="store_true", help="Run init/map/git before each case to avoid stale local indexes.")
+    parser.add_argument("--measure-manual-scan", action="store_true", help="Also time reading all indexed files for each case repository.")
     parser.add_argument("--min-top3-rate", type=float, default=0.85, help="Minimum top-3 hit rate for --strict.")
     parser.add_argument("--min-top5-rate", type=float, default=1.0, help="Minimum top-5 hit rate for --strict.")
     parser.add_argument("--max-noise", type=int, default=2, help="Maximum total noise hits for --strict.")
     return parser.parse_args(argv)
 
 
-def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
+def load_cases(selected_names: list[str] | None = None) -> list[dict[str, Any]]:
+    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    names = set(selected_names or [])
+    if not names:
+        return cases
+    selected = [case for case in cases if case.get("name") in names]
+    missing = sorted(names - {case.get("name") for case in selected})
+    if missing:
+        raise SystemExit(f"unknown benchmark case(s): {', '.join(missing)}")
+    return selected
+
+
+def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> dict[str, Any]:
     started = time.perf_counter()
     proc = subprocess.run(
         [sys.executable, "-m", "init_agent.cli", "run", case["query"], "--json"],
@@ -89,7 +105,9 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
     noise_patterns = list(case.get("noise_patterns", []))
     expected_hits = [path for path in expected if path in candidates]
     noise_hits = [path for path in candidates if any(pattern in path for pattern in noise_patterns)]
-    return {
+    manual_scan_file_count = indexed_file_count(Path(case["repo"]))
+    manual_scan = measure_indexed_file_read(Path(case["repo"])) if measure_manual_scan else None
+    result = {
         "name": case["name"],
         "status": "ok",
         "elapsed_seconds": round(elapsed, 3),
@@ -101,7 +119,61 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         "expected_count": len(expected),
         "noise_hits": noise_hits,
         "noise_hit_count": len(noise_hits),
+        "candidate_file_count": len(candidates),
+        "manual_scan_file_count": manual_scan_file_count,
+        "manual_scan_reduction_percent": scan_reduction_percent(manual_scan_file_count, len(candidates)),
         "candidate_files": candidates,
+    }
+    if manual_scan:
+        result["manual_scan_elapsed_seconds"] = manual_scan["elapsed_seconds"]
+        result["manual_scan_characters"] = manual_scan["characters"]
+    if case.get("notes"):
+        result["notes"] = case["notes"]
+    return result
+
+
+def indexed_file_count(repo: Path) -> int | None:
+    db_path = repo / ".agent" / "graph.sqlite"
+    if not db_path.exists():
+        return None
+    try:
+        with closing(sqlite3.connect(db_path)) as connection:
+            row = connection.execute("SELECT COUNT(*) FROM files").fetchone()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row else None
+
+
+def scan_reduction_percent(total_files: int | None, candidate_files: int) -> float | None:
+    if not total_files:
+        return None
+    reduced = max(total_files - candidate_files, 0)
+    return round((reduced / total_files) * 100, 1)
+
+
+def measure_indexed_file_read(repo: Path) -> dict[str, int | float] | None:
+    db_path = repo / ".agent" / "graph.sqlite"
+    if not db_path.exists():
+        return None
+    try:
+        with closing(sqlite3.connect(db_path)) as connection:
+            rows = connection.execute("SELECT path FROM files ORDER BY path").fetchall()
+    except sqlite3.Error:
+        return None
+    started = time.perf_counter()
+    characters = 0
+    files_read = 0
+    for (relative_path,) in rows:
+        path = repo / str(relative_path)
+        try:
+            characters += len(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+        files_read += 1
+    return {
+        "files": files_read,
+        "characters": characters,
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
     }
 
 
@@ -145,6 +217,16 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     top3_hits = sum(1 for item in ok_results if item["top3_hit"])
     top5_hits = sum(1 for item in ok_results if item["top5_hit"])
     noise_hits = sum(int(item["noise_hit_count"]) for item in ok_results)
+    reductions = [
+        float(item["manual_scan_reduction_percent"])
+        for item in ok_results
+        if item.get("manual_scan_reduction_percent") is not None
+    ]
+    manual_elapsed = [
+        float(item["manual_scan_elapsed_seconds"])
+        for item in ok_results
+        if item.get("manual_scan_elapsed_seconds") is not None
+    ]
     return {
         "cases": total,
         "top1_hits": top1_hits,
@@ -155,6 +237,8 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         "top5_rate": round(top5_hits / total, 3),
         "noise_hits": noise_hits,
         "average_elapsed_seconds": round(sum(float(item["elapsed_seconds"]) for item in ok_results) / total, 3),
+        "average_manual_scan_reduction_percent": round(sum(reductions) / len(reductions), 1) if reductions else None,
+        "average_manual_scan_elapsed_seconds": round(sum(manual_elapsed) / len(manual_elapsed), 3) if manual_elapsed else None,
     }
 
 

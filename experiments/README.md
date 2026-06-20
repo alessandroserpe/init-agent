@@ -15,8 +15,10 @@ Run the evaluator from the project root:
 
 ```bash
 python3 experiments/evaluate.py
+python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
+python3 experiments/evaluate.py --case fc5-creaform-callers --measure-manual-scan
 ```
 
 By default it expects local benchmark repositories under `/tmp`, for example:
@@ -35,6 +37,28 @@ By default it expects local benchmark repositories under `/tmp`, for example:
 
 Missing repositories are skipped.
 
+Suggested setup for public benchmark repositories:
+
+```bash
+git clone https://github.com/django/django.git /tmp/init-agent-bench-django
+git clone https://github.com/expressjs/express.git /tmp/init-agent-bench-express
+git clone https://github.com/pallets/flask.git /tmp/init-agent-bench-flask
+git clone https://github.com/fastify/fastify.git /tmp/init-agent-bench-fastify
+git clone https://github.com/gin-gonic/gin.git /tmp/init-agent-bench-gin
+git clone https://github.com/tokio-rs/mini-redis.git /tmp/init-agent-bench-mini-redis
+git clone https://github.com/psf/requests.git /tmp/init-agent-bench-requests
+git clone https://github.com/vitejs/vite.git /tmp/init-agent-bench-vite
+git clone https://github.com/pytest-dev/pytest.git /tmp/init-agent-bench-pytest
+git clone https://github.com/vuejs/core.git /tmp/init-agent-bench-vue-core
+```
+
+The `fc5` PHP cases are intentionally optional and local/private. To run them,
+copy or clone that codebase to:
+
+```bash
+/tmp/init-agent-bench-fc5-calls
+```
+
 Use `--rebuild-index` after changing scanner, role detection, symbol extraction
 or scoring code. It runs `init`, `map` and `git` once per benchmark repository
 before evaluating cases, so results are not based on stale `.agent/` indexes.
@@ -47,10 +71,29 @@ Each case reports:
 - `expected_hits`
 - `noise_hits`
 - `elapsed_seconds`
+- `candidate_file_count`
+- `manual_scan_file_count`
+- `manual_scan_reduction_percent`
+
+Use `--case <name>` to isolate one benchmark while tuning a ranking issue. The
+flag can be passed more than once.
+
+Use `--measure-manual-scan` when you want an explicit local IO comparison. It
+reads all indexed files for each case repository and adds:
+
+- `manual_scan_elapsed_seconds`
+- `manual_scan_characters`
+
+This is not a human-time estimate. It is a reproducible baseline for "how long
+does a broad local read take compared with generating the context pack?"
 
 The manifest intentionally includes both normal operational queries and
 counter-cases where documentation, examples, tests, CSS or migrations should be
 allowed to rank highly. This helps catch overfitting from one benchmark fix.
+
+Cases may include `notes` for known weak areas. For example, Vue compiler
+transform queries currently have overlapping compiler/runtime terminology that
+can surface nearby relevant files before the exact expected transform files.
 
 `--strict` exits non-zero if the summary misses the configured thresholds.
 Defaults are:

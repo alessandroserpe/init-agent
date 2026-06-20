@@ -514,14 +514,17 @@ changes are checked against both noise reduction and recall.
 
 ```bash
 python3 experiments/evaluate.py
+python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
+python3 experiments/evaluate.py --case fc5-creaform-callers --measure-manual-scan
 ```
 
 The script reports top-1/top-3/top-5 hits, obvious noise matches and elapsed
-time. Missing benchmark repositories under `/tmp` are skipped. Use
-`--rebuild-index` after changing scanner, symbol extraction, role detection or
-scoring code.
+time. It also reports how many indexed files a broad scan would touch compared
+with the compact candidate set. Missing benchmark repositories under `/tmp` are
+skipped. Use `--case <name>` to isolate one query and `--rebuild-index` after
+changing scanner, symbol extraction, role detection or scoring code.
 
 SQLite can also be inspected directly:
 

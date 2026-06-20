@@ -18,7 +18,7 @@ from init_agent.language_detector import detect_role
 from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
-from experiments.evaluate import strict_failures_for, summarize
+from experiments.evaluate import load_cases, measure_indexed_file_read, scan_reduction_percent, strict_failures_for, summarize
 
 
 class InitAgentBaseTests(unittest.TestCase):
@@ -33,16 +33,70 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsInstance(case.get("expected_files"), list)
             self.assertIsInstance(case.get("noise_patterns"), list)
 
+    def test_experiment_case_filter_loads_selected_case(self) -> None:
+        cases = load_cases(["django-auth-session-middleware"])
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["name"], "django-auth-session-middleware")
+
+    def test_experiment_case_filter_rejects_unknown_case(self) -> None:
+        with self.assertRaises(SystemExit):
+            load_cases(["not-a-real-benchmark-case"])
+
+    def test_scan_reduction_percent(self) -> None:
+        self.assertEqual(scan_reduction_percent(100, 10), 90.0)
+        self.assertEqual(scan_reduction_percent(3, 10), 0.0)
+        self.assertIsNone(scan_reduction_percent(0, 10))
+        self.assertIsNone(scan_reduction_percent(None, 10))
+
+    def test_measure_indexed_file_read_uses_indexed_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app.py").write_text("def app():\n    return 'ok'\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                measurement = measure_indexed_file_read(root)
+            finally:
+                os.chdir(previous)
+        self.assertIsNotNone(measurement)
+        assert measurement is not None
+        self.assertGreaterEqual(measurement["files"], 2)
+        self.assertGreater(measurement["characters"], 0)
+        self.assertGreaterEqual(measurement["elapsed_seconds"], 0.0)
+
     def test_experiment_summary_and_strict_thresholds(self) -> None:
         summary = summarize(
             [
-                {"status": "ok", "top1_hit": True, "top3_hit": True, "top5_hit": True, "noise_hit_count": 0, "elapsed_seconds": 1.0},
-                {"status": "ok", "top1_hit": False, "top3_hit": False, "top5_hit": True, "noise_hit_count": 1, "elapsed_seconds": 2.0},
+                {
+                    "status": "ok",
+                    "top1_hit": True,
+                    "top3_hit": True,
+                    "top5_hit": True,
+                    "noise_hit_count": 0,
+                    "elapsed_seconds": 1.0,
+                    "manual_scan_reduction_percent": 90.0,
+                    "manual_scan_elapsed_seconds": 4.0,
+                },
+                {
+                    "status": "ok",
+                    "top1_hit": False,
+                    "top3_hit": False,
+                    "top5_hit": True,
+                    "noise_hit_count": 1,
+                    "elapsed_seconds": 2.0,
+                    "manual_scan_reduction_percent": 80.0,
+                    "manual_scan_elapsed_seconds": 6.0,
+                },
             ]
         )
         self.assertEqual(summary["cases"], 2)
         self.assertEqual(summary["top3_rate"], 0.5)
         self.assertEqual(summary["top5_rate"], 1.0)
+        self.assertEqual(summary["average_manual_scan_reduction_percent"], 85.0)
+        self.assertEqual(summary["average_manual_scan_elapsed_seconds"], 5.0)
         args = argparse.Namespace(min_top3_rate=0.85, min_top5_rate=1.0, max_noise=2)
         failures = strict_failures_for(summary, args)
         self.assertIn("top3_rate 0.5 < 0.85", failures)

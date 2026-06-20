@@ -36,11 +36,11 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 4: Benchmark Hardening
 
-- [ ] Add a benchmark case runner filter: `experiments/evaluate.py --case <name>`.
-- [ ] Add benchmark setup notes for cloning required repositories.
-- [ ] Add `fc5` as an optional local benchmark path, skipped when absent.
-- [ ] Track per-case failure notes for known weak areas such as Vue compiler transforms.
-- [ ] Add elapsed-time comparison between manual broad scan estimates and init-agent context generation.
+- [x] Add a benchmark case runner filter: `experiments/evaluate.py --case <name>`.
+- [x] Add benchmark setup notes for cloning required repositories.
+- [x] Add `fc5` as an optional local benchmark path, skipped when absent.
+- [x] Track per-case failure notes for known weak areas such as Vue compiler transforms.
+- [x] Add elapsed-time comparison between manual broad scan estimates and init-agent context generation.
 
 ## Phase 5: Agent Skill Packaging
 

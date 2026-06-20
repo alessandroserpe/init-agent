@@ -282,6 +282,9 @@
       "playground/",
       "packages-private/",
       ".github/"
+    ],
+    "notes": [
+      "Known weak area: Vue compiler/runtime terminology overlaps, so v-model DOM/SSR transform files may rank below nearby compiler/runtime files."
     ]
   },
   {

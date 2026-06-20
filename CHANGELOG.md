@@ -2,6 +2,13 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.11.1
+
+- Added `experiments/evaluate.py --case <name>` for isolating individual benchmark cases.
+- Added optional broad indexed-file read timing with `--measure-manual-scan`.
+- Added benchmark setup notes, optional local `fc5` guidance and per-case notes for known weak areas.
+- Added benchmark summary fields for candidate count, indexed-file count and scan reduction.
+
 ## 0.11.0
 
 - Added lightweight route extraction as `route` symbols for common PHP route patterns.
