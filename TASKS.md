@@ -44,11 +44,11 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 5: Agent Skill Packaging
 
-- [ ] Update the `init-agent-orientation` skill to route agent questions through `run`, `symbol`, `callers` and `related` automatically.
-- [ ] Create a minimal `init-agent-orientation` skill template in the repo.
-- [ ] Document shim installation for local development.
-- [ ] Add troubleshooting for `init-agent: command not found`.
-- [ ] Add a copy-paste workflow for Codex, Claude Code, Aider and similar CLI agents.
+- [x] Update the `init-agent-orientation` skill to route agent questions through `run`, `symbol`, `callers` and `related` automatically.
+- [x] Create a minimal `init-agent-orientation` skill template in the repo.
+- [x] Document shim installation for local development.
+- [x] Add troubleshooting for `init-agent: command not found`.
+- [x] Add a copy-paste workflow for Codex, Claude Code, Aider and similar CLI agents.
 
 ## Phase 6: Public Release Readiness
 

@@ -2,6 +2,13 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.12.0
+
+- Added a versioned `init-agent-orientation` skill template for coding agents.
+- Documented Codex skill installation, local shim setup and troubleshooting.
+- Added a copy-paste workflow for Codex, Claude Code, Aider, OpenCode and similar CLI agents.
+- Updated README guidance for agent-oriented use of `run`, `symbol`, `callers` and `related`.
+
 ## 0.11.1
 
 - Added `experiments/evaluate.py --case <name>` for isolating individual benchmark cases.

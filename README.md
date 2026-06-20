@@ -111,6 +111,38 @@ init-agent symbol creaForm
 Quoted queries are recommended for shell clarity, but `run`, `context`, `query`
 and `estimate` also accept unquoted multi-word text.
 
+## Use With Coding Agents
+
+`init-agent` is most useful when an agent runs it before broad repository
+inspection:
+
+```bash
+init-agent run "why does the message badge not update after reply?" --markdown
+```
+
+Then the agent should read the suggested files and verify the answer directly
+from source code.
+
+For function or class questions, use the targeted commands:
+
+```bash
+init-agent symbol creaForm
+init-agent callers creaForm
+init-agent related include/creaForm.php
+```
+
+This repository includes an optional Codex skill template:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R skills/init-agent-orientation ~/.codex/skills/
+```
+
+The skill tells Codex to use `run`, `symbol`, `callers`, `related`, `estimate`
+and `doctor` as an orientation workflow. See [skills/README.md](skills/README.md)
+for shim setup, troubleshooting and copy-paste instructions for other CLI
+agents.
+
 ### `init-agent init`
 
 Creates:

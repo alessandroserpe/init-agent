@@ -22,6 +22,27 @@ from experiments.evaluate import load_cases, measure_indexed_file_read, scan_red
 
 
 class InitAgentBaseTests(unittest.TestCase):
+    def test_agent_skill_template_documents_core_workflow(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        skill_path = root / "skills" / "init-agent-orientation" / "SKILL.md"
+        self.assertTrue(skill_path.exists())
+        content = skill_path.read_text(encoding="utf-8")
+        self.assertIn("init-agent run", content)
+        self.assertIn("init-agent symbol", content)
+        self.assertIn("init-agent callers", content)
+        self.assertIn("init-agent related", content)
+        self.assertIn("Do not treat the context pack as source of truth", content)
+
+    def test_agent_skill_readme_documents_install_and_shim(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme_path = root / "skills" / "README.md"
+        self.assertTrue(readme_path.exists())
+        content = readme_path.read_text(encoding="utf-8")
+        self.assertIn("cp -R skills/init-agent-orientation ~/.codex/skills/", content)
+        self.assertIn("PYTHONPATH", content)
+        self.assertIn("init-agent: command not found", content)
+        self.assertIn("Argument expected for the -m option", content)
+
     def test_experiment_cases_manifest_is_valid(self) -> None:
         cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"
         cases = json.loads(cases_path.read_text(encoding="utf-8"))
