@@ -100,7 +100,9 @@ Follow-up ideas:
 - [x] Add compact public example workflows for coding agents.
 - [x] Improve `run --markdown` output for agent handoff use cases.
 - [x] Add `init-agent install-skill codex` to install/update the bundled Codex skill from the installed package.
+- [x] Document verified Codex installation separately from generic Markdown workflows for other agents.
 - [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
+- [ ] Investigate Claude Code's supported instruction format before adding a dedicated `install-skill claude-code` command.
 - [ ] Add `init-agent export --json` for external tools and future graph visualization.
 - [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
 - [ ] Evaluate whether PyPI publishing is worth doing after external install testing.

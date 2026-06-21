@@ -34,6 +34,26 @@ mkdir -p ~/.codex/skills
 cp -R skills/init-agent-orientation ~/.codex/skills/
 ```
 
+## Other Coding Agents
+
+`init-agent install-skill codex` is intentionally specific to Codex because
+that installation path has been verified.
+
+For Claude Code, Aider, OpenCode and similar tools, use the copy-paste workflow
+below unless you have confirmed the tool's native skill or instruction format.
+For example, an agent can still run:
+
+```bash
+init-agent run --overview --markdown
+init-agent run "<task>" --markdown
+init-agent symbol "<name>"
+init-agent callers "<name>"
+init-agent related path/to/file
+```
+
+A dedicated installer such as `init-agent install-skill claude-code` should be
+added only after its expected files, paths and reload behavior are tested.
+
 ## Local CLI Shim
 
 If `init-agent` is installed in editable mode, the normal command should work:

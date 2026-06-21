@@ -27,6 +27,22 @@ Then open Codex from any repository and ask:
 Use the init-agent-orientation skill to orient yourself in this repository.
 ```
 
+## Use With Other Agents
+
+The bundled skill installer is currently verified for Codex only.
+
+For Claude Code, Aider, OpenCode, Cursor-style terminals or other coding
+agents, use the CLI directly and paste the Markdown output into the agent:
+
+```bash
+init-agent run --overview --markdown
+init-agent run "your task or bug report" --markdown
+```
+
+This keeps the integration simple and agent-agnostic. A dedicated
+`install-skill claude-code` command should only be added after the target
+agent's supported instruction format and install location are verified.
+
 ## Quick Start
 
 Run it from the root of the project you want to orient:
@@ -232,6 +248,10 @@ The skill tells Codex to use `run`, `symbol`, `callers`, `related`, `estimate`
 and `doctor` as an orientation workflow. See [skills/README.md](skills/README.md)
 for shim setup, troubleshooting and copy-paste instructions for other CLI
 agents.
+
+Other agents do not need a dedicated integration to benefit from `init-agent`.
+Run `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
+and give that output to the agent as an orientation pack.
 
 ### `init-agent init`
 
