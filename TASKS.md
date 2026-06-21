@@ -90,3 +90,15 @@ Follow-up ideas:
 - [x] Run `init-agent doctor` on this repository.
 - [x] Re-read README first screen for clarity.
 - [x] Tag a release only after a clean git status and a fresh install test.
+
+## Phase 9: Public Project Hardening
+
+- [x] Add GitHub Actions CI for supported Python versions.
+- [ ] Add a README badge once the first GitHub Actions run is green.
+- [x] Document `pipx` installation directly from GitHub.
+- [ ] Add compact public example workflows for coding agents.
+- [ ] Improve `run --markdown` output for agent handoff use cases.
+- [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
+- [ ] Add `init-agent export --json` for external tools and future graph visualization.
+- [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
+- [ ] Evaluate whether PyPI publishing is worth doing after external install testing.

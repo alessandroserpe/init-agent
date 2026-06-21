@@ -72,7 +72,26 @@ It is a local orientation layer that helps those tools start from better context
 
 ## Installation
 
-From a local checkout:
+Recommended CLI install from GitHub:
+
+```bash
+pipx install git+https://github.com/alessandroserpe/init-agent.git
+```
+
+Then run:
+
+```bash
+init-agent --version
+```
+
+If you do not have `pipx` installed:
+
+```bash
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+```
+
+For local development from a checkout:
 
 ```bash
 python3.11 -m venv .venv

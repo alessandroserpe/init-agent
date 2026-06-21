@@ -2,6 +2,12 @@
 
 All notable changes to `init-agent` are documented here.
 
+## Unreleased
+
+- Added GitHub Actions CI for Python 3.11, 3.12 and 3.13.
+- Documented `pipx` installation directly from GitHub.
+- Added the next public hardening tasks to the project task plan.
+
 ## 0.15.0
 
 - Improved filename matching for compound filenames, for example matching `setup` inside `setupplan.py`.
