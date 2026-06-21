@@ -104,6 +104,14 @@ Follow-up ideas:
 - [x] Split the long README into a product-first entry page plus focused `docs/` references.
 - [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Investigate Claude Code's supported instruction format before adding a dedicated `install-skill claude-code` command.
-- [ ] Add `init-agent export --json` for external tools and future graph visualization.
 - [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
 - [ ] Evaluate whether PyPI publishing is worth doing after external install testing.
+
+## Phase 10: Next Architecture Priorities
+
+- [ ] Add `init-agent export --json` for external tools and future graph visualization.
+- [ ] Design `repo_graph_search` as an agent-facing tool, preferably MCP-compatible or with a stable tool JSON contract.
+- [ ] Link chat and agent sessions to repository context packs, including verified files and useful/noisy feedback.
+- [ ] Add dependency-aware refresh so related files can be marked stale or re-ranked when an upstream include/import changes.
+- [ ] Design language and framework plugin support so new extractors can be added without bloating the core.
+- [ ] Evaluate optional tree-sitter support for more precise parsing while keeping the default install dependency-light.

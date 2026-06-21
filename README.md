@@ -222,13 +222,12 @@ See [docs/security.md](docs/security.md) for details.
 
 ## Roadmap
 
-- Optional tree-sitter support for more precise parsing.
 - JSON graph export for external tools and visualization.
-- Direct agent integrations via MCP, plugins or verified skill installers.
 - Tool `repo_graph_search` for agent runtimes.
 - Link chat and agent sessions to repository context packs.
 - Dependency-aware incremental updates.
 - Language and framework plugin support.
+- Optional tree-sitter support for more precise parsing.
 
 ## Development
 
