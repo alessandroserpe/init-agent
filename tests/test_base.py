@@ -1712,6 +1712,42 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_overview_detects_python_framework_package_entry_points(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'frameworkish'\n", encoding="utf-8")
+            package = root / "frameworkish" / "core" / "management"
+            tests = root / "tests" / "management"
+            docs = root / "docs"
+            package.mkdir(parents=True)
+            tests.mkdir(parents=True)
+            docs.mkdir()
+            (package / "__init__.py").write_text("def execute_from_command_line():\n    return None\n", encoding="utf-8")
+            (package / "commands.py").write_text("def run_command():\n    return None\n", encoding="utf-8")
+            (tests / "test_management.py").write_text("def test_management_command():\n    assert True\n", encoding="utf-8")
+            (docs / "management.md").write_text("# Management commands\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["overview", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                first_reads = [item["path"] for item in data["suggested_first_reads"]]
+                entry_points = [item["path"] for item in data["entry_points"]]
+                self.assertIn("frameworkish/core/management/__init__.py", first_reads)
+                self.assertIn("frameworkish/core/management/__init__.py", entry_points)
+                self.assertLess(
+                    first_reads.index("frameworkish/core/management/__init__.py"),
+                    first_reads.index("tests/management/test_management.py")
+                    if "tests/management/test_management.py" in first_reads
+                    else 99,
+                )
+            finally:
+                os.chdir(previous)
+
     def test_feedback_add_and_list_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))

@@ -54,6 +54,7 @@ ENTRY_FILENAMES = {
     "lib.rs",
 }
 ENTRY_PARTS = {"cli", "server", "router", "routers", "routes", "api", "app", "main", "cmd", "bin"}
+FRAMEWORK_ENTRY_PARTS = {"cli", "command", "commands", "management", "server", "api", "routing", "routes", "urls"}
 SUBSYSTEM_NOISE = {".agent", ".git", "__pycache__"}
 MAX_FIRST_READS = 12
 MAX_ENTRY_POINTS = 10
@@ -231,6 +232,10 @@ def _file_overview_score(path: str, role: str, symbols: list[dict[str, Any]]) ->
     if name in ENTRY_FILENAMES:
         score += 8
         reasons.append("conventional entry-point filename")
+    framework_entry_score = _framework_package_entry_score(normalized)
+    if framework_entry_score:
+        score += framework_entry_score
+        reasons.append("framework package entry point")
     if parts.intersection(ENTRY_PARTS):
         score += 4
         reasons.append("entry-point path segment")
@@ -301,6 +306,8 @@ def _entry_points(files: list[dict[str, Any]], symbol_by_file: dict[str, list[di
                     }
                 )
         if name in ENTRY_FILENAMES:
+            entries.append({"path": path, "name": name, "kind": "file", "line": 0})
+        elif _framework_package_entry(path):
             entries.append({"path": path, "name": name, "kind": "file", "line": 0})
     entries.sort(key=lambda item: (_entry_priority(item), _path_depth(str(item["path"])), str(item["path"])))
     return _dedupe_entries(entries)
@@ -406,6 +413,29 @@ def _entry_name_hint(name: str) -> bool:
     return lower in {"main", "app", "application", "server", "serve", "cli", "run"} or lower.endswith("app")
 
 
+def _framework_package_entry(path: str) -> bool:
+    return _framework_package_entry_score(path) > 0
+
+
+def _framework_package_entry_score(path: str) -> int:
+    normalized = path.replace("\\", "/")
+    parts = {part.lower() for part in Path(normalized).parts}
+    if Path(normalized).name != "__init__.py" or _semantic_depth(normalized) > 4:
+        return 0
+    if parts.intersection({"management", "command", "commands", "cli", "server", "api"}):
+        return 12
+    if parts.intersection({"routing", "routes", "urls"}):
+        return 8
+    return 0
+
+
+def _semantic_depth(path: str) -> int:
+    parts = list(Path(path).parts)
+    if parts and parts[0] in {"src", "lib", "app"}:
+        parts = parts[1:]
+    return len(parts)
+
+
 def _entry_priority(item: dict[str, Any]) -> tuple[int, int]:
     kind = str(item.get("kind") or "")
     path = str(item.get("path") or "")
@@ -413,6 +443,8 @@ def _entry_priority(item: dict[str, Any]) -> tuple[int, int]:
         return (0, 0)
     if Path(path).name in ENTRY_FILENAMES:
         return (1, 0)
+    if _framework_package_entry(path):
+        return (1, 1)
     if kind == "route":
         return (2, 0)
     if kind == "package_script":

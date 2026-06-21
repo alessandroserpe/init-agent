@@ -2,6 +2,11 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.14.3
+
+- Improved repository overview detection for Python framework package entry points such as `management`, `commands`, `cli`, `server`, `api`, `routing`, `routes` and `urls` package initializers.
+- Added regression coverage so framework package entry points are surfaced ahead of matching tests or docs.
+
 ## 0.14.2
 
 - Added `init-agent feedback explain <query>` to inspect which local feedback items affect a query.
