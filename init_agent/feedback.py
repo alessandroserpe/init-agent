@@ -22,6 +22,11 @@ RATING_WEIGHTS = {
     "noisy": -3.0,
     "missing": 0.0,
 }
+SOURCE_WEIGHTS = {
+    "agent": 1.0,
+    "benchmark": 1.1,
+    "user": 1.2,
+}
 MIN_SIMILARITY = 0.25
 MAX_POSITIVE_BOOST = 30.0
 MAX_NEGATIVE_PENALTY = -5.0
@@ -141,14 +146,16 @@ def explain_feedback(root: Path, query: str, include_all: bool = False) -> dict[
         item_tokens = set(item.get("query_tokens") or [])
         similarity = _jaccard(query_token_set, item_tokens)
         rating = str(item["rating"])
-        contribution = RATING_WEIGHTS.get(rating, 0.0) * similarity
+        source = str(item.get("source") or "agent")
+        contribution = _feedback_contribution(item, similarity)
         matched = path in indexed_paths and similarity >= MIN_SIMILARITY
         explanation_item = {
             "id": item["id"],
             "query": item["query"],
             "path": path,
             "rating": rating,
-            "source": item["source"],
+            "source": source,
+            "source_weight": SOURCE_WEIGHTS.get(source, 1.0),
             "reason": item["reason"],
             "similarity": round(similarity, 4),
             "contribution": round(contribution, 4),
@@ -197,7 +204,7 @@ def feedback_signals(root: Path, query_tokens: list[str], indexed_paths: set[str
         if similarity < MIN_SIMILARITY:
             continue
         rating = str(item["rating"])
-        contribution = RATING_WEIGHTS.get(rating, 0.0) * similarity
+        contribution = _feedback_contribution(item, similarity)
         signal = signals.setdefault(
             path,
             {
@@ -246,6 +253,12 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     if not left or not right:
         return 0.0
     return len(left.intersection(right)) / len(left.union(right))
+
+
+def _feedback_contribution(item: dict[str, Any], similarity: float) -> float:
+    rating = str(item.get("rating") or "")
+    source = str(item.get("source") or "agent")
+    return RATING_WEIGHTS.get(rating, 0.0) * SOURCE_WEIGHTS.get(source, 1.0) * similarity
 
 
 def _normalize_path(path: str) -> str:

@@ -64,7 +64,7 @@ Follow-up ideas:
 
 - [x] Improve Python framework overview entry-point hints, for example Django management modules such as `django/core/management/__init__.py`.
 - [x] Reduce documentation noise in operational TypeScript/monorepo queries when the query is not docs-aware, for example Vite dependency optimizer context.
-- [ ] Improve Python tooling queries where words such as `setup` can refer to runtime flow as well as tests or helpers, for example pytest fixture setup planning.
+- [x] Improve Python tooling queries where words such as `setup` can refer to runtime flow as well as tests or helpers, for example pytest fixture setup planning.
 
 ## Phase 7: Local Orientation Feedback
 
@@ -80,13 +80,13 @@ Follow-up ideas:
 Follow-up ideas:
 
 - [x] Add feedback similarity diagnostics so agents can inspect why a feedback item matched a query.
-- [ ] Add optional feedback decay or weighting by source after enough real agent sessions.
+- [x] Add optional feedback decay or weighting by source after enough real agent sessions.
 
 ## Phase 8: Public Release Readiness
 
-- [ ] Review `.gitignore` for generated indexes, build output and local benchmark folders.
-- [ ] Run `python3 -m unittest discover -s tests -v`.
-- [ ] Run `python3 experiments/evaluate.py --strict`.
-- [ ] Run `init-agent doctor` on this repository.
-- [ ] Re-read README first screen for clarity.
-- [ ] Tag a release only after a clean git status and a fresh install test.
+- [x] Review `.gitignore` for generated indexes, build output and local benchmark folders.
+- [x] Run `python3 -m unittest discover -s tests -v`.
+- [x] Run `python3 experiments/evaluate.py --strict`.
+- [x] Run `init-agent doctor` on this repository.
+- [x] Re-read README first screen for clarity.
+- [x] Tag a release only after a clean git status and a fresh install test.

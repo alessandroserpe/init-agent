@@ -180,7 +180,9 @@ def _score_files_by_path_role_language(
     for file_item in files:
         path = str(file_item["path"])
         path_parts = _path_tokens(path)
-        filename_parts = _path_tokens(Path(path).name)
+        filename = Path(path).name
+        filename_parts = _path_tokens(filename)
+        compact_filename = re.sub(r"[^a-z0-9]+", "", Path(filename).stem.lower())
         language = str(file_item.get("language") or "").lower()
         role = str(file_item.get("role") or "").lower()
         for token in tokens:
@@ -195,6 +197,10 @@ def _score_files_by_path_role_language(
             if exact_filename:
                 file_scores[path] += 5 * filename_weight
                 _add_reason(reasons[path], f'filename matches "{token}"')
+                _add_weight_reason(reasons[path], token, filename_weight)
+            elif len(token) >= 5 and token in compact_filename:
+                file_scores[path] += 4 * filename_weight
+                _add_reason(reasons[path], f'filename contains "{token}"')
                 _add_weight_reason(reasons[path], token, filename_weight)
             if not exact_path:
                 path_soft = _best_soft_match(token, path_parts)

@@ -923,6 +923,38 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_context_matches_query_token_inside_compound_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'tooling'\n", encoding="utf-8")
+            source = root / "src" / "_pytest"
+            source.mkdir(parents=True)
+            (source / "fixtures.py").write_text(
+                "def resolve_fixture():\n    return True\n",
+                encoding="utf-8",
+            )
+            (source / "setupplan.py").write_text(
+                "def pytest_fixture_setup():\n    return True\n",
+                encoding="utf-8",
+            )
+            for name in ("capture", "debugging", "doctest", "hookspec", "logging", "python", "runner", "unittest"):
+                (source / f"{name}.py").write_text(
+                    "def setup():\n    return True\n",
+                    encoding="utf-8",
+                )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "pytest fixtures setup")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertIn("src/_pytest/setupplan.py", paths[:5])
+                setupplan = next(item for item in pack["candidate_files"] if item["path"] == "src/_pytest/setupplan.py")
+                self.assertIn('filename contains "setup"', setupplan["reasons"])
+            finally:
+                os.chdir(previous)
+
     def test_doctor_without_agent_is_not_ready(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1877,6 +1909,38 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(data["signals"][0]["items"][0]["rating"], "crucial")
                 self.assertIn("similarity", data["signals"][0]["items"][0])
                 self.assertIn("contribution", data["signals"][0]["items"][0])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_explain_reports_source_weight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(
+                    [
+                        "feedback",
+                        "add",
+                        "login session",
+                        "src/auth/session.py",
+                        "--rating",
+                        "useful",
+                        "--source",
+                        "user",
+                    ]
+                )
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                item = data["signals"][0]["items"][0]
+                self.assertEqual(item["source"], "user")
+                self.assertEqual(item["source_weight"], 1.2)
+                self.assertEqual(item["contribution"], 12.0)
+                self.assertEqual(data["signals"][0]["boost"], 12.0)
             finally:
                 os.chdir(previous)
 

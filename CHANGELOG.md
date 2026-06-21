@@ -2,6 +2,12 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.15.0
+
+- Improved filename matching for compound filenames, for example matching `setup` inside `setupplan.py`.
+- Improved Python tooling context for pytest-style fixture setup planning without adding project-specific rules.
+- Added bounded feedback source weighting so user and benchmark feedback can carry slightly more weight than agent feedback.
+
 ## 0.14.4
 
 - Reduced documentation ranking noise in operational context queries by applying a stronger documentation penalty when the query is not docs-aware.
