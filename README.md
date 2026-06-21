@@ -509,6 +509,7 @@ Overview mode prefers general repository signals:
 - package manifests such as `pyproject.toml`, `package.json`, `composer.json`, `go.mod` and `Cargo.toml`
 - README and configuration files
 - likely CLI, server, app, router and entry-point files
+- Python framework package initializers such as `management/__init__.py`, `commands/__init__.py`, `cli/__init__.py`, `server/__init__.py` and `api/__init__.py`
 - route symbols and project/package scripts extracted during `map`
 - major top-level subsystems by indexed files, languages and roles
 
