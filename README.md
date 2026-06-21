@@ -1,5 +1,7 @@
 # init-agent
 
+[![CI](https://github.com/alessandroserpe/init-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alessandroserpe/init-agent/actions/workflows/ci.yml)
+
 **Give your coding agent a map before it touches your code.**
 
 `init-agent` is a local CLI that builds a compact project map for AI coding agents.
