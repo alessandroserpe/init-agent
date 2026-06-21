@@ -12,6 +12,21 @@ The core idea is simple: do not send the whole repo to the model; build a local 
 
 There is no built-in LLM execution. `init-agent` prepares local context packs that can be pasted into or consumed by coding agents.
 
+## Install For Codex
+
+Install the CLI and the Codex skill:
+
+```bash
+pipx install git+https://github.com/alessandroserpe/init-agent.git
+init-agent install-skill codex
+```
+
+Then open Codex from any repository and ask:
+
+```text
+Use the init-agent-orientation skill to orient yourself in this repository.
+```
+
 ## Quick Start
 
 Run it from the root of the project you want to orient:
