@@ -93,6 +93,14 @@ Cases may include `notes` for known weak areas. For example, Vue compiler
 transform queries currently have overlapping compiler/runtime terminology that
 can surface nearby relevant files before the exact expected transform files.
 
+## Manual Validation Notes
+
+- OpenJarvis: overview mode produced a useful first map for a large
+  multi-language AI agent repository, including Python server/CLI entry points,
+  frontend/Tauri files, Rust workspace manifests and major subsystems. A local
+  nested checkout was excluded with `exclude_dirs`, confirming that
+  project-specific ignore configuration remains important.
+
 `--strict` exits non-zero if the summary misses the configured thresholds.
 Defaults are:
 
