@@ -23,6 +23,7 @@ from experiments.evaluate import (
     case_command,
     load_cases,
     measure_indexed_file_read,
+    resolve_case_repo,
     scan_reduction_percent,
     strict_failures_for,
     summarize,
@@ -74,6 +75,14 @@ class InitAgentBaseTests(unittest.TestCase):
         cases = load_cases(["init-agent-repository-overview"])
         self.assertEqual(len(cases), 1)
         self.assertEqual(cases[0]["command"], "overview")
+
+    def test_experiment_init_agent_case_falls_back_to_current_checkout(self) -> None:
+        case = {
+            "name": "init-agent-repository-overview",
+            "repo": "/tmp/init-agent-bench-does-not-exist",
+            "query": "repository overview",
+        }
+        self.assertEqual(resolve_case_repo(case), Path(__file__).resolve().parents[1])
 
     def test_experiment_case_filter_rejects_unknown_case(self) -> None:
         with self.assertRaises(SystemExit):

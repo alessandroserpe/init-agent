@@ -38,6 +38,11 @@ By default it expects local benchmark repositories under `/tmp`, for example:
 
 Missing repositories are skipped.
 
+If `/tmp/init-agent-bench-init-agent` is missing, the
+`init-agent-repository-overview` case falls back to the current checkout. This
+keeps CI useful even when the larger optional benchmark repositories are not
+available.
+
 Suggested setup for public benchmark repositories:
 
 ```bash

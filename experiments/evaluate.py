@@ -25,10 +25,12 @@ def main(argv: list[str] | None = None) -> int:
     skipped = []
     rebuilt_repos: set[Path] = set()
     for case in cases:
-        repo = Path(case["repo"])
-        if not repo.exists():
-            skipped.append({"name": case["name"], "reason": f"missing repo: {repo}"})
+        repo = resolve_case_repo(case)
+        if repo is None:
+            skipped.append({"name": case["name"], "reason": f"missing repo: {Path(case['repo'])}"})
             continue
+        if repo != Path(case["repo"]):
+            case = {**case, "repo": str(repo)}
         if args.rebuild_index and repo not in rebuilt_repos:
             _rebuild_index(repo)
             rebuilt_repos.add(repo)
@@ -85,6 +87,15 @@ def load_cases(selected_names: list[str] | None = None) -> list[dict[str, Any]]:
     if missing:
         raise SystemExit(f"unknown benchmark case(s): {', '.join(missing)}")
     return selected
+
+
+def resolve_case_repo(case: dict[str, Any]) -> Path | None:
+    repo = Path(case["repo"])
+    if repo.exists():
+        return repo
+    if case.get("name") == "init-agent-repository-overview":
+        return ROOT
+    return None
 
 
 def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> dict[str, Any]:

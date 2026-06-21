@@ -5,6 +5,7 @@ All notable changes to `init-agent` are documented here.
 ## Unreleased
 
 - Added GitHub Actions CI for Python 3.11, 3.12 and 3.13.
+- Made benchmark strict mode usable in CI by falling back to the current checkout for the init-agent overview case.
 - Documented `pipx` installation directly from GitHub.
 - Added the next public hardening tasks to the project task plan.
 

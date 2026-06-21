@@ -94,6 +94,7 @@ Follow-up ideas:
 ## Phase 9: Public Project Hardening
 
 - [x] Add GitHub Actions CI for supported Python versions.
+- [x] Make `experiments/evaluate.py --strict` pass in CI without requiring optional external benchmark repositories.
 - [ ] Add a README badge once the first GitHub Actions run is green.
 - [x] Document `pipx` installation directly from GitHub.
 - [ ] Add compact public example workflows for coding agents.
