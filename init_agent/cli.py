@@ -20,6 +20,7 @@ from .query import search
 from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
 from .scanner import INDEX_VERSION, scan_project
+from .skill_installer import install_codex_skill
 from .utils import config_path, ensure_agent_dir, has_project_marker, project_root, utc_now, write_json
 
 
@@ -95,6 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
     symbol_parser = subparsers.add_parser("symbol", help="Show orientation details for a function or symbol name.")
     symbol_parser.add_argument("symbol", help="Function or symbol name.")
     symbol_parser.set_defaults(handler=cmd_symbol)
+
+    install_skill_parser = subparsers.add_parser("install-skill", help="Install bundled skill templates for coding agents.")
+    install_skill_parser.add_argument("target", choices=["codex"], help="Skill target to install.")
+    install_skill_parser.add_argument("--target-dir", help="Override the skills directory, mainly for testing.")
+    install_skill_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    install_skill_parser.set_defaults(handler=cmd_install_skill)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -531,6 +538,26 @@ def cmd_symbol(args: argparse.Namespace) -> int:
         print(f"  {commit['hash'][:10]} {commit['message']}")
     if not pack["recent_commits"]:
         print("  -")
+    return 0
+
+
+def cmd_install_skill(args: argparse.Namespace) -> int:
+    try:
+        if args.target != "codex":
+            print(f"Unsupported skill target: {args.target}", file=sys.stderr)
+            return 2
+        target_dir = Path(args.target_dir).expanduser() if args.target_dir else None
+        result = install_codex_skill(target_dir)
+    except OSError as exc:
+        print(f"Skill install failed: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print("Skill installed")
+        print(f"- Skill: {result['skill']}")
+        print(f"- Target: {result['target']}")
+        print("Open a new Codex session to load the skill.")
     return 0
 
 

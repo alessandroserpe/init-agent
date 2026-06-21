@@ -99,6 +99,7 @@ Follow-up ideas:
 - [x] Document `pipx` installation directly from GitHub.
 - [x] Add compact public example workflows for coding agents.
 - [x] Improve `run --markdown` output for agent handoff use cases.
+- [x] Add `init-agent install-skill codex` to install/update the bundled Codex skill from the installed package.
 - [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Add `init-agent export --json` for external tools and future graph visualization.
 - [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.

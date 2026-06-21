@@ -50,10 +50,33 @@ class InitAgentBaseTests(unittest.TestCase):
         readme_path = root / "skills" / "README.md"
         self.assertTrue(readme_path.exists())
         content = readme_path.read_text(encoding="utf-8")
+        self.assertIn("init-agent install-skill codex", content)
         self.assertIn("cp -R skills/init-agent-orientation ~/.codex/skills/", content)
         self.assertIn("PYTHONPATH", content)
         self.assertIn("init-agent: command not found", content)
         self.assertIn("Argument expected for the -m option", content)
+
+    def test_install_skill_codex_copies_bundled_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(["install-skill", "codex", "--target-dir", str(target)]), 0)
+            installed = target / "init-agent-orientation" / "SKILL.md"
+            self.assertTrue(installed.exists())
+            self.assertIn("init-agent run --overview", installed.read_text(encoding="utf-8"))
+            self.assertIn("Skill installed", output.getvalue())
+
+    def test_install_skill_codex_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(["install-skill", "codex", "--target-dir", str(target), "--json"]), 0)
+            data = json.loads(output.getvalue())
+            self.assertTrue(data["installed"])
+            self.assertEqual(data["skill"], "init-agent-orientation")
+            self.assertTrue((target / "init-agent-orientation" / "SKILL.md").exists())
 
     def test_experiment_cases_manifest_is_valid(self) -> None:
         cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"

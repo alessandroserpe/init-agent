@@ -210,8 +210,7 @@ init-agent feedback explain "why does the message badge not update after reply?"
 This repository includes an optional Codex skill template:
 
 ```bash
-mkdir -p ~/.codex/skills
-cp -R skills/init-agent-orientation ~/.codex/skills/
+init-agent install-skill codex
 ```
 
 The skill tells Codex to use `run`, `symbol`, `callers`, `related`, `estimate`

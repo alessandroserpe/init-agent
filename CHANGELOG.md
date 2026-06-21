@@ -9,6 +9,7 @@ All notable changes to `init-agent` are documented here.
 - Documented `pipx` installation directly from GitHub.
 - Added the next public hardening tasks to the project task plan.
 - Improved `run --markdown` handoff output with follow-up commands and safety notes for coding agents.
+- Added `init-agent install-skill codex` to install or update the bundled Codex skill from a normal package installation.
 
 ## 0.15.0
 

@@ -31,3 +31,6 @@ init-agent = "init_agent.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["init_agent*"]
+
+[tool.setuptools.package-data]
+init_agent = ["resources/skills/init-agent-orientation/SKILL.md"]

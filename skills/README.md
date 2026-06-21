@@ -15,17 +15,23 @@ reading a repository broadly.
 
 ## Install For Codex
 
-From this repository:
+If `init-agent` is installed, use the bundled installer:
 
 ```bash
-mkdir -p ~/.codex/skills
-cp -R skills/init-agent-orientation ~/.codex/skills/
+init-agent install-skill codex
 ```
 
 Open a new Codex session and ask:
 
 ```text
 Usa la skill init-agent-orientation per orientarti in questo repository.
+```
+
+From a source checkout, manual installation also works:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R skills/init-agent-orientation ~/.codex/skills/
 ```
 
 ## Local CLI Shim
