@@ -115,6 +115,9 @@ init-agent context "fix login session bug" --json
 init-agent related path/to/file.py
 init-agent callers buildForm
 init-agent symbol buildForm
+init-agent feedback add "fix login session bug" src/auth/session.py --rating useful --source agent
+init-agent feedback list
+init-agent feedback export --json
 ```
 
 Quoted queries are recommended for shell clarity, but `run`, `context`, `query`
@@ -139,6 +142,19 @@ init-agent symbol buildForm
 init-agent callers buildForm
 init-agent related include/buildForm.php
 ```
+
+After verifying files, an agent can record local feedback:
+
+```bash
+init-agent feedback add "why does the message badge not update after reply?" \
+  js/app.footer.js \
+  --rating crucial \
+  --source agent \
+  --reason "verified client-side badge update flow"
+```
+
+Future similar context packs can use that local feedback as a small, bounded
+ranking signal.
 
 This repository includes an optional Codex skill template:
 
@@ -521,6 +537,42 @@ init-agent estimate "login sessione admin" --json
 
 This command does not call an LLM or send data anywhere.
 
+### `init-agent feedback`
+
+Stores local orientation feedback after a user, agent or benchmark verifies
+whether a suggested file was useful. It does not call an LLM and does not store
+source code.
+
+Ratings:
+
+- `crucial`: verified as one of the first files an agent should read
+- `useful`: relevant supporting file
+- `neutral`: recorded context without ranking effect
+- `noisy`: matched but was not useful for the task
+- `missing`: useful file that was absent from the context pack
+
+Examples:
+
+```bash
+init-agent feedback add "fix login session bug" src/auth/session.py --rating crucial --source agent
+init-agent feedback add "fix login session bug" README.md --rating noisy --reason "matched words but not useful"
+init-agent feedback list
+init-agent feedback list --json
+init-agent feedback export --json
+init-agent feedback import feedback.json --json
+init-agent feedback clear --path README.md
+init-agent feedback clear --all
+```
+
+Feedback affects `context` and `run` only when query tokens are similar enough.
+The score contribution is capped, so old feedback cannot override strong direct
+path, filename, symbol or call matches. Context reasons stay explicit:
+
+```text
+previously marked crucial for similar query
+previously marked noisy for similar query
+```
+
 ### `init-agent related <path>`
 
 Shows:
@@ -614,6 +666,7 @@ The SQLite database includes:
 - `git_commit_files`
 - `runs`
 - `term_stats`
+- `orientation_feedback`
 
 The database stores metadata, symbols and relationships. It intentionally does not store full file contents.
 
@@ -642,6 +695,7 @@ Review `.agent/` before publishing a repository if you choose to commit generate
 - Ranking is heuristic and may surface relevant-looking but non-essential files.
 - Context packs are a starting point, not a source of truth. Agents should still verify by reading files.
 - Refresh is incremental by file hash, but it does not yet do dependency-aware cascading updates.
+- Feedback ranking is local and heuristic; agents should still verify files before relying on prior feedback.
 
 ## Roadmap
 

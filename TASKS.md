@@ -68,14 +68,19 @@ Follow-up ideas:
 
 ## Phase 7: Local Orientation Feedback
 
-- [ ] Add a local `orientation_feedback` table for query/file/rating/reason/source metadata.
-- [ ] Add `init-agent feedback add` to let an agent mark files as `crucial`, `useful`, `neutral`, `noisy` or `missing` for a query.
-- [ ] Add `init-agent feedback import --json` for agent-produced feedback batches.
-- [ ] Use feedback as a bounded ranking signal without letting old feedback dominate direct path/symbol matches.
-- [ ] Show transparent reasons such as `previously marked useful for similar query`.
-- [ ] Keep feedback local, inspectable and deletable; do not store full source code.
-- [ ] Add tests proving feedback improves repeated similar queries and does not overfit unrelated queries.
-- [ ] Update the `init-agent-orientation` skill so agents can record feedback after verifying files.
+- [x] Add a local `orientation_feedback` table for query/file/rating/reason/source metadata.
+- [x] Add `init-agent feedback add` to let an agent mark files as `crucial`, `useful`, `neutral`, `noisy` or `missing` for a query.
+- [x] Add `init-agent feedback import --json` for agent-produced feedback batches.
+- [x] Use feedback as a bounded ranking signal without letting old feedback dominate direct path/symbol matches.
+- [x] Show transparent reasons such as `previously marked useful for similar query`.
+- [x] Keep feedback local, inspectable and deletable; do not store full source code.
+- [x] Add tests proving feedback improves repeated similar queries and does not overfit unrelated queries.
+- [x] Update the `init-agent-orientation` skill so agents can record feedback after verifying files.
+
+Follow-up ideas:
+
+- [ ] Add feedback similarity diagnostics so agents can inspect why a feedback item matched a query.
+- [ ] Add optional feedback decay or weighting by source after enough real agent sessions.
 
 ## Phase 8: Public Release Readiness
 

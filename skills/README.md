@@ -10,8 +10,8 @@ reading a repository broadly.
 
 - `init-agent-orientation`: run `init-agent run --overview` for broad repo
   orientation, run `init-agent run "<task>"` for task-specific context, then
-  use `symbol`, `callers`, `related`, `estimate` and `doctor` for targeted
-  follow-up.
+  use `symbol`, `callers`, `related`, `feedback`, `estimate` and `doctor` for
+  targeted follow-up.
 
 ## Install For Codex
 
@@ -121,6 +121,10 @@ init-agent callers "<name>"
 
 If a likely file is found, run:
 init-agent related path/to/file
+
+After verifying files, optionally record local feedback:
+init-agent feedback add "<my task>" path/to/file --rating useful --source agent
+init-agent feedback add "<my task>" path/to/noisy-file --rating noisy --source agent
 
 Do not treat init-agent output as source of truth. It is a local orientation
 map, not an LLM and not a semantic analyzer.

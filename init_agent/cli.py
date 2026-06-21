@@ -11,6 +11,7 @@ from . import __version__
 from .context_builder import build_context_pack
 from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
+from .feedback import add_feedback, clear_feedback, export_feedback, import_feedback, list_feedback
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
 from .overview import build_overview_pack, render_overview_markdown, render_overview_text
@@ -94,6 +95,40 @@ def build_parser() -> argparse.ArgumentParser:
     symbol_parser = subparsers.add_parser("symbol", help="Show orientation details for a function or symbol name.")
     symbol_parser.add_argument("symbol", help="Function or symbol name.")
     symbol_parser.set_defaults(handler=cmd_symbol)
+
+    feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
+    feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
+
+    feedback_add = feedback_subparsers.add_parser("add", help="Record feedback for a query/file pair.")
+    feedback_add.add_argument("query", help="Original or similar query.")
+    feedback_add.add_argument("path", help="Project-relative file path.")
+    feedback_add.add_argument("--rating", required=True, choices=["crucial", "useful", "neutral", "noisy", "missing"], help="Feedback rating.")
+    feedback_add.add_argument("--reason", default="", help="Short human/agent-readable reason.")
+    feedback_add.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Feedback source.")
+    feedback_add.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_add.set_defaults(handler=cmd_feedback_add)
+
+    feedback_list = feedback_subparsers.add_parser("list", help="List recorded feedback.")
+    feedback_list.add_argument("--query", help="Filter by exact query.")
+    feedback_list.add_argument("--path", help="Filter by project-relative path.")
+    feedback_list.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_list.set_defaults(handler=cmd_feedback_list)
+
+    feedback_clear = feedback_subparsers.add_parser("clear", help="Clear recorded feedback.")
+    feedback_clear.add_argument("--query", help="Clear feedback for an exact query.")
+    feedback_clear.add_argument("--path", help="Clear feedback for a project-relative path.")
+    feedback_clear.add_argument("--all", action="store_true", help="Clear all feedback.")
+    feedback_clear.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_clear.set_defaults(handler=cmd_feedback_clear)
+
+    feedback_export = feedback_subparsers.add_parser("export", help="Export feedback as JSON.")
+    feedback_export.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_export.set_defaults(handler=cmd_feedback_export)
+
+    feedback_import = feedback_subparsers.add_parser("import", help="Import feedback from a JSON file.")
+    feedback_import.add_argument("path", help="JSON file to import.")
+    feedback_import.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_import.set_defaults(handler=cmd_feedback_import)
     return parser
 
 
@@ -490,6 +525,90 @@ def cmd_symbol(args: argparse.Namespace) -> int:
         print(f"  {commit['hash'][:10]} {commit['message']}")
     if not pack["recent_commits"]:
         print("  -")
+    return 0
+
+
+def cmd_feedback_add(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    try:
+        record = add_feedback(root, args.query, args.path, args.rating, args.reason, args.source)
+    except ValueError as exc:
+        print(f"Feedback failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(record, indent=2, sort_keys=True))
+    else:
+        print("Feedback recorded")
+        print(f"- Query: {record['query']}")
+        print(f"- Path: {record['path']}")
+        print(f"- Rating: {record['rating']}")
+        print(f"- Source: {record['source']}")
+    return 0
+
+
+def cmd_feedback_list(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    items = list_feedback(root, query=args.query, path=args.path)
+    if args.json:
+        print(json.dumps({"feedback": items}, indent=2, sort_keys=True))
+        return 0
+    print("Orientation feedback")
+    if not items:
+        print("-")
+        return 0
+    for item in items:
+        print(f"- #{item['id']} {item['rating']} {item['path']}")
+        print(f"  query: {item['query']}")
+        print(f"  source: {item['source']}")
+        if item["reason"]:
+            print(f"  reason: {item['reason']}")
+    return 0
+
+
+def cmd_feedback_clear(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    try:
+        deleted = clear_feedback(root, query=args.query, path=args.path, all_items=args.all)
+    except ValueError as exc:
+        print(f"Feedback clear failed: {exc}", file=sys.stderr)
+        return 2
+    result = {"deleted": deleted}
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Deleted feedback entries: {deleted}")
+    return 0
+
+
+def cmd_feedback_export(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    print(json.dumps(export_feedback(root), indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_feedback_import(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    try:
+        payload = json.loads(Path(args.path).read_text(encoding="utf-8"))
+        imported = import_feedback(root, payload)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Feedback import failed: {exc}", file=sys.stderr)
+        return 1
+    result = {"imported": imported}
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Imported feedback entries: {imported}")
     return 0
 
 

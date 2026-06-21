@@ -2,6 +2,14 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.14.0
+
+- Added local `init-agent feedback` commands for agent/user/benchmark feedback.
+- Added an `orientation_feedback` SQLite table for query, path, rating, reason and source metadata.
+- Context scoring now applies bounded feedback boosts and penalties for similar queries.
+- Feedback reasons are transparent in context packs, for example `previously marked useful for similar query`.
+- Added JSON export/import for local feedback data.
+
 ## 0.13.0
 
 - Added `init-agent overview` for broad repository orientation from indexed metadata.

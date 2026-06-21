@@ -86,6 +86,14 @@ If the project state seems stale or broken:
 init-agent doctor
 ```
 
+After verifying files, record useful or noisy feedback locally when it would
+help future similar tasks:
+
+```bash
+init-agent feedback add "<user task>" path/to/file --rating useful --source agent --reason "verified relevant flow"
+init-agent feedback add "<user task>" path/to/noisy-file --rating noisy --source agent --reason "matched words but not useful"
+```
+
 ## Query Guidance
 
 - Prefer `init-agent run --overview --markdown` for broad repository orientation.
@@ -93,6 +101,7 @@ init-agent doctor
 - If the first pack is noisy, retry with concrete terms found in the repository, such as module names, function names, route names, table names or error identifiers.
 - For symbol questions, run `symbol` or `callers` instead of repeatedly rephrasing `run`.
 - For file questions, run `related` after opening the likely file.
+- Record feedback only after reading or otherwise verifying files. Do not mark files useful or noisy from ranking alone.
 
 ## Output Use
 
@@ -111,3 +120,4 @@ init-agent run "<user task>" --json
 - Do not commit `.agent/` or generated local index files.
 - Do not send repository contents externally.
 - Remember that ranking is heuristic; relevant-looking files may be non-essential.
+- Keep feedback factual and local; do not store source snippets in feedback reasons.

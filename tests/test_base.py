@@ -40,6 +40,7 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("init-agent symbol", content)
         self.assertIn("init-agent callers", content)
         self.assertIn("init-agent related", content)
+        self.assertIn("init-agent feedback add", content)
         self.assertIn("Do not treat the context pack as source of truth", content)
 
     def test_agent_skill_readme_documents_install_and_shim(self) -> None:
@@ -1707,6 +1708,132 @@ class InitAgentBaseTests(unittest.TestCase):
                         paths.index("src/Framework/Foundation/Application.php"),
                         paths.index("tests/Integration/Routing/RouteFixtureTest.php"),
                     )
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_add_and_list_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "feedback",
+                                "add",
+                                "auth session bug",
+                                "src/auth/session.py",
+                                "--rating",
+                                "useful",
+                                "--reason",
+                                "verified session state",
+                                "--source",
+                                "agent",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                record = json.loads(output.getvalue())
+                self.assertEqual(record["path"], "src/auth/session.py")
+                self.assertEqual(record["rating"], "useful")
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "list", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(len(data["feedback"]), 1)
+                self.assertEqual(data["feedback"][0]["reason"], "verified session state")
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_boosts_similar_context_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(
+                    [
+                        "feedback",
+                        "add",
+                        "authentication bug",
+                        "src/auth/session.py",
+                        "--rating",
+                        "crucial",
+                        "--reason",
+                        "agent verified session handling",
+                    ]
+                )
+                pack = build_context_pack(root, "authentication bug")
+                self.assertEqual(pack["candidate_files"][0]["path"], "src/auth/session.py")
+                self.assertIn("previously marked crucial for similar query", pack["candidate_files"][0]["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_does_not_overfit_unrelated_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "authentication bug", "src/auth/session.py", "--rating", "crucial"])
+                pack = build_context_pack(root, "billing invoice export")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertNotIn("src/auth/session.py", paths)
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_noisy_penalizes_similar_context_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login session", "src/auth/login.py", "--rating", "noisy"])
+                pack = build_context_pack(root, "login session")
+                login = next(item for item in pack["candidate_files"] if item["path"] == "src/auth/login.py")
+                self.assertIn("previously marked noisy for similar query", login["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_export_import_and_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login bug", "src/auth/login.py", "--rating", "useful"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "export", "--json"]), 0)
+                exported = json.loads(output.getvalue())
+                self.assertEqual(len(exported["feedback"]), 1)
+
+                export_path = root / "feedback.json"
+                export_path.write_text(json.dumps(exported), encoding="utf-8")
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "clear", "--all", "--json"]), 0)
+                self.assertEqual(json.loads(output.getvalue())["deleted"], 1)
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "import", str(export_path), "--json"]), 0)
+                self.assertEqual(json.loads(output.getvalue())["imported"], 1)
             finally:
                 os.chdir(previous)
 

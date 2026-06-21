@@ -81,6 +81,17 @@ CREATE TABLE IF NOT EXISTS term_stats (
     weight REAL NOT NULL,
     PRIMARY KEY(term, source)
 );
+
+CREATE TABLE IF NOT EXISTS orientation_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query TEXT NOT NULL,
+    query_tokens_json TEXT NOT NULL,
+    path TEXT NOT NULL,
+    rating TEXT NOT NULL,
+    reason TEXT,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 

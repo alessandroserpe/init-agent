@@ -9,8 +9,9 @@ from math import log
 from pathlib import Path
 from typing import Any
 
+from .feedback import feedback_signals
 from .graph_store import GraphStore
-from .text_tokens import is_query_noise_token
+from .text_tokens import is_query_noise_token, tokenize_query
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
@@ -75,6 +76,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     query_commits = _score_files_by_commits(commits, tokens, token_weights, file_scores, reasons)
     _score_files_by_calls(relations, file_by_id, tokens, token_weights, file_scores, reasons)
     _score_related_files(relations, file_by_id, file_scores, reasons)
+    _score_files_by_feedback(root, files, tokens, file_scores, reasons)
     _adjust_test_file_scores(files, tokens, file_scores, reasons)
     _adjust_role_type_scores(files, tokens, file_scores, reasons)
 
@@ -118,16 +120,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
 
 
 def _tokens(query: str) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for token in TOKEN_RE.findall(query.lower()):
-        if token in seen:
-            continue
-        if is_query_noise_token(token):
-            continue
-        seen.add(token)
-        result.append(token)
-    return result
+    return tokenize_query(query)
 
 
 def _token_weights(
@@ -361,6 +354,29 @@ def _score_related_files(
             if related_reason_counts[source_path] < 5:
                 related_reason_counts[source_path] += 1
                 _add_reason(reasons[source_path], f"related to {target_candidate}")
+
+
+def _score_files_by_feedback(
+    root: Path,
+    files: list[dict[str, Any]],
+    tokens: list[str],
+    file_scores: dict[str, float],
+    reasons: dict[str, list[str]],
+) -> None:
+    indexed_paths = {str(item["path"]) for item in files}
+    for path, signal in feedback_signals(root, tokens, indexed_paths).items():
+        boost = float(signal.get("boost") or 0.0)
+        penalty = float(signal.get("penalty") or 0.0)
+        if boost > 0:
+            file_scores[path] += boost
+            ratings = {str(item) for item in signal.get("positive", set())}
+            if "crucial" in ratings:
+                _add_reason(reasons[path], "previously marked crucial for similar query")
+            else:
+                _add_reason(reasons[path], "previously marked useful for similar query")
+        if penalty < 0 and file_scores[path] > 0:
+            file_scores[path] = max(0.0, file_scores[path] + penalty)
+            _add_reason(reasons[path], "previously marked noisy for similar query")
 
 
 def _adjust_test_file_scores(

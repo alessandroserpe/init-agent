@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 SHORT_TECH_TOKENS = {"ai", "api", "css", "db", "go", "js", "php", "py", "sql", "ts", "ui"}
 
@@ -71,3 +73,14 @@ def is_query_noise_token(token: str) -> bool:
     if token in QUERY_NOISE_TOKENS or token in FUNCTION_WORDS:
         return True
     return len(token) < 3 and token not in SHORT_TECH_TOKENS
+
+
+def tokenize_query(query: str) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for token in re.findall(r"[A-Za-z0-9_]+", query.lower()):
+        if token in seen or is_query_noise_token(token):
+            continue
+        seen.add(token)
+        result.append(token)
+    return result
