@@ -8,6 +8,7 @@ All notable changes to `init-agent` are documented here.
 - Made benchmark strict mode usable in CI by falling back to the current checkout for the init-agent overview case.
 - Documented `pipx` installation directly from GitHub.
 - Added the next public hardening tasks to the project task plan.
+- Improved `run --markdown` handoff output with follow-up commands and safety notes for coding agents.
 
 ## 0.15.0
 

@@ -1476,6 +1476,28 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertIn("# Init Agent Context Pack", rendered)
                 self.assertIn("## Preparation", rendered)
                 self.assertIn("## Suggested first reads", rendered)
+                self.assertIn("## Useful follow-up commands", rendered)
+                self.assertIn("## Safety notes", rendered)
+                self.assertIn("init-agent related src/auth/login.py", rendered)
+                self.assertIn('init-agent feedback add "login"', rendered)
+                self.assertIn("Heuristic orientation only; verify files before editing.", rendered)
+            finally:
+                os.chdir(previous)
+
+    def test_run_markdown_handoff_suggests_symbol_followups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["run", "login session", "--markdown"]), 0)
+                rendered = output.getvalue()
+                self.assertIn("## Useful follow-up commands", rendered)
+                self.assertIn("init-agent callers loginUser", rendered)
+                self.assertIn("init-agent related src/auth/login.py", rendered)
+                self.assertIn("Feedback should be recorded only after files are verified.", rendered)
             finally:
                 os.chdir(previous)
 

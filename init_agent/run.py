@@ -171,7 +171,49 @@ def render_run_markdown(result: dict[str, Any]) -> str:
         lines.append(f"- `{commit['hash'][:10]}` {commit['message']}")
         if commit.get("files_truncated"):
             lines.append(f"  - files: {len(commit.get('files', []))} of {commit.get('total_files', 0)} shown")
+    lines.extend(["", "## Useful follow-up commands"])
+    lines.extend(_render_handoff_commands(context))
+    lines.extend(
+        [
+            "",
+            "## Safety notes",
+            "- Heuristic orientation only; verify files before editing.",
+            "- No source code was sent to an LLM by init-agent.",
+            "- Feedback should be recorded only after files are verified.",
+        ]
+    )
     return "\n".join(lines)
+
+
+def _render_handoff_commands(context: dict[str, Any]) -> list[str]:
+    commands = []
+    seen: set[str] = set()
+    for item in context.get("candidate_files", [])[:3]:
+        path = str(item.get("path") or "")
+        if path and path not in seen:
+            seen.add(path)
+            commands.append(f"- `init-agent related {path}`")
+    symbol_seen: set[str] = set()
+    for symbol in context.get("related_symbols", [])[:5]:
+        name = str(symbol.get("name") or "")
+        kind = str(symbol.get("kind") or "")
+        if name and name not in symbol_seen and kind in {"function", "method", "class"}:
+            symbol_seen.add(name)
+            commands.append(f"- `init-agent callers {name}`")
+    first_path = ""
+    if context.get("candidate_files"):
+        first_path = str(context["candidate_files"][0].get("path") or "")
+    if first_path:
+        query = _shell_double_quote(str(context.get("query") or ""))
+        commands.append(
+            f"- `init-agent feedback add {query} {first_path} "
+            '--rating useful --source agent --reason "verified relevant"`'
+        )
+    return commands or ["-"]
+
+
+def _shell_double_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _initialize_project(root: Path) -> None:

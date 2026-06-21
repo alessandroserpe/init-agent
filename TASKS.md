@@ -98,7 +98,7 @@ Follow-up ideas:
 - [x] Add a README badge once the first GitHub Actions run is green.
 - [x] Document `pipx` installation directly from GitHub.
 - [x] Add compact public example workflows for coding agents.
-- [ ] Improve `run --markdown` output for agent handoff use cases.
+- [x] Improve `run --markdown` output for agent handoff use cases.
 - [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Add `init-agent export --json` for external tools and future graph visualization.
 - [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
