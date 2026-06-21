@@ -16,7 +16,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 - [x] Store call counts per `(source file, target symbol name)` or expose aggregated counts in `related`.
 - [x] Add `init-agent callers <symbol>` to show files that call a function name.
 - [x] Add `init-agent symbol <symbol>` to show definitions, callers, candidate files and recent commits for a symbol.
-- [x] Add benchmark cases from a private PHP codebase for procedural calls, discussion helpers and CRUD builder helpers.
+- [x] Add benchmark coverage for procedural PHP call-graph behavior.
 
 ## Phase 2: Documentation And Config Extraction
 
@@ -38,7 +38,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 - [x] Add a benchmark case runner filter: `experiments/evaluate.py --case <name>`.
 - [x] Add benchmark setup notes for cloning required repositories.
-- [x] Add a private PHP optional local benchmark path, skipped when absent.
+- [x] Keep optional local benchmark repositories skipped when absent.
 - [x] Track per-case failure notes for known weak areas such as Vue compiler transforms.
 - [x] Add elapsed-time comparison between manual broad scan estimates and init-agent context generation.
 
@@ -56,11 +56,22 @@ This file tracks the next implementation steps for making `init-agent` more usef
 - [ ] Prefer manifest and entry-point files for overview queries: `pyproject.toml`, `package.json`, `composer.json`, `go.mod`, `Cargo.toml`, README, CLI modules, server/app modules, router files and config files.
 - [ ] Reduce noise from generic overview words such as `architecture`, `backend`, `frontend`, `test`, `entry point` when they are not specific enough.
 - [ ] Return a compact overview pack with likely entry points, major subsystems, package manifests and first files to read.
-- [ ] Add benchmark cases for general orientation on `init-agent`, OpenJarvis-style Python/frontend repos and at least one PHP repo.
+- [ ] Add benchmark cases for general orientation on `init-agent`, Python/frontend repos and at least one PHP repo.
 - [ ] Update `init-agent-orientation` skill to use overview mode before falling back to refined `run` queries.
 - [ ] Document clearly that overview is still heuristic and must be verified by reading files.
 
-## Phase 7: Public Release Readiness
+## Phase 7: Local Orientation Feedback
+
+- [ ] Add a local `orientation_feedback` table for query/file/rating/reason/source metadata.
+- [ ] Add `init-agent feedback add` to let an agent mark files as `crucial`, `useful`, `neutral`, `noisy` or `missing` for a query.
+- [ ] Add `init-agent feedback import --json` for agent-produced feedback batches.
+- [ ] Use feedback as a bounded ranking signal without letting old feedback dominate direct path/symbol matches.
+- [ ] Show transparent reasons such as `previously marked useful for similar query`.
+- [ ] Keep feedback local, inspectable and deletable; do not store full source code.
+- [ ] Add tests proving feedback improves repeated similar queries and does not overfit unrelated queries.
+- [ ] Update the `init-agent-orientation` skill so agents can record feedback after verifying files.
+
+## Phase 8: Public Release Readiness
 
 - [ ] Review `.gitignore` for generated indexes, build output and local benchmark folders.
 - [ ] Run `python3 -m unittest discover -s tests -v`.

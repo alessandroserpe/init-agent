@@ -267,7 +267,7 @@ class InitAgentBaseTests(unittest.TestCase):
             "<?php\n"
             "require_once 'functions.php';\n"
             "function pageController() { return renderDashboard(); }\n"
-            "$result = creaForm($record);\n"
+            "$result = buildForm($record);\n"
             "if (isset($result)) { echo sanitizeOutput(trim($result)); }\n"
             "$rows = mysqli_num_rows($query);\n"
             "$json = json_decode(file_get_contents($path), true);\n"
@@ -278,7 +278,7 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn(("pageController", "function"), [(item.name, item.kind) for item in symbols])
         calls = [item.target for item in relations if item.relation == "calls"]
         self.assertIn("renderDashboard", calls)
-        self.assertIn("creaForm", calls)
+        self.assertIn("buildForm", calls)
         self.assertIn("sanitizeOutput", calls)
         self.assertNotIn("isset", calls)
         self.assertNotIn("trim", calls)
@@ -628,12 +628,12 @@ class InitAgentBaseTests(unittest.TestCase):
                 os.chdir(root)
                 main(["init"])
                 main(["map"])
-                pack = build_context_pack(root, "creaForm")
+                pack = build_context_pack(root, "buildForm")
                 paths = [item["path"] for item in pack["candidate_files"]]
                 self.assertIn("index.php", paths)
                 self.assertIn("include/functions.php", paths)
                 index_item = next(item for item in pack["candidate_files"] if item["path"] == "index.php")
-                self.assertIn('calls "creaForm"', index_item["reasons"])
+                self.assertIn('calls "buildForm"', index_item["reasons"])
             finally:
                 os.chdir(previous)
 
@@ -651,14 +651,14 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertNotIn("calls", raw_relation_names)
                 self.assertNotIn("defines", raw_relation_names)
                 resolved = index_related["resolved_calls"]
-                crea_form = next(item for item in resolved if item["name"] == "creaForm")
+                crea_form = next(item for item in resolved if item["name"] == "buildForm")
                 self.assertEqual(crea_form["definitions"][0]["path"], "include/functions.php")
 
                 functions_related = related_query(root, "include/functions.php")
                 self.assertIsNotNone(functions_related)
                 callers = {(item["path"], item["name"]) for item in functions_related["callers"]}
-                self.assertIn(("index.php", "creaForm"), callers)
-                index_caller = next(item for item in functions_related["callers"] if item["path"] == "index.php" and item["name"] == "creaForm")
+                self.assertIn(("index.php", "buildForm"), callers)
+                index_caller = next(item for item in functions_related["callers"] if item["path"] == "index.php" and item["name"] == "buildForm")
                 self.assertEqual(index_caller["call_count"], 1)
                 self.assertEqual(index_caller["first_line"], 3)
             finally:
@@ -674,11 +674,11 @@ class InitAgentBaseTests(unittest.TestCase):
                 main(["map"])
                 output = StringIO()
                 with redirect_stdout(output):
-                    self.assertEqual(main(["callers", "creaForm"]), 0)
+                    self.assertEqual(main(["callers", "buildForm"]), 0)
                 rendered = output.getvalue()
-                self.assertIn("Symbol: creaForm", rendered)
+                self.assertIn("Symbol: buildForm", rendered)
                 self.assertIn("function include/functions.php:2", rendered)
-                self.assertIn("index.php:3 calls creaForm (1x)", rendered)
+                self.assertIn("index.php:3 calls buildForm (1x)", rendered)
             finally:
                 os.chdir(previous)
 
@@ -692,13 +692,13 @@ class InitAgentBaseTests(unittest.TestCase):
                 main(["map"])
                 output = StringIO()
                 with redirect_stdout(output):
-                    self.assertEqual(main(["symbol", "creaForm"]), 0)
+                    self.assertEqual(main(["symbol", "buildForm"]), 0)
                 rendered = output.getvalue()
-                self.assertIn("Symbol: creaForm", rendered)
+                self.assertIn("Symbol: buildForm", rendered)
                 self.assertIn("Definitions:", rendered)
                 self.assertIn("function include/functions.php:2", rendered)
                 self.assertIn("Callers:", rendered)
-                self.assertIn("index.php:3 calls creaForm (1x)", rendered)
+                self.assertIn("index.php:3 calls buildForm (1x)", rendered)
                 self.assertIn("Candidate files:", rendered)
                 self.assertIn("include/functions.php", rendered)
                 self.assertIn("Recent commits:", rendered)
@@ -748,7 +748,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 "<?php\nfunction fileRegistry() { return true; }\nfunction fileMetadata() { return true; }\n",
                 encoding="utf-8",
             )
-            (root / "js" / "flexcore.footer.js").write_text("function footerReady() { return true; }\n", encoding="utf-8")
+            (root / "js" / "app.footer.js").write_text("function footerReady() { return true; }\n", encoding="utf-8")
             previous = Path.cwd()
             try:
                 os.chdir(root)
@@ -762,8 +762,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(paths[0], "install/index.php")
                 if "include/core_modules.php" in paths:
                     self.assertLess(paths.index("install/index.php"), paths.index("include/core_modules.php"))
-                if "js/flexcore.footer.js" in paths:
-                    self.assertLess(paths.index("install/index.php"), paths.index("js/flexcore.footer.js"))
+                if "js/app.footer.js" in paths:
+                    self.assertLess(paths.index("install/index.php"), paths.index("js/app.footer.js"))
                 self.assertIn("install/README.md", paths[:5])
             finally:
                 os.chdir(previous)
@@ -1228,10 +1228,10 @@ class InitAgentBaseTests(unittest.TestCase):
                 main(["init"])
                 config = root / ".agent" / "config.json"
                 data = json.loads(config.read_text(encoding="utf-8"))
-                data["exclude_dirs"] = ["private"]
+                data["exclude_dirs"] = ["excluded"]
                 config.write_text(json.dumps(data), encoding="utf-8")
                 main(["map"])
-                self.assertNotIn("private/secret.php", _indexed_paths(root))
+                self.assertNotIn("excluded/local_only.php", _indexed_paths(root))
             finally:
                 os.chdir(previous)
 
@@ -1347,15 +1347,15 @@ class InitAgentBaseTests(unittest.TestCase):
                     store.connection.commit()
                 output = StringIO()
                 with redirect_stdout(output):
-                    self.assertEqual(main(["run", "dove", "viene", "chiamata", "creaForm", "--json"]), 0)
+                    self.assertEqual(main(["run", "dove", "viene", "chiamata", "buildForm", "--json"]), 0)
                 data = json.loads(output.getvalue())
-                self.assertEqual(data["query"], "dove viene chiamata creaForm")
+                self.assertEqual(data["query"], "dove viene chiamata buildForm")
                 self.assertEqual(data["preparation"]["map"], "done")
                 self.assertTrue(any("older extractor" in warning for warning in data["preparation"]["warnings"]))
                 paths = [item["path"] for item in data["context"]["candidate_files"]]
                 self.assertIn("index.php", paths)
                 index_item = next(item for item in data["context"]["candidate_files"] if item["path"] == "index.php")
-                self.assertIn('calls "creaForm"', index_item["reasons"])
+                self.assertIn('calls "buildForm"', index_item["reasons"])
             finally:
                 os.chdir(previous)
 
@@ -1674,7 +1674,7 @@ def _create_php_call_fixture(root: Path) -> Path:
     (root / "index.php").write_text(
         "<?php\n"
         "require_once 'include/bootstrap.php';\n"
-        "$html = creaForm($record);\n"
+        "$html = buildForm($record);\n"
         "echo renderPage($html);\n",
         encoding="utf-8",
     )
@@ -1689,7 +1689,7 @@ def _create_php_call_fixture(root: Path) -> Path:
     (include / "db.php").write_text("<?php\nfunction dbConnect() { return true; }\n", encoding="utf-8")
     (include / "functions.php").write_text(
         "<?php\n"
-        "function creaForm($record) { return '<form></form>'; }\n"
+        "function buildForm($record) { return '<form></form>'; }\n"
         "function renderPage($html) { return $html; }\n",
         encoding="utf-8",
     )
@@ -1752,11 +1752,11 @@ def _create_ignore_fixture(root: Path) -> Path:
     public = root / "public"
     docs = root / "docs"
     data = root / "data"
-    private = root / "private"
+    excluded = root / "excluded"
     public.mkdir()
     docs.mkdir()
     data.mkdir()
-    private.mkdir()
+    excluded.mkdir()
     egg_info = root / "sample.egg-info"
     dist_info = root / "sample-1.0.dist-info"
     egg_info.mkdir()
@@ -1766,7 +1766,7 @@ def _create_ignore_fixture(root: Path) -> Path:
     (public / "logo.ai").write_bytes(b"ai")
     (docs / "manual.pdf").write_bytes(b"pdf")
     (data / "cache.sqlite").write_bytes(b"sqlite")
-    (private / "secret.php").write_text("<?php\nfunction privateSecret() { return true; }\n", encoding="utf-8")
+    (excluded / "local_only.php").write_text("<?php\nfunction localOnly() { return true; }\n", encoding="utf-8")
     (egg_info / "PKG-INFO").write_text("ignored", encoding="utf-8")
     (dist_info / "METADATA").write_text("ignored", encoding="utf-8")
     return root

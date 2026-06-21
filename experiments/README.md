@@ -18,7 +18,7 @@ python3 experiments/evaluate.py
 python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
-python3 experiments/evaluate.py --case private-php-creaform-callers --measure-manual-scan
+python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
 ```
 
 By default it expects local benchmark repositories under `/tmp`, for example:
@@ -33,7 +33,6 @@ By default it expects local benchmark repositories under `/tmp`, for example:
 - `/tmp/init-agent-bench-vite`
 - `/tmp/init-agent-bench-pytest`
 - `/tmp/init-agent-bench-vue-core`
-- `/tmp/init-agent-bench-private-php` for optional private PHP procedural call-graph cases
 
 Missing repositories are skipped.
 
@@ -50,13 +49,6 @@ git clone https://github.com/psf/requests.git /tmp/init-agent-bench-requests
 git clone https://github.com/vitejs/vite.git /tmp/init-agent-bench-vite
 git clone https://github.com/pytest-dev/pytest.git /tmp/init-agent-bench-pytest
 git clone https://github.com/vuejs/core.git /tmp/init-agent-bench-vue-core
-```
-
-The private PHP cases are intentionally optional and local. To run them, copy
-or clone a compatible PHP codebase to:
-
-```bash
-/tmp/init-agent-bench-private-php
 ```
 
 Use `--rebuild-index` after changing scanner, role detection, symbol extraction

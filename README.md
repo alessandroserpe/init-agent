@@ -104,8 +104,8 @@ init-agent query auth
 init-agent context "fix login session bug"
 init-agent context "fix login session bug" --json
 init-agent related path/to/file.py
-init-agent callers creaForm
-init-agent symbol creaForm
+init-agent callers buildForm
+init-agent symbol buildForm
 ```
 
 Quoted queries are recommended for shell clarity, but `run`, `context`, `query`
@@ -126,9 +126,9 @@ from source code.
 For function or class questions, use the targeted commands:
 
 ```bash
-init-agent symbol creaForm
-init-agent callers creaForm
-init-agent related include/creaForm.php
+init-agent symbol buildForm
+init-agent callers buildForm
+init-agent related include/buildForm.php
 ```
 
 This repository includes an optional Codex skill template:
@@ -192,7 +192,7 @@ For each file, it stores:
 
 It reads file contents only during mapping and does not store full source code in the database.
 
-For PHP projects, `map` also records conservative global function call relations such as `index.php calls creaForm`, while skipping common language constructs and method/static calls.
+For PHP projects, `map` also records conservative global function call relations such as `index.php calls buildForm`, while skipping common language constructs and method/static calls.
 
 ### `init-agent refresh`
 
@@ -500,7 +500,7 @@ Shows:
 Shows indexed definitions for a function or symbol name and files that call it.
 
 For PHP procedural projects, this is useful when starting from a global helper
-such as `creaForm` and asking where it is used.
+such as `buildForm` and asking where it is used.
 
 ### `init-agent symbol <symbol>`
 
@@ -531,8 +531,8 @@ init-agent query migration
 init-agent context "add graph export"
 init-agent context "add graph export" --json
 init-agent related init_agent/scanner.py
-init-agent callers creaForm
-init-agent symbol creaForm
+init-agent callers buildForm
+init-agent symbol buildForm
 ```
 
 ## Validation Experiments
@@ -549,7 +549,7 @@ python3 experiments/evaluate.py
 python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
-python3 experiments/evaluate.py --case private-php-creaform-callers --measure-manual-scan
+python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
 ```
 
 The script reports top-1/top-3/top-5 hits, obvious noise matches and elapsed
