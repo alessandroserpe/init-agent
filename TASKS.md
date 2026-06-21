@@ -79,7 +79,7 @@ Follow-up ideas:
 
 Follow-up ideas:
 
-- [ ] Add feedback similarity diagnostics so agents can inspect why a feedback item matched a query.
+- [x] Add feedback similarity diagnostics so agents can inspect why a feedback item matched a query.
 - [ ] Add optional feedback decay or weighting by source after enough real agent sessions.
 
 ## Phase 8: Public Release Readiness

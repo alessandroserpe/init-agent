@@ -41,6 +41,7 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("init-agent callers", content)
         self.assertIn("init-agent related", content)
         self.assertIn("init-agent feedback add", content)
+        self.assertIn("init-agent feedback explain", content)
         self.assertIn("Do not treat the context pack as source of truth", content)
 
     def test_agent_skill_readme_documents_install_and_shim(self) -> None:
@@ -1805,6 +1806,106 @@ class InitAgentBaseTests(unittest.TestCase):
                 pack = build_context_pack(root, "login session")
                 login = next(item for item in pack["candidate_files"] if item["path"] == "src/auth/login.py")
                 self.assertIn("previously marked noisy for similar query", login["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_explain_json_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(
+                    [
+                        "feedback",
+                        "add",
+                        "login session",
+                        "src/auth/session.py",
+                        "--rating",
+                        "crucial",
+                        "--reason",
+                        "verified session flow",
+                    ]
+                )
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["query"], "login session")
+                self.assertIn("login", data["query_tokens"])
+                self.assertEqual(data["signals"][0]["path"], "src/auth/session.py")
+                self.assertGreater(data["signals"][0]["boost"], 0)
+                self.assertEqual(data["signals"][0]["items"][0]["rating"], "crucial")
+                self.assertIn("similarity", data["signals"][0]["items"][0])
+                self.assertIn("contribution", data["signals"][0]["items"][0])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_explain_accepts_unquoted_query_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login session", "src/auth/session.py", "--rating", "useful"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login", "session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["query"], "login session")
+                self.assertEqual(data["signals"][0]["path"], "src/auth/session.py")
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_explain_can_show_ignored_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "billing invoice", "src/auth/session.py", "--rating", "useful"])
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["signals"], [])
+                self.assertEqual(data["ignored"], [])
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login", "session", "--all", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["signals"], [])
+                self.assertEqual(data["ignored"][0]["path"], "src/auth/session.py")
+                self.assertEqual(data["ignored"][0]["ignored_reason"], "similarity below threshold")
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_explain_does_not_match_unrelated_item_on_same_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login session", "src/auth/session.py", "--rating", "useful"])
+                main(["feedback", "add", "billing invoice", "src/auth/session.py", "--rating", "useful"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login", "session", "--all", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                matched_queries = [item["query"] for item in data["signals"][0]["items"]]
+                ignored_queries = [item["query"] for item in data["ignored"]]
+                self.assertEqual(matched_queries, ["login session"])
+                self.assertIn("billing invoice", ignored_queries)
             finally:
                 os.chdir(previous)
 

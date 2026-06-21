@@ -94,6 +94,14 @@ init-agent feedback add "<user task>" path/to/file --rating useful --source agen
 init-agent feedback add "<user task>" path/to/noisy-file --rating noisy --source agent --reason "matched words but not useful"
 ```
 
+If repeated context packs behave unexpectedly, inspect the local feedback
+signals before adding more:
+
+```bash
+init-agent feedback explain "<user task>"
+init-agent feedback explain "<user task>" --all --json
+```
+
 ## Query Guidance
 
 - Prefer `init-agent run --overview --markdown` for broad repository orientation.
@@ -102,6 +110,7 @@ init-agent feedback add "<user task>" path/to/noisy-file --rating noisy --source
 - For symbol questions, run `symbol` or `callers` instead of repeatedly rephrasing `run`.
 - For file questions, run `related` after opening the likely file.
 - Record feedback only after reading or otherwise verifying files. Do not mark files useful or noisy from ranking alone.
+- Use `feedback explain` when feedback appears to affect a query in a surprising way.
 
 ## Output Use
 

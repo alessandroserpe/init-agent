@@ -117,6 +117,7 @@ init-agent callers buildForm
 init-agent symbol buildForm
 init-agent feedback add "fix login session bug" src/auth/session.py --rating useful --source agent
 init-agent feedback list
+init-agent feedback explain "fix login session bug"
 init-agent feedback export --json
 ```
 
@@ -155,6 +156,13 @@ init-agent feedback add "why does the message badge not update after reply?" \
 
 Future similar context packs can use that local feedback as a small, bounded
 ranking signal.
+
+To inspect why feedback is or is not affecting a repeated query:
+
+```bash
+init-agent feedback explain "why does the message badge not update after reply?"
+init-agent feedback explain "why does the message badge not update after reply?" --json
+```
 
 This repository includes an optional Codex skill template:
 
@@ -558,6 +566,8 @@ init-agent feedback add "fix login session bug" src/auth/session.py --rating cru
 init-agent feedback add "fix login session bug" README.md --rating noisy --reason "matched words but not useful"
 init-agent feedback list
 init-agent feedback list --json
+init-agent feedback explain "fix login session bug"
+init-agent feedback explain "fix login session bug" --all --json
 init-agent feedback export --json
 init-agent feedback import feedback.json --json
 init-agent feedback clear --path README.md
@@ -572,6 +582,12 @@ path, filename, symbol or call matches. Context reasons stay explicit:
 previously marked crucial for similar query
 previously marked noisy for similar query
 ```
+
+Use `feedback explain` when a repeated query improves or gets worse and you
+want to see which local feedback entries matched, their token similarity and
+their bounded score contribution. With `--all`, it also shows feedback that was
+ignored because it was below the similarity threshold or pointed to a file that
+is no longer indexed.
 
 ### `init-agent related <path>`
 

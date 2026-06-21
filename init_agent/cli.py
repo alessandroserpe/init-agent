@@ -11,7 +11,7 @@ from . import __version__
 from .context_builder import build_context_pack
 from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
-from .feedback import add_feedback, clear_feedback, export_feedback, import_feedback, list_feedback
+from .feedback import add_feedback, clear_feedback, explain_feedback, export_feedback, import_feedback, list_feedback
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
 from .overview import build_overview_pack, render_overview_markdown, render_overview_text
@@ -113,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
     feedback_list.add_argument("--path", help="Filter by project-relative path.")
     feedback_list.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     feedback_list.set_defaults(handler=cmd_feedback_list)
+
+    feedback_explain = feedback_subparsers.add_parser("explain", help="Explain feedback signals for a query.")
+    feedback_explain.add_argument("query", nargs="+", help="Query to explain.")
+    feedback_explain.add_argument("--all", action="store_true", help="Include ignored feedback entries.")
+    feedback_explain.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    feedback_explain.set_defaults(handler=cmd_feedback_explain)
 
     feedback_clear = feedback_subparsers.add_parser("clear", help="Clear recorded feedback.")
     feedback_clear.add_argument("--query", help="Clear feedback for an exact query.")
@@ -566,6 +572,51 @@ def cmd_feedback_list(args: argparse.Namespace) -> int:
         print(f"  source: {item['source']}")
         if item["reason"]:
             print(f"  reason: {item['reason']}")
+    return 0
+
+
+def cmd_feedback_explain(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    result = explain_feedback(root, _text_arg(args.query), include_all=args.all)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    print(f"Feedback signals for: {result['query']}")
+    print()
+    print(f"Query tokens: {', '.join(result['query_tokens']) if result['query_tokens'] else '-'}")
+    print(f"Minimum similarity: {result['min_similarity']:.2f}")
+    print()
+    print("Matched signals:")
+    if not result["signals"]:
+        print("-")
+    for signal in result["signals"]:
+        print(f"- {signal['path']}")
+        print(f"  boost: {signal['boost']:+.2f}")
+        print(f"  penalty: {signal['penalty']:+.2f}")
+        print(f"  net: {signal['net']:+.2f}")
+        for item in signal["items"][:5]:
+            print(
+                f"  - #{item['id']} {item['rating']} similarity {item['similarity']:.2f} "
+                f"contribution {item['contribution']:+.2f}"
+            )
+            if item["reason"]:
+                print(f"    reason: {item['reason']}")
+
+    if args.all:
+        print()
+        print("Ignored feedback:")
+        if not result["ignored"]:
+            print("-")
+        for item in result["ignored"]:
+            print(f"- #{item['id']} {item['rating']} {item['path']}")
+            print(
+                f"  similarity: {item['similarity']:.2f}; "
+                f"contribution: {item['contribution']:+.2f}; "
+                f"reason: {item['ignored_reason']}"
+            )
     return 0
 
 

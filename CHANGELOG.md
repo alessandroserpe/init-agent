@@ -2,6 +2,12 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.14.2
+
+- Added `init-agent feedback explain <query>` to inspect which local feedback items affect a query.
+- Added JSON explain output with query tokens, similarity, score contribution, matched signals and ignored feedback entries.
+- Updated the orientation skill guidance so agents can diagnose feedback before trusting or adding more of it.
+
 ## 0.14.1
 
 - Stronger demotion for files previously marked `noisy` by local orientation feedback.

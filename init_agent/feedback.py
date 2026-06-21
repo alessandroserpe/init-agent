@@ -128,6 +128,61 @@ def import_feedback(root: Path, payload: Any) -> int:
     return count
 
 
+def explain_feedback(root: Path, query: str, include_all: bool = False) -> dict[str, Any]:
+    query_tokens = tokenize_query(query)
+    query_token_set = set(query_tokens)
+    indexed_paths = _indexed_paths(root)
+    signals = feedback_signals(root, query_tokens, indexed_paths)
+
+    by_path: dict[str, list[dict[str, Any]]] = {}
+    ignored: list[dict[str, Any]] = []
+    for item in list_feedback(root):
+        path = str(item["path"])
+        item_tokens = set(item.get("query_tokens") or [])
+        similarity = _jaccard(query_token_set, item_tokens)
+        rating = str(item["rating"])
+        contribution = RATING_WEIGHTS.get(rating, 0.0) * similarity
+        matched = path in indexed_paths and similarity >= MIN_SIMILARITY
+        explanation_item = {
+            "id": item["id"],
+            "query": item["query"],
+            "path": path,
+            "rating": rating,
+            "source": item["source"],
+            "reason": item["reason"],
+            "similarity": round(similarity, 4),
+            "contribution": round(contribution, 4),
+            "matched": matched,
+        }
+        if matched:
+            by_path.setdefault(path, []).append(explanation_item)
+        elif include_all:
+            ignored_reason = "path is not indexed" if path not in indexed_paths else "similarity below threshold"
+            ignored.append({**explanation_item, "ignored_reason": ignored_reason})
+
+    signal_rows = []
+    for path, signal in signals.items():
+        items = sorted(by_path.get(path, []), key=lambda item: abs(float(item["contribution"])), reverse=True)
+        signal_rows.append(
+            {
+                "path": path,
+                "boost": round(float(signal.get("boost", 0.0)), 4),
+                "penalty": round(float(signal.get("penalty", 0.0)), 4),
+                "net": round(float(signal.get("boost", 0.0)) + float(signal.get("penalty", 0.0)), 4),
+                "items": items,
+            }
+        )
+    signal_rows.sort(key=lambda item: abs(float(item["net"])), reverse=True)
+    ignored.sort(key=lambda item: abs(float(item["contribution"])), reverse=True)
+    return {
+        "query": query,
+        "query_tokens": query_tokens,
+        "min_similarity": MIN_SIMILARITY,
+        "signals": signal_rows,
+        "ignored": ignored,
+    }
+
+
 def feedback_signals(root: Path, query_tokens: list[str], indexed_paths: set[str]) -> dict[str, dict[str, Any]]:
     query_token_set = set(query_tokens)
     if not query_token_set:
@@ -161,6 +216,13 @@ def feedback_signals(root: Path, query_tokens: list[str], indexed_paths: set[str
             signal["negative"].add(rating)
         signal["items"].append(item)
     return signals
+
+
+def _indexed_paths(root: Path) -> set[str]:
+    with GraphStore(root) as store:
+        store.initialize()
+        rows = store.connection.execute("SELECT path FROM files").fetchall()
+    return {str(row["path"]) for row in rows}
 
 
 def _row_to_feedback(row: Any) -> dict[str, Any]:
