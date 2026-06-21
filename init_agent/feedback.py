@@ -16,15 +16,15 @@ SOURCES = {"user", "agent", "benchmark"}
 POSITIVE_RATINGS = {"crucial", "useful"}
 NEGATIVE_RATINGS = {"noisy"}
 RATING_WEIGHTS = {
-    "crucial": 1.8,
-    "useful": 1.0,
+    "crucial": 24.0,
+    "useful": 10.0,
     "neutral": 0.0,
-    "noisy": -1.2,
+    "noisy": -3.0,
     "missing": 0.0,
 }
 MIN_SIMILARITY = 0.25
-MAX_POSITIVE_BOOST = 2.5
-MAX_NEGATIVE_PENALTY = -2.0
+MAX_POSITIVE_BOOST = 30.0
+MAX_NEGATIVE_PENALTY = -5.0
 
 
 def add_feedback(root: Path, query: str, path: str, rating: str, reason: str = "", source: str = "agent") -> dict[str, Any]:

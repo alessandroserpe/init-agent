@@ -76,9 +76,9 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     query_commits = _score_files_by_commits(commits, tokens, token_weights, file_scores, reasons)
     _score_files_by_calls(relations, file_by_id, tokens, token_weights, file_scores, reasons)
     _score_related_files(relations, file_by_id, file_scores, reasons)
-    _score_files_by_feedback(root, files, tokens, file_scores, reasons)
     _adjust_test_file_scores(files, tokens, file_scores, reasons)
     _adjust_role_type_scores(files, tokens, file_scores, reasons)
+    _score_files_by_feedback(root, files, tokens, file_scores, reasons)
 
     raw_candidates = [
         {
@@ -371,12 +371,12 @@ def _score_files_by_feedback(
             file_scores[path] += boost
             ratings = {str(item) for item in signal.get("positive", set())}
             if "crucial" in ratings:
-                _add_reason(reasons[path], "previously marked crucial for similar query")
+                _prepend_reason(reasons[path], "previously marked crucial for similar query")
             else:
-                _add_reason(reasons[path], "previously marked useful for similar query")
+                _prepend_reason(reasons[path], "previously marked useful for similar query")
         if penalty < 0 and file_scores[path] > 0:
-            file_scores[path] = max(0.0, file_scores[path] + penalty)
-            _add_reason(reasons[path], "previously marked noisy for similar query")
+            file_scores[path] = max(0.0, file_scores[path] + penalty) * 0.35
+            _prepend_reason(reasons[path], "previously marked noisy for similar query")
 
 
 def _adjust_test_file_scores(

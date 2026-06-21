@@ -2,6 +2,12 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.14.1
+
+- Stronger demotion for files previously marked `noisy` by local orientation feedback.
+- Stronger bounded boost for files previously marked `crucial` or `useful`, while preserving heuristic ranking rather than enforcing absolute positions.
+- Feedback scoring now runs after role/type adjustments so verified noise is not diluted before final ranking.
+
 ## 0.14.0
 
 - Added local `init-agent feedback` commands for agent/user/benchmark feedback.

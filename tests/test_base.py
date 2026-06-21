@@ -1808,6 +1808,66 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_feedback_noisy_demotes_strong_direct_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login session", "src/auth/login.py", "--rating", "noisy"])
+                main(["feedback", "add", "login session", "src/auth/session.py", "--rating", "useful"])
+                pack = build_context_pack(root, "login session")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertLess(paths.index("src/auth/session.py"), paths.index("src/auth/login.py"))
+                login = next(item for item in pack["candidate_files"] if item["path"] == "src/auth/login.py")
+                self.assertLess(login["score"], 0.75)
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_crucial_surfaces_verified_file_without_direct_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            internal_dir = root / "src" / "internal"
+            internal_dir.mkdir(parents=True)
+            (internal_dir / "state.py").write_text("def mark_read():\n    return True\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(["feedback", "add", "login session", "src/internal/state.py", "--rating", "crucial"])
+                pack = build_context_pack(root, "login session")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertIn("src/internal/state.py", paths)
+                state = next(item for item in pack["candidate_files"] if item["path"] == "src/internal/state.py")
+                self.assertIn("previously marked crucial for similar query", state["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_feedback_improves_relative_rank_without_absolute_position(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            internal_dir = root / "src" / "internal"
+            internal_dir.mkdir(parents=True)
+            (internal_dir / "state.py").write_text("def mark_read():\n    return True\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                before = build_context_pack(root, "login session")
+                before_paths = [item["path"] for item in before["candidate_files"]]
+                before_rank = before_paths.index("src/internal/state.py") if "src/internal/state.py" in before_paths else 99
+                main(["feedback", "add", "login session", "src/internal/state.py", "--rating", "crucial"])
+                after = build_context_pack(root, "login session")
+                after_paths = [item["path"] for item in after["candidate_files"]]
+                self.assertIn("src/internal/state.py", after_paths)
+                self.assertLess(after_paths.index("src/internal/state.py"), before_rank)
+            finally:
+                os.chdir(previous)
+
     def test_feedback_export_import_and_clear(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
