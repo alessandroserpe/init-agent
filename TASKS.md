@@ -97,7 +97,7 @@ Follow-up ideas:
 - [x] Make `experiments/evaluate.py --strict` pass in CI without requiring optional external benchmark repositories.
 - [x] Add a README badge once the first GitHub Actions run is green.
 - [x] Document `pipx` installation directly from GitHub.
-- [ ] Add compact public example workflows for coding agents.
+- [x] Add compact public example workflows for coding agents.
 - [ ] Improve `run --markdown` output for agent handoff use cases.
 - [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Add `init-agent export --json` for external tools and future graph visualization.

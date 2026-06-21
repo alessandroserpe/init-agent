@@ -148,14 +148,36 @@ and `estimate` also accept unquoted multi-word text.
 ## Use With Coding Agents
 
 `init-agent` is most useful when an agent runs it before broad repository
-inspection:
+inspection, then verifies the suggested files directly.
+
+Common workflows:
+
+```bash
+# Orient an agent in an unfamiliar repository.
+init-agent run --overview --markdown
+
+# Debug a bug or feature area from a natural-language task.
+init-agent run "why does the login session expire after redirect" --markdown
+
+# Inspect one symbol and the files that call it.
+init-agent symbol createSession
+init-agent callers createSession
+
+# Inspect the neighborhood around a likely file.
+init-agent related src/auth/session.py
+
+# Estimate how much context the orientation pack saves.
+init-agent estimate "debug login session redirect"
+```
+
+For example:
 
 ```bash
 init-agent run "why does the message badge not update after reply?" --markdown
 ```
 
-Then the agent should read the suggested files and verify the answer directly
-from source code.
+The agent should read the suggested files and verify the answer directly from
+source code before proposing or making changes.
 
 For function or class questions, use the targeted commands:
 
@@ -176,7 +198,7 @@ init-agent feedback add "why does the message badge not update after reply?" \
 ```
 
 Future similar context packs can use that local feedback as a small, bounded
-ranking signal.
+ranking signal. Feedback stays local in `.agent/graph.sqlite`.
 
 To inspect why feedback is or is not affecting a repeated query:
 
