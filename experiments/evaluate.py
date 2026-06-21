@@ -89,8 +89,9 @@ def load_cases(selected_names: list[str] | None = None) -> list[dict[str, Any]]:
 
 def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> dict[str, Any]:
     started = time.perf_counter()
+    command = list(case_command(case))
     proc = subprocess.run(
-        [sys.executable, "-m", "init_agent.cli", "run", case["query"], "--json"],
+        command,
         cwd=case["repo"],
         env={**os.environ, "PYTHONPATH": str(ROOT)},
         stdout=subprocess.PIPE,
@@ -100,7 +101,7 @@ def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> di
     )
     elapsed = time.perf_counter() - started
     data = json.loads(proc.stdout)
-    candidates = [item["path"] for item in data["context"]["candidate_files"]]
+    candidates = candidate_paths_for_case(case, data)
     expected = list(case.get("expected_files", []))
     noise_patterns = list(case.get("noise_patterns", []))
     expected_hits = [path for path in expected if path in candidates]
@@ -130,6 +131,23 @@ def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> di
     if case.get("notes"):
         result["notes"] = case["notes"]
     return result
+
+
+def case_command(case: dict[str, Any]) -> list[str]:
+    if case.get("command") == "overview":
+        return [sys.executable, "-m", "init_agent.cli", "run", "--overview", "--json"]
+    return [sys.executable, "-m", "init_agent.cli", "run", case["query"], "--json"]
+
+
+def candidate_paths_for_case(case: dict[str, Any], data: dict[str, Any]) -> list[str]:
+    if case.get("command") != "overview":
+        return [item["path"] for item in data["context"]["candidate_files"]]
+    overview = data.get("overview", {})
+    paths = []
+    paths.extend(item["path"] for item in overview.get("suggested_first_reads", []))
+    paths.extend(item["path"] for item in overview.get("entry_points", []))
+    paths.extend(item["path"] for item in overview.get("manifests", []))
+    return list(dict.fromkeys(paths))
 
 
 def indexed_file_count(repo: Path) -> int | None:

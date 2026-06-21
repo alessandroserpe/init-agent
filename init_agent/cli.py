@@ -13,6 +13,7 @@ from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
+from .overview import build_overview_pack, render_overview_markdown, render_overview_text
 from .query import callers_for_symbol, related as related_query
 from .query import search
 from .refresh import refresh_index
@@ -46,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_parser.set_defaults(handler=cmd_refresh)
 
     run_parser = subparsers.add_parser("run", help="Prepare the project and build a context pack.")
-    run_parser.add_argument("text", nargs="+", help="Free-text request.")
+    run_parser.add_argument("text", nargs="*", help="Free-text request.")
+    run_parser.add_argument("--overview", action="store_true", help="Prepare the project and print a broad repository overview.")
     run_output = run_parser.add_mutually_exclusive_group()
     run_output.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     run_output.add_argument("--markdown", action="store_true", help="Print compact Markdown.")
@@ -56,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     estimate_parser.add_argument("text", nargs="+", help="Free-text request.")
     estimate_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     estimate_parser.set_defaults(handler=cmd_estimate)
+
+    overview_parser = subparsers.add_parser("overview", help="Show a broad repository orientation pack.")
+    overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    overview_parser.add_argument("--markdown", action="store_true", help="Print compact Markdown.")
+    overview_parser.set_defaults(handler=cmd_overview)
 
     git_parser = subparsers.add_parser("git", help="Read Git metadata into the local index.")
     git_parser.set_defaults(handler=cmd_git)
@@ -182,7 +189,11 @@ def cmd_refresh(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = project_root()
-    result = run_query(root, _text_arg(args.text))
+    if not args.text and not args.overview:
+        print("init-agent run requires a query, or use: init-agent run --overview", file=sys.stderr)
+        return 2
+    query = _text_arg(args.text) if args.text else "repository overview"
+    result = run_query(root, query, overview=args.overview)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     elif args.markdown:
@@ -190,6 +201,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         print(render_run_text(result))
     return 1 if result["preparation"]["map"] == "failed" else 0
+
+
+def cmd_overview(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    pack = build_overview_pack(root)
+    if args.json:
+        print(json.dumps(pack, indent=2, sort_keys=True))
+    elif args.markdown:
+        print(render_overview_markdown(pack))
+    else:
+        print(render_overview_text(pack))
+    return 0
 
 
 def cmd_estimate(args: argparse.Namespace) -> int:

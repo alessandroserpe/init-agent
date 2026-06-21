@@ -33,20 +33,29 @@ Skip it when:
 init-agent --version
 ```
 
-2. Build an updated context pack for the user's task:
+2. For broad "orient me in this repository" tasks, build an updated overview:
+
+```bash
+init-agent run --overview --markdown
+```
+
+3. For specific debugging, review or change tasks, build an updated context pack:
 
 ```bash
 init-agent run "<user task>" --markdown
 ```
 
-3. Use the context pack to choose the first files to inspect:
+4. Use the overview or context pack to choose the first files to inspect:
 
 - Suggested first reads
+- Likely entry points
+- Package manifests and config
+- Major subsystems
 - Related symbols
 - Recent related commits
 - Reasons for each candidate file
 
-4. Read the suggested files directly from the filesystem before proposing or making code changes.
+5. Read the suggested files directly from the filesystem before proposing or making code changes.
 
 ## Targeted Follow-Up
 
@@ -79,7 +88,8 @@ init-agent doctor
 
 ## Query Guidance
 
-- Prefer the user's natural-language task first.
+- Prefer `init-agent run --overview --markdown` for broad repository orientation.
+- Prefer the user's natural-language task first for specific feature, bug, refactor or review questions.
 - If the first pack is noisy, retry with concrete terms found in the repository, such as module names, function names, route names, table names or error identifiers.
 - For symbol questions, run `symbol` or `callers` instead of repeatedly rephrasing `run`.
 - For file questions, run `related` after opening the likely file.

@@ -33,6 +33,8 @@ By default it expects local benchmark repositories under `/tmp`, for example:
 - `/tmp/init-agent-bench-vite`
 - `/tmp/init-agent-bench-pytest`
 - `/tmp/init-agent-bench-vue-core`
+- `/tmp/init-agent-bench-init-agent`
+- `/tmp/init-agent-bench-laravel-framework`
 
 Missing repositories are skipped.
 
@@ -49,6 +51,8 @@ git clone https://github.com/psf/requests.git /tmp/init-agent-bench-requests
 git clone https://github.com/vitejs/vite.git /tmp/init-agent-bench-vite
 git clone https://github.com/pytest-dev/pytest.git /tmp/init-agent-bench-pytest
 git clone https://github.com/vuejs/core.git /tmp/init-agent-bench-vue-core
+git clone https://github.com/YOUR_USERNAME/init-agent.git /tmp/init-agent-bench-init-agent
+git clone https://github.com/laravel/framework.git /tmp/init-agent-bench-laravel-framework
 ```
 
 Use `--rebuild-index` after changing scanner, role detection, symbol extraction
@@ -82,6 +86,8 @@ does a broad local read take compared with generating the context pack?"
 The manifest intentionally includes both normal operational queries and
 counter-cases where documentation, examples, tests, CSS or migrations should be
 allowed to rank highly. This helps catch overfitting from one benchmark fix.
+Cases with `"command": "overview"` use `init-agent run --overview --json` and
+measure broad repository orientation instead of task-specific context ranking.
 
 Cases may include `notes` for known weak areas. For example, Vue compiler
 transform queries currently have overlapping compiler/runtime terminology that

@@ -2,6 +2,13 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.13.0
+
+- Added `init-agent overview` for broad repository orientation from indexed metadata.
+- Added `init-agent run --overview` so agents can prepare a project and get a broad overview in one command.
+- Overview mode prioritizes manifests, README/config files, likely entry points, route files, scripts and major subsystems.
+- Updated the `init-agent-orientation` skill template to use overview mode for broad repository questions.
+
 ## 0.12.0
 
 - Added a versioned `init-agent-orientation` skill template for coding agents.

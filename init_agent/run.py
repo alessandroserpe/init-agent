@@ -8,12 +8,13 @@ from typing import Any
 from .context_builder import build_context_pack
 from .git_reader import collect_git, has_git
 from .graph_store import GraphStore
+from .overview import build_overview_pack, render_overview_markdown, render_overview_text
 from .refresh import refresh_index
 from .scanner import INDEX_VERSION, scan_project
 from .utils import config_path, ensure_agent_dir, has_project_marker, write_json, utc_now
 
 
-def run_query(root: Path, query: str) -> dict[str, Any]:
+def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
     preparation = {
         "init": "skipped",
         "map": "skipped",
@@ -29,14 +30,14 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
         except Exception as exc:
             preparation["init"] = "failed"
             preparation["warnings"].append(f"init failed: {exc}")
-            return {"query": query, "preparation": preparation, "context": _empty_context(query)}
+            return _run_result(root, query, preparation, overview, empty=True)
 
     try:
         index_state = _index_state(root)
     except Exception as exc:
         preparation["map"] = "failed"
         preparation["warnings"].append(f"database check failed: {exc}")
-        return {"query": query, "preparation": preparation, "context": _empty_context(query)}
+        return _run_result(root, query, preparation, overview, empty=True)
 
     if index_state["files"] == 0 or not index_state["current"]:
         try:
@@ -51,7 +52,7 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
         except Exception as exc:
             preparation["map"] = "failed"
             preparation["warnings"].append(f"map failed: {exc}")
-            return {"query": query, "preparation": preparation, "context": _empty_context(query)}
+            return _run_result(root, query, preparation, overview, empty=True)
     else:
         result = refresh_index(root)
         if result["status"] == "OK":
@@ -88,12 +89,13 @@ def run_query(root: Path, query: str) -> dict[str, Any]:
             preparation["git"] = "failed"
             preparation["warnings"].append(f"git failed: {exc}")
 
-    context = build_context_pack(root, query) if preparation["map"] != "failed" else _empty_context(query)
-    return {"query": query, "preparation": preparation, "context": context}
+    return _run_result(root, query, preparation, overview, empty=preparation["map"] == "failed")
 
 
 def render_run_text(result: dict[str, Any]) -> str:
     prep = result["preparation"]
+    if result.get("overview_mode"):
+        return _render_run_overview_text(result)
     context = result["context"]
     lines = [
         "Init Agent Run",
@@ -133,6 +135,8 @@ def render_run_text(result: dict[str, Any]) -> str:
 
 def render_run_markdown(result: dict[str, Any]) -> str:
     prep = result["preparation"]
+    if result.get("overview_mode"):
+        return _render_run_overview_markdown(result)
     context = result["context"]
     lines = [
         "# Init Agent Context Pack",
@@ -213,6 +217,76 @@ def _empty_context(query: str) -> dict[str, Any]:
         "related_symbols": [],
         "recent_commits": [],
     }
+
+
+def _empty_overview(root: Path) -> dict[str, Any]:
+    return {
+        "project": {
+            "name": root.name,
+            "root": str(root),
+            "git": has_git(root),
+            "branch": None,
+            "last_map": None,
+        },
+        "suggested_first_reads": [],
+        "entry_points": [],
+        "manifests": [],
+        "subsystems": [],
+    }
+
+
+def _run_result(
+    root: Path,
+    query: str,
+    preparation: dict[str, Any],
+    overview: bool,
+    empty: bool = False,
+) -> dict[str, Any]:
+    if overview:
+        pack = _empty_overview(root) if empty else build_overview_pack(root)
+        return {"query": query, "preparation": preparation, "overview_mode": True, "overview": pack}
+    context = _empty_context(query) if empty else build_context_pack(root, query)
+    return {"query": query, "preparation": preparation, "context": context}
+
+
+def _render_preparation_lines(prep: dict[str, Any]) -> list[str]:
+    lines = [
+        "Preparing project...",
+        f"- Init: {_status_label(prep['init'])}",
+        f"- Map: {_status_label(prep['map'])}",
+        f"- Refresh: {_status_label(prep['refresh'])}",
+        f"- Git: {_status_label(prep['git'])}",
+    ]
+    for warning in prep["warnings"]:
+        lines.append(f"- Warning: {warning}")
+    return lines
+
+
+def _render_run_overview_text(result: dict[str, Any]) -> str:
+    lines = ["Init Agent Run", ""]
+    lines.extend(_render_preparation_lines(result["preparation"]))
+    lines.extend(["", render_overview_text(result["overview"])])
+    return "\n".join(lines)
+
+
+def _render_run_overview_markdown(result: dict[str, Any]) -> str:
+    prep = result["preparation"]
+    lines = [
+        "# Init Agent Repository Overview",
+        "",
+        "## Preparation",
+        f"- Init: {_status_label(prep['init'])}",
+        f"- Map: {_status_label(prep['map'])}",
+        f"- Refresh: {_status_label(prep['refresh'])}",
+        f"- Git: {_status_label(prep['git'])}",
+    ]
+    for warning in prep["warnings"]:
+        lines.append(f"- Warning: {warning}")
+    overview_markdown = render_overview_markdown(result["overview"]).splitlines()
+    if overview_markdown and overview_markdown[0].startswith("# "):
+        overview_markdown = overview_markdown[2:]
+    lines.extend(["", *overview_markdown])
+    return "\n".join(lines)
 
 
 def _status_label(status: str) -> str:

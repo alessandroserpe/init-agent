@@ -27,6 +27,12 @@ For a token estimate:
 init-agent estimate "fix login session bug"
 ```
 
+For a broad repository orientation:
+
+```bash
+init-agent run --overview --markdown
+```
+
 ## Why It Matters
 
 On a private PHP codebase with 274 indexed readable files:
@@ -95,7 +101,10 @@ init-agent git
 init-agent status
 init-agent doctor
 init-agent doctor --json
+init-agent overview
+init-agent overview --json
 init-agent run "fix login session bug"
+init-agent run --overview --markdown
 init-agent run "fix login session bug" --json
 init-agent run "fix login session bug" --markdown
 init-agent estimate "fix login session bug"
@@ -461,7 +470,35 @@ init-agent run "login sessione admin" --json
 init-agent run "login sessione admin" --markdown
 ```
 
-`--json` returns preparation metadata plus the context pack. `--markdown` returns a compact artifact designed to paste into an AI agent.
+Use `init-agent run --overview --markdown` when an agent needs a broad first
+map of a repository before a specific task. `--json` returns preparation
+metadata plus the context pack or overview pack. `--markdown` returns a compact
+artifact designed to paste into an AI agent.
+
+### `init-agent overview`
+
+Builds a broad repository orientation pack from the existing SQLite index. It
+does not read full file contents and does not call an LLM.
+
+Overview mode prefers general repository signals:
+
+- package manifests such as `pyproject.toml`, `package.json`, `composer.json`, `go.mod` and `Cargo.toml`
+- README and configuration files
+- likely CLI, server, app, router and entry-point files
+- route symbols and project/package scripts extracted during `map`
+- major top-level subsystems by indexed files, languages and roles
+
+Examples:
+
+```bash
+init-agent overview
+init-agent overview --json
+init-agent overview --markdown
+init-agent run --overview --markdown
+```
+
+Overview is heuristic. It is meant to tell an agent where to start, not to
+replace direct file reads.
 
 ### `init-agent estimate <text>`
 
@@ -608,7 +645,7 @@ Review `.agent/` before publishing a repository if you choose to commit generate
 
 ## Roadmap
 
-- Repository overview mode for broad "orient me in this repo" tasks.
+- Stronger repository overview mode for broad "orient me in this repo" tasks.
 - Optional tree-sitter support for more precise parsing.
 - JSON graph export for external tools and visualization.
 - Direct agent integrations via MCP, plugins or tool APIs.

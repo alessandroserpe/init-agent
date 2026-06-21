@@ -8,8 +8,10 @@ reading a repository broadly.
 
 ## Available Skills
 
-- `init-agent-orientation`: run `init-agent run`, then use `symbol`, `callers`,
-  `related`, `estimate` and `doctor` for targeted follow-up.
+- `init-agent-orientation`: run `init-agent run --overview` for broad repo
+  orientation, run `init-agent run "<task>"` for task-specific context, then
+  use `symbol`, `callers`, `related`, `estimate` and `doctor` for targeted
+  follow-up.
 
 ## Install For Codex
 
@@ -107,6 +109,9 @@ CLI agents:
 
 ```text
 Before broad repository inspection, run:
+init-agent run --overview --markdown
+
+For a specific task, run:
 init-agent run "<my task>" --markdown
 
 Use the suggested first reads as candidates, then verify by reading files.

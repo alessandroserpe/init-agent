@@ -52,13 +52,19 @@ This file tracks the next implementation steps for making `init-agent` more usef
 
 ## Phase 6: Repository Overview Mode
 
-- [ ] Add `init-agent overview` or `init-agent run --overview` for broad repository orientation.
-- [ ] Prefer manifest and entry-point files for overview queries: `pyproject.toml`, `package.json`, `composer.json`, `go.mod`, `Cargo.toml`, README, CLI modules, server/app modules, router files and config files.
-- [ ] Reduce noise from generic overview words such as `architecture`, `backend`, `frontend`, `test`, `entry point` when they are not specific enough.
-- [ ] Return a compact overview pack with likely entry points, major subsystems, package manifests and first files to read.
-- [ ] Add benchmark cases for general orientation on `init-agent`, Python/frontend repos and at least one PHP repo.
-- [ ] Update `init-agent-orientation` skill to use overview mode before falling back to refined `run` queries.
-- [ ] Document clearly that overview is still heuristic and must be verified by reading files.
+- [x] Add `init-agent overview` or `init-agent run --overview` for broad repository orientation.
+- [x] Prefer manifest and entry-point files for overview queries: `pyproject.toml`, `package.json`, `composer.json`, `go.mod`, `Cargo.toml`, README, CLI modules, server/app modules, router files and config files.
+- [x] Reduce noise from generic overview words such as `architecture`, `backend`, `frontend`, `test`, `entry point` when they are not specific enough.
+- [x] Return a compact overview pack with likely entry points, major subsystems, package manifests and first files to read.
+- [x] Add benchmark cases for general orientation on `init-agent`, Python/frontend repos and at least one PHP repo.
+- [x] Update `init-agent-orientation` skill to use overview mode before falling back to refined `run` queries.
+- [x] Document clearly that overview is still heuristic and must be verified by reading files.
+
+Follow-up ideas:
+
+- [ ] Improve Python framework overview entry-point hints, for example Django management modules such as `django/core/management/__init__.py`.
+- [ ] Reduce documentation noise in operational TypeScript/monorepo queries when the query is not docs-aware, for example Vite dependency optimizer context.
+- [ ] Improve Python tooling queries where words such as `setup` can refer to runtime flow as well as tests or helpers, for example pytest fixture setup planning.
 
 ## Phase 7: Local Orientation Feedback
 

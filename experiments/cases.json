@@ -301,5 +301,65 @@
       "packages-private/",
       ".github/"
     ]
+  },
+  {
+    "name": "init-agent-repository-overview",
+    "repo": "/tmp/init-agent-bench-init-agent",
+    "command": "overview",
+    "query": "repository overview",
+    "expected_files": [
+      "pyproject.toml",
+      "README.md",
+      "init_agent/cli.py"
+    ],
+    "noise_patterns": [
+      ".agent/",
+      ".github/"
+    ]
+  },
+  {
+    "name": "django-repository-overview",
+    "repo": "/tmp/init-agent-bench-django",
+    "command": "overview",
+    "query": "repository overview",
+    "expected_files": [
+      "pyproject.toml",
+      "django/__main__.py",
+      "django/core/management/__init__.py"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "docs/_static/"
+    ]
+  },
+  {
+    "name": "express-repository-overview",
+    "repo": "/tmp/init-agent-bench-express",
+    "command": "overview",
+    "query": "repository overview",
+    "expected_files": [
+      "package.json",
+      "index.js",
+      "lib/application.js"
+    ],
+    "noise_patterns": [
+      ".github/",
+      "node_modules/"
+    ]
+  },
+  {
+    "name": "laravel-repository-overview",
+    "repo": "/tmp/init-agent-bench-laravel-framework",
+    "command": "overview",
+    "query": "repository overview",
+    "expected_files": [
+      "composer.json",
+      "README.md",
+      "src/Illuminate/Foundation/Application.php"
+    ],
+    "noise_patterns": [
+      "vendor/",
+      ".agent/"
+    ]
   }
 ]

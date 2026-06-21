@@ -18,7 +18,15 @@ from init_agent.language_detector import detect_role
 from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
-from experiments.evaluate import load_cases, measure_indexed_file_read, scan_reduction_percent, strict_failures_for, summarize
+from experiments.evaluate import (
+    candidate_paths_for_case,
+    case_command,
+    load_cases,
+    measure_indexed_file_read,
+    scan_reduction_percent,
+    strict_failures_for,
+    summarize,
+)
 
 
 class InitAgentBaseTests(unittest.TestCase):
@@ -27,6 +35,7 @@ class InitAgentBaseTests(unittest.TestCase):
         skill_path = root / "skills" / "init-agent-orientation" / "SKILL.md"
         self.assertTrue(skill_path.exists())
         content = skill_path.read_text(encoding="utf-8")
+        self.assertIn("init-agent run --overview", content)
         self.assertIn("init-agent run", content)
         self.assertIn("init-agent symbol", content)
         self.assertIn("init-agent callers", content)
@@ -59,9 +68,30 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertEqual(len(cases), 1)
         self.assertEqual(cases[0]["name"], "django-auth-session-middleware")
 
+    def test_experiment_case_filter_loads_overview_case(self) -> None:
+        cases = load_cases(["init-agent-repository-overview"])
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["command"], "overview")
+
     def test_experiment_case_filter_rejects_unknown_case(self) -> None:
         with self.assertRaises(SystemExit):
             load_cases(["not-a-real-benchmark-case"])
+
+    def test_experiment_overview_case_uses_overview_candidates(self) -> None:
+        case = {"command": "overview"}
+        command = case_command(case)
+        self.assertIn("--overview", command)
+        paths = candidate_paths_for_case(
+            case,
+            {
+                "overview": {
+                    "suggested_first_reads": [{"path": "pyproject.toml"}],
+                    "entry_points": [{"path": "src/app/cli.py"}],
+                    "manifests": [{"path": "README.md"}],
+                }
+            },
+        )
+        self.assertEqual(paths, ["pyproject.toml", "src/app/cli.py", "README.md"])
 
     def test_scan_reduction_percent(self) -> None:
         self.assertEqual(scan_reduction_percent(100, 10), 90.0)
@@ -1565,6 +1595,121 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_overview_prefers_manifest_entry_points_and_subsystems(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["overview"]), 0)
+                rendered = output.getvalue()
+                self.assertIn("Init Agent Repository Overview", rendered)
+                self.assertIn("pyproject.toml", rendered)
+                self.assertIn("src/sample/cli.py", rendered)
+                self.assertIn("src/sample/server.py", rendered)
+                self.assertIn("frontend/package.json", rendered)
+                self.assertIn("Major subsystems:", rendered)
+            finally:
+                os.chdir(previous)
+
+    def test_overview_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["overview", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertIn("project", data)
+                self.assertIn("suggested_first_reads", data)
+                self.assertIn("entry_points", data)
+                self.assertIn("manifests", data)
+                self.assertIn("subsystems", data)
+                paths = [item["path"] for item in data["suggested_first_reads"]]
+                self.assertIn("pyproject.toml", paths)
+                self.assertLess(paths.index("pyproject.toml"), paths.index("tests/test_cli.py") if "tests/test_cli.py" in paths else 99)
+            finally:
+                os.chdir(previous)
+
+    def test_run_overview_prepares_uninitialized_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["run", "--overview", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["preparation"]["init"], "done")
+                self.assertEqual(data["preparation"]["map"], "done")
+                self.assertTrue((root / ".agent" / "graph.sqlite").exists())
+                self.assertIn("overview", data)
+                self.assertIn("pyproject.toml", [item["path"] for item in data["overview"]["manifests"]])
+            finally:
+                os.chdir(previous)
+
+    def test_run_overview_markdown_is_compact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["run", "--overview", "--markdown"]), 0)
+                rendered = output.getvalue()
+                self.assertIn("# Init Agent Repository Overview", rendered)
+                self.assertIn("## Suggested first reads", rendered)
+                self.assertIn("## Likely entry points", rendered)
+                self.assertIn("Heuristic overview", rendered)
+            finally:
+                os.chdir(previous)
+
+    def test_overview_caps_repeated_test_routes_and_prefers_core_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "composer.json").write_text('{"name": "sample/framework"}\n', encoding="utf-8")
+            (root / "README.md").write_text("# Sample Framework\n", encoding="utf-8")
+            source = root / "src" / "Framework" / "Foundation"
+            tests = root / "tests" / "Integration" / "Routing"
+            source.mkdir(parents=True)
+            tests.mkdir(parents=True)
+            (source / "Application.php").write_text(
+                "<?php\nclass Application { public function boot() { return true; } }\n",
+                encoding="utf-8",
+            )
+            noisy_routes = "\n".join(f"Route::get('/fixture-{index}', Handler::class);" for index in range(40))
+            (tests / "RouteFixtureTest.php").write_text(f"<?php\n{noisy_routes}\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["overview", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                paths = [item["path"] for item in data["suggested_first_reads"]]
+                self.assertIn("composer.json", paths)
+                self.assertIn("src/Framework/Foundation/Application.php", paths)
+                if "tests/Integration/Routing/RouteFixtureTest.php" in paths:
+                    self.assertLess(paths.index("composer.json"), paths.index("tests/Integration/Routing/RouteFixtureTest.php"))
+                    self.assertLess(
+                        paths.index("src/Framework/Foundation/Application.php"),
+                        paths.index("tests/Integration/Routing/RouteFixtureTest.php"),
+                    )
+            finally:
+                os.chdir(previous)
+
 
 def _create_context_fixture(root: Path) -> Path:
     (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
@@ -1583,6 +1728,26 @@ def _create_context_fixture(root: Path) -> Path:
         encoding="utf-8",
     )
     (root / "README.md").write_text("# Sample\n", encoding="utf-8")
+    return root
+
+
+def _create_overview_fixture(root: Path) -> Path:
+    (root / "pyproject.toml").write_text(
+        "[project]\nname = 'sample'\n[project.scripts]\nsample = 'sample.cli:main'\n",
+        encoding="utf-8",
+    )
+    (root / "README.md").write_text("# Sample\n\n## Usage\n\nRun the CLI.\n", encoding="utf-8")
+    source = root / "src" / "sample"
+    source.mkdir(parents=True)
+    (source / "cli.py").write_text("def main():\n    return 0\n", encoding="utf-8")
+    (source / "server.py").write_text("def create_app():\n    return object()\n", encoding="utf-8")
+    (source / "routes.py").write_text("@app.route('/health')\ndef health():\n    return 'ok'\n", encoding="utf-8")
+    frontend = root / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text('{"name": "frontend", "scripts": {"dev": "vite --host 0.0.0.0"}}\n', encoding="utf-8")
+    tests = root / "tests"
+    tests.mkdir()
+    (tests / "test_cli.py").write_text("def test_cli_main():\n    assert True\n", encoding="utf-8")
     return root
 
 
