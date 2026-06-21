@@ -2,6 +2,11 @@
 
 All notable changes to `init-agent` are documented here.
 
+## 0.14.4
+
+- Reduced documentation ranking noise in operational context queries by applying a stronger documentation penalty when the query is not docs-aware.
+- Kept docs-aware queries such as `docs ... guide` explicitly preferred for README and guide files.
+
 ## 0.14.3
 
 - Improved repository overview detection for Python framework package entry points such as `management`, `commands`, `cli`, `server`, `api`, `routing`, `routes` and `urls` package initializers.

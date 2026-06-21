@@ -894,6 +894,11 @@ class InitAgentBaseTests(unittest.TestCase):
                 "export function optimizeDepsCache() { return true; }\n",
                 encoding="utf-8",
             )
+            for name in ("index", "resolve", "scanner", "metadata", "server", "plugin", "runtime", "invalidation"):
+                (root / "src" / "optimizer" / f"{name}.ts").write_text(
+                    f"export function {name}OptimizerCacheInvalidation() {{ return true; }}\n",
+                    encoding="utf-8",
+                )
             (root / "playground/optimizer/cache-demo.ts").write_text(
                 "export function optimizeDepsCacheDemo() { return true; }\n",
                 encoding="utf-8",
@@ -910,13 +915,9 @@ class InitAgentBaseTests(unittest.TestCase):
                 pack = build_context_pack(root, "debug optimizer cache invalidation")
                 paths = [item["path"] for item in pack["candidate_files"]]
                 self.assertLess(paths.index("src/optimizer/cache.ts"), paths.index("playground/optimizer/cache-demo.ts"))
-                if "docs/guide/dep-pre-bundling.md" in paths:
-                    self.assertLess(paths.index("src/optimizer/cache.ts"), paths.index("docs/guide/dep-pre-bundling.md"))
+                self.assertNotIn("docs/guide/dep-pre-bundling.md", paths)
                 playground = next(item for item in pack["candidate_files"] if item["path"] == "playground/optimizer/cache-demo.ts")
                 self.assertIn("example/playground deprioritized for non-example query", playground["reasons"])
-                docs = next((item for item in pack["candidate_files"] if item["path"] == "docs/guide/dep-pre-bundling.md"), None)
-                if docs:
-                    self.assertIn("documentation deprioritized for non-docs query", docs["reasons"])
                 docs_pack = build_context_pack(root, "docs optimizer cache guide")
                 self.assertEqual(docs_pack["candidate_files"][0]["path"], "docs/guide/dep-pre-bundling.md")
             finally:

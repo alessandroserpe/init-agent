@@ -63,7 +63,7 @@ This file tracks the next implementation steps for making `init-agent` more usef
 Follow-up ideas:
 
 - [x] Improve Python framework overview entry-point hints, for example Django management modules such as `django/core/management/__init__.py`.
-- [ ] Reduce documentation noise in operational TypeScript/monorepo queries when the query is not docs-aware, for example Vite dependency optimizer context.
+- [x] Reduce documentation noise in operational TypeScript/monorepo queries when the query is not docs-aware, for example Vite dependency optimizer context.
 - [ ] Improve Python tooling queries where words such as `setup` can refer to runtime flow as well as tests or helpers, for example pytest fixture setup planning.
 
 ## Phase 7: Local Orientation Feedback

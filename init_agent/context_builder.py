@@ -420,7 +420,7 @@ def _adjust_role_type_scores(
             file_scores[path] *= 0.75
             _prepend_reason(reasons[path], "migration file deprioritized for non-database query")
         if (role == "documentation" or extension in DOCS_EXTENSIONS) and not has_docs_intent:
-            file_scores[path] *= 0.6
+            file_scores[path] *= 0.4
             _prepend_reason(reasons[path], "documentation deprioritized for non-docs query")
         if (role == "documentation" or extension in DOCS_EXTENSIONS) and has_docs_intent:
             file_scores[path] = file_scores[path] * 1.35 + 1.0
