@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Callable
 from io import BufferedIOBase
@@ -14,7 +15,8 @@ from . import __version__
 from .agent_tools import repo_graph_search, repo_overview, repo_related_file, repo_symbol_callers
 
 
-PROTOCOL_VERSION = "2024-11-05"
+SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 
 
 ToolHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
@@ -33,17 +35,22 @@ class InitAgentMcpServer:
 
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.debug_log = Path(os.environ["INIT_AGENT_MCP_DEBUG_LOG"]).expanduser() if os.environ.get("INIT_AGENT_MCP_DEBUG_LOG") else None
 
     def serve(self) -> int:
+        self._debug("server_start", {"root": str(self.root), "version": __version__})
         input_stream = sys.stdin.buffer
         output_stream = sys.stdout.buffer
         while True:
             try:
                 request = _read_message(input_stream)
                 if request is None:
+                    self._debug("server_eof", {})
                     break
+                self._debug("request", {"id": request.get("id"), "method": request.get("method")})
                 response = self.handle(request)
             except Exception as exc:
+                self._debug("error", {"message": str(exc)})
                 response = _error_response(None, -32603, str(exc))
             if response is not None:
                 _write_message(response, output_stream)
@@ -55,7 +62,7 @@ class InitAgentMcpServer:
         params = request.get("params") if isinstance(request.get("params"), dict) else {}
 
         if method == "initialize":
-            return _result_response(request_id, _initialize_result())
+            return _result_response(request_id, _initialize_result(params))
         if method == "notifications/initialized":
             return None
         if method == "tools/list":
@@ -86,6 +93,16 @@ class InitAgentMcpServer:
             return _tool_error(f"{name} failed: {exc}")
         return _tool_result(result)
 
+    def _debug(self, event: str, payload: dict[str, Any]) -> None:
+        if self.debug_log is None:
+            return
+        try:
+            self.debug_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.debug_log.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"event": event, **payload}, sort_keys=True) + "\n")
+        except OSError:
+            pass
+
 
 def _handle_repo_graph_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
@@ -114,9 +131,11 @@ def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[s
     return repo_symbol_callers(root, symbol, limit=limit, prepare=False)
 
 
-def _initialize_result() -> dict[str, Any]:
+def _initialize_result(params: dict[str, Any] | None = None) -> dict[str, Any]:
+    requested = (params or {}).get("protocolVersion")
+    protocol_version = requested if requested in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
     return {
-        "protocolVersion": PROTOCOL_VERSION,
+        "protocolVersion": protocol_version,
         "capabilities": {"tools": {}},
         "serverInfo": {"name": "init-agent", "version": __version__},
     }

@@ -90,6 +90,17 @@ codex mcp add init_agent -- init-agent-mcp --root /absolute/path/to/repository
 
 Restart Codex after running it, then check `/mcp` inside Codex.
 
+Codex currently defaults MCP startup to 30 seconds. After registration,
+init-agent checks the generated Codex config block and adds:
+
+```toml
+startup_timeout_sec = 120
+tool_timeout_sec = 120
+```
+
+Only the `[mcp_servers.init_agent]` block is touched, and a timestamped backup
+is created before changing the file.
+
 If a previous init-agent MCP registration already exists, replace it with:
 
 ```bash

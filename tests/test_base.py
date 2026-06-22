@@ -78,22 +78,36 @@ class InitAgentBaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             root.mkdir()
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
             log_path = Path(tmp) / "codex_args.json"
             fake_codex = _fake_codex(Path(tmp), log_path)
 
             output = StringIO()
-            with redirect_stdout(output):
-                self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--codex-command", str(fake_codex), "--json"]),
-                    0,
-                )
+            previous_codex_home = os.environ.get("CODEX_HOME")
+            os.environ["CODEX_HOME"] = str(codex_home)
+            try:
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["mcp", "install-codex", "--root", str(root), "--codex-command", str(fake_codex), "--json"]),
+                        0,
+                    )
+            finally:
+                if previous_codex_home is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = previous_codex_home
 
             data = json.loads(output.getvalue())
             self.assertTrue(data["installed"])
             self.assertEqual(data["method"], "codex_cli")
+            self.assertEqual(data["timeout_patch"]["status"], "updated")
             args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
             self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
             self.assertEqual(args[-2:], ["--root", str(root.resolve())])
+            config = (codex_home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn("startup_timeout_sec = 120", config)
+            self.assertIn("tool_timeout_sec = 120", config)
 
     def test_mcp_uninstall_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -473,6 +487,37 @@ class InitAgentBaseTests(unittest.TestCase):
                 tool_names,
                 {"repo_graph_search", "repo_overview", "repo_related_file", "repo_symbol_callers"},
             )
+
+    def test_mcp_initialize_negotiates_supported_protocol_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = InitAgentMcpServer(Path(tmp))
+            initialized = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2025-06-18"},
+                }
+            )
+            self.assertIsNotNone(initialized)
+            self.assertEqual(initialized["result"]["protocolVersion"], "2025-06-18")
+
+    def test_mcp_debug_log_records_start_and_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            debug_log = Path(tmp) / "mcp.log"
+            previous_debug = os.environ.get("INIT_AGENT_MCP_DEBUG_LOG")
+            os.environ["INIT_AGENT_MCP_DEBUG_LOG"] = str(debug_log)
+            try:
+                server = InitAgentMcpServer(Path(tmp))
+                server._debug("request", {"id": 1, "method": "initialize"})
+            finally:
+                if previous_debug is None:
+                    os.environ.pop("INIT_AGENT_MCP_DEBUG_LOG", None)
+                else:
+                    os.environ["INIT_AGENT_MCP_DEBUG_LOG"] = previous_debug
+            content = debug_log.read_text(encoding="utf-8")
+            self.assertIn('"event": "request"', content)
+            self.assertIn('"method": "initialize"', content)
 
     def test_mcp_content_length_framing_round_trips(self) -> None:
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
@@ -2915,12 +2960,23 @@ def _fake_codex(tmp: Path, log_path: Path) -> Path:
             [
                 f"#!{sys.executable}",
                 "import json",
+                "import os",
                 "import pathlib",
                 "import sys",
                 f"log = pathlib.Path({str(log_path)!r})",
                 "entries = json.loads(log.read_text(encoding='utf-8')) if log.exists() else []",
                 "entries.append(sys.argv[1:])",
                 "log.write_text(json.dumps(entries), encoding='utf-8')",
+                "if len(sys.argv) >= 5 and sys.argv[1:3] == ['mcp', 'add']:",
+                "    codex_home = os.environ.get('CODEX_HOME')",
+                "    if codex_home:",
+                "        config = pathlib.Path(codex_home) / 'config.toml'",
+                "        config.parent.mkdir(parents=True, exist_ok=True)",
+                "        server = sys.argv[3]",
+                "        command_index = sys.argv.index('--') + 1 if '--' in sys.argv else len(sys.argv)",
+                "        command = sys.argv[command_index] if command_index < len(sys.argv) else 'init-agent-mcp'",
+                "        args = sys.argv[command_index + 1:]",
+                "        config.write_text('[mcp_servers.%s]\\ncommand = %r\\nargs = %r\\n' % (server, command, args), encoding='utf-8')",
             ]
         )
         + "\n",

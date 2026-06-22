@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,10 +78,16 @@ def install_codex_mcp_cli(
     if remove_result is not None and remove_result.returncode != 0:
         warnings.append((remove_result.stderr or remove_result.stdout or "codex mcp remove returned a non-zero status").strip())
 
+    timeout_patch = ensure_codex_mcp_timeouts(_codex_config_path(), server_name)
+    if timeout_patch["status"] not in {"updated", "unchanged"}:
+        warnings.append(timeout_patch["message"])
+
     return {
         "installed": True,
         "status": "installed",
         "method": "codex_cli",
+        "config_path": timeout_patch.get("config_path"),
+        "backup_path": timeout_patch.get("backup_path"),
         "server_name": server_name,
         "root": str(resolved_root),
         "command": resolved_command,
@@ -88,7 +95,8 @@ def install_codex_mcp_cli(
         "stdout": add_result.stdout,
         "stderr": add_result.stderr,
         "warnings": warnings,
-        "message": "Codex MCP server registered through `codex mcp add`. Restart Codex or check /mcp.",
+        "timeout_patch": timeout_patch,
+        "message": "Codex MCP server registered through `codex mcp add`. Timeout settings were checked. Restart Codex or check /mcp.",
     }
 
 
@@ -242,6 +250,64 @@ def uninstall_codex_mcp_config(
     }
 
 
+def ensure_codex_mcp_timeouts(
+    config_path: Path,
+    server_name: str = DEFAULT_SERVER_NAME,
+    startup_timeout_sec: int = 120,
+    tool_timeout_sec: int = 120,
+) -> dict[str, Any]:
+    _validate_server_name(server_name)
+    target_config = config_path.expanduser()
+    section_header = f"[mcp_servers.{server_name}]"
+    if not target_config.exists():
+        return {
+            "status": "missing_config",
+            "config_path": str(target_config),
+            "backup_path": None,
+            "message": "Codex config.toml was not found for timeout patching.",
+        }
+
+    original = target_config.read_text(encoding="utf-8")
+    updated = _set_section_keys(
+        original,
+        section_header,
+        {
+            "startup_timeout_sec": str(startup_timeout_sec),
+            "tool_timeout_sec": str(tool_timeout_sec),
+        },
+    )
+    if updated is None:
+        return {
+            "status": "missing_section",
+            "config_path": str(target_config),
+            "backup_path": None,
+            "message": f"Codex MCP server section was not found for timeout patching: {section_header}",
+        }
+    if updated == original:
+        return {
+            "status": "unchanged",
+            "config_path": str(target_config),
+            "backup_path": None,
+            "message": "Codex MCP timeout settings were already present.",
+        }
+
+    backup_path = _backup_config(target_config)
+    target_config.write_text(updated, encoding="utf-8")
+    return {
+        "status": "updated",
+        "config_path": str(target_config),
+        "backup_path": str(backup_path),
+        "message": "Codex MCP timeout settings were added to config.toml.",
+    }
+
+
+def _codex_config_path() -> Path:
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        return Path(codex_home).expanduser() / "config.toml"
+    return DEFAULT_CODEX_CONFIG
+
+
 def _validate_server_name(server_name: str) -> None:
     if not SERVER_NAME_RE.match(server_name):
         raise ValueError("server name must contain only letters, numbers, underscores or hyphens")
@@ -294,6 +360,43 @@ def _replace_section(original: str, section_header: str, block: str) -> str:
     if end < len(lines) and not replacement.endswith("\n\n"):
         replacement += "\n"
     return "".join(lines[:start]) + replacement + "".join(lines[end:])
+
+
+def _set_section_keys(original: str, section_header: str, values: dict[str, str]) -> str | None:
+    lines = original.splitlines(keepends=True)
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == section_header:
+            start = index
+            break
+    if start is None:
+        return None
+
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        stripped = lines[index].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end = index
+            break
+
+    section = lines[start:end]
+    present = set()
+    for index, line in enumerate(section):
+        stripped = line.strip()
+        for key, value in values.items():
+            if stripped.startswith(f"{key} ") or stripped.startswith(f"{key}="):
+                section[index] = f"{key} = {value}\n"
+                present.add(key)
+                break
+
+    insert_at = len(section)
+    while insert_at > 1 and not section[insert_at - 1].strip():
+        insert_at -= 1
+    additions = [f"{key} = {value}\n" for key, value in values.items() if key not in present]
+    if additions:
+        section[insert_at:insert_at] = additions
+
+    return "".join(lines[:start] + section + lines[end:])
 
 
 def _remove_section(original: str, section_header: str) -> str:
