@@ -6,7 +6,7 @@ import argparse
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 from init_agent.context_builder import build_context_pack
@@ -15,7 +15,7 @@ from init_agent.doctor import run_doctor
 from init_agent.estimate import estimate_tokens
 from init_agent.graph_store import GraphStore
 from init_agent.language_detector import detect_role
-from init_agent.mcp_server import InitAgentMcpServer
+from init_agent.mcp_server import InitAgentMcpServer, _read_message, _write_message
 from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
@@ -69,6 +69,7 @@ class InitAgentBaseTests(unittest.TestCase):
         content = (root / "docs" / "mcp.md").read_text(encoding="utf-8")
         self.assertIn("[mcp_servers.init_agent]", content)
         self.assertIn('command = "init-agent-mcp"', content)
+        self.assertIn("Content-Length", content)
         self.assertIn("tools/list", content)
         self.assertIn("repo_graph_search", content)
 
@@ -267,6 +268,21 @@ class InitAgentBaseTests(unittest.TestCase):
                 tool_names,
                 {"repo_graph_search", "repo_overview", "repo_related_file", "repo_symbol_callers"},
             )
+
+    def test_mcp_content_length_framing_round_trips(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        body = json.dumps(request, separators=(",", ":")).encode("utf-8")
+        framed = b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
+        parsed = _read_message(BytesIO(framed))
+        self.assertEqual(parsed, request)
+
+        output = BytesIO()
+        _write_message({"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}, output)
+        raw = output.getvalue()
+        header, response_body = raw.split(b"\r\n\r\n", 1)
+        self.assertTrue(header.startswith(b"Content-Length: "))
+        self.assertEqual(int(header.split(b":", 1)[1].strip()), len(response_body))
+        self.assertEqual(json.loads(response_body.decode("utf-8"))["result"]["ok"], True)
 
     def test_mcp_tool_call_repo_graph_search_returns_structured_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from io import BufferedIOBase
 from pathlib import Path
 from typing import Any
 
@@ -34,17 +35,18 @@ class InitAgentMcpServer:
         self.root = root
 
     def serve(self) -> int:
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
+        input_stream = sys.stdin.buffer
+        output_stream = sys.stdout.buffer
+        while True:
             try:
-                request = json.loads(line)
+                request = _read_message(input_stream)
+                if request is None:
+                    break
                 response = self.handle(request)
             except Exception as exc:
                 response = _error_response(None, -32603, str(exc))
             if response is not None:
-                _write_message(response)
+                _write_message(response, output_stream)
         return 0
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any] | None:
@@ -190,9 +192,53 @@ def _error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
-def _write_message(message: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(message, separators=(",", ":")) + "\n")
-    sys.stdout.flush()
+def _read_message(stream: BufferedIOBase) -> dict[str, Any] | None:
+    first_line = _read_non_empty_line(stream)
+    if first_line is None:
+        return None
+    if first_line.lower().startswith(b"content-length:"):
+        content_length = _parse_content_length(first_line)
+        while True:
+            header_line = stream.readline()
+            if header_line == b"":
+                raise ValueError("unexpected EOF while reading MCP headers")
+            if header_line in {b"\r\n", b"\n"}:
+                break
+            if header_line.lower().startswith(b"content-length:"):
+                content_length = _parse_content_length(header_line)
+        body = stream.read(content_length)
+        if len(body) != content_length:
+            raise ValueError("unexpected EOF while reading MCP body")
+        return json.loads(body.decode("utf-8"))
+    return json.loads(first_line.decode("utf-8"))
+
+
+def _read_non_empty_line(stream: BufferedIOBase) -> bytes | None:
+    while True:
+        line = stream.readline()
+        if line == b"":
+            return None
+        if line.strip():
+            return line.strip()
+
+
+def _parse_content_length(line: bytes) -> int:
+    try:
+        _, raw_value = line.decode("ascii").split(":", 1)
+        length = int(raw_value.strip())
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("invalid MCP Content-Length header") from exc
+    if length < 0:
+        raise ValueError("invalid negative MCP Content-Length")
+    return length
+
+
+def _write_message(message: dict[str, Any], stream: BufferedIOBase | None = None) -> None:
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+    output = stream or sys.stdout.buffer
+    output.write(header + body)
+    output.flush()
 
 
 if __name__ == "__main__":

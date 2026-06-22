@@ -37,16 +37,31 @@ init-agent-mcp --help
 
 ## Smoke Test
 
-This sends two JSON-RPC messages to the stdio server:
+This sends two framed JSON-RPC messages to the stdio server. MCP stdio uses
+`Content-Length` framing:
 
 ```bash
-printf '%s\n' \
-'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-'{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-| init-agent-mcp --root .
+python3 - <<'PY'
+import json
+import subprocess
+
+messages = [
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+]
+
+payload = b""
+for message in messages:
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    payload += b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
+
+result = subprocess.run(["init-agent-mcp", "--root", "."], input=payload, stdout=subprocess.PIPE, check=True)
+print(result.stdout.decode("utf-8"))
+PY
 ```
 
-Expected result: two JSON lines. The second line should include:
+Expected result: framed JSON-RPC responses. The `tools/list` response should
+include:
 
 - `repo_graph_search`
 - `repo_overview`
