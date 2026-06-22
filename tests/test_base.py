@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import argparse
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -609,6 +610,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 added = json.loads(add_output.getvalue())
                 self.assertEqual(added["tool"], "repo_memory_add")
                 self.assertTrue(added["recorded"])
+                self.assertFalse(added["memory"]["stale"])
 
                 search_output = StringIO()
                 with redirect_stdout(search_output):
@@ -629,8 +631,79 @@ class InitAgentBaseTests(unittest.TestCase):
                 notes = json.loads(notes_output.getvalue())
                 self.assertEqual(notes["tool"], "repo_file_notes")
                 self.assertEqual(notes["notes"][0]["path"], "src/auth/session.py")
+                self.assertFalse(notes["notes"][0]["stale"])
             finally:
                 os.chdir(previous)
+
+    def test_tool_repo_memory_marks_note_stale_after_file_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--path",
+                                "src/auth/session.py",
+                                "--topic",
+                                "login session",
+                                "--note",
+                                "Session validation lives here.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                (root / "src" / "auth" / "session.py").write_text(
+                    "SESSION_TIMEOUT = 300\n\n"
+                    "def validateSession():\n"
+                    "    return False\n",
+                    encoding="utf-8",
+                )
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(main(["refresh", "--json"]), 0)
+                notes_output = StringIO()
+                with redirect_stdout(notes_output):
+                    self.assertEqual(
+                        main(["tool", "repo_file_notes", "--path", "src/auth/session.py", "--json"]),
+                        0,
+                    )
+                notes = json.loads(notes_output.getvalue())
+                self.assertTrue(notes["notes"][0]["stale"])
+                self.assertEqual(notes["notes"][0]["stale_reason"], "file changed since memory was recorded")
+            finally:
+                os.chdir(previous)
+
+    def test_agent_notes_schema_migrates_file_hash_column(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = root / ".agent"
+            agent.mkdir()
+            db = agent / "graph.sqlite"
+            with sqlite3.connect(db) as conn:
+                conn.executescript(
+                    """
+                    CREATE TABLE agent_notes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        path TEXT NOT NULL,
+                        topic TEXT,
+                        query TEXT,
+                        note TEXT NOT NULL,
+                        note_tokens_json TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    """
+                )
+            with GraphStore(root) as store:
+                store.initialize()
+                columns = {row["name"] for row in store.connection.execute("PRAGMA table_info(agent_notes)").fetchall()}
+            self.assertIn("file_sha256", columns)
 
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -862,8 +935,11 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
+            self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
             self.assertEqual(searched["result"]["structuredContent"]["memory"]["matches"][0]["path"], "src/auth/session.py")
+            self.assertFalse(searched["result"]["structuredContent"]["memory"]["matches"][0]["stale"])
             self.assertEqual(notes["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
+            self.assertFalse(notes["result"]["structuredContent"]["notes"][0]["stale"])
 
     def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

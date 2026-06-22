@@ -102,7 +102,8 @@ would help future similar tasks.
 When an inspected file contains useful operational knowledge, record a short
 local note with `repo_memory_add` or search previous notes with
 `repo_memory_search`. Notes should explain what was learned about the file,
-not copy source code.
+not copy source code. If a memory result is marked stale, re-read the file
+before relying on the note.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

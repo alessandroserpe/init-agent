@@ -269,7 +269,9 @@ init-agent tool repo_memory_add --path src/auth/session.py --topic "login sessio
 ```
 
 Memory is optional local working context. Keep notes short, factual and free of
-source code snippets.
+source code snippets. init-agent stores the indexed file hash with each note;
+`repo_memory_search` and `repo_file_notes` mark notes stale when the file hash
+later changes in the index.
 
 ## `init-agent tool repo_memory_search`
 

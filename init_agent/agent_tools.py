@@ -596,6 +596,10 @@ def render_repo_memory_search_text(result: dict[str, Any]) -> str:
         lines.append(f"- {item['path']} score {item['score']:.2f}")
         if item.get("topic"):
             lines.append(f"  topic: {item['topic']}")
+        if item.get("stale"):
+            lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
+        elif item.get("stale") is None:
+            lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
@@ -614,6 +618,10 @@ def render_repo_file_notes_text(result: dict[str, Any]) -> str:
         lines.append(f"- #{item['id']} {item['created_at']}")
         if item.get("topic"):
             lines.append(f"  topic: {item['topic']}")
+        if item.get("stale"):
+            lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
+        elif item.get("stale") is None:
+            lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)

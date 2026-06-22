@@ -21,7 +21,8 @@ calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
 index and return warnings if the index is missing or empty. Feedback tools can
 write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
 files. Memory tools can store short local file notes, also in
-`.agent/graph.sqlite`. Use
+`.agent/graph.sqlite`, and report notes as stale when the indexed file hash
+changed after the note was recorded. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 

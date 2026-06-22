@@ -37,15 +37,17 @@ def add_note(
         "query": query.strip(),
         "note": clean_note,
         "note_tokens_json": json.dumps(tokens, sort_keys=True),
+        "file_sha256": None,
         "source": normalized_source,
         "created_at": utc_now(),
     }
     with GraphStore(root) as store:
         store.initialize()
+        record["file_sha256"] = _file_sha256(store, normalized_path)
         cursor = store.connection.execute(
             """
-            INSERT INTO agent_notes(path, topic, query, note, note_tokens_json, source, created_at)
-            VALUES(:path, :topic, :query, :note, :note_tokens_json, :source, :created_at)
+            INSERT INTO agent_notes(path, topic, query, note, note_tokens_json, file_sha256, source, created_at)
+            VALUES(:path, :topic, :query, :note, :note_tokens_json, :file_sha256, :source, :created_at)
             """,
             record,
         )
@@ -67,7 +69,7 @@ def list_notes(root: Path, path: str | None = None, limit: int = 20) -> list[dic
         store.initialize()
         rows = store.connection.execute(
             f"""
-            SELECT id, path, topic, query, note, note_tokens_json, source, created_at
+            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, source, created_at
             FROM agent_notes
             {where}
             ORDER BY id DESC
@@ -75,7 +77,8 @@ def list_notes(root: Path, path: str | None = None, limit: int = 20) -> list[dic
             """,
             params,
         ).fetchall()
-    return [_row_to_note(row) for row in rows]
+        current_hashes = store.file_hashes()
+    return [_with_staleness(_row_to_note(row), current_hashes) for row in rows]
 
 
 def search_notes(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
@@ -111,6 +114,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
         "query": row["query"] or "",
         "note": row["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
+        "file_sha256": row["file_sha256"] or "",
         "source": row["source"],
         "created_at": row["created_at"],
     }
@@ -118,6 +122,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
 
 def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
     tokens = json.loads(str(record["note_tokens_json"]))
+    file_sha256 = str(record.get("file_sha256") or "")
     return {
         "id": int(record["id"]),
         "path": record["path"],
@@ -125,6 +130,10 @@ def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
         "query": record["query"],
         "note": record["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
+        "file_sha256": file_sha256,
+        "current_file_sha256": file_sha256,
+        "stale": False if file_sha256 else True,
+        "stale_reason": "" if file_sha256 else "file is not indexed",
         "source": record["source"],
         "created_at": record["created_at"],
     }
@@ -137,8 +146,41 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
         "topic": note["topic"],
         "query": note["query"],
         "note": note["note"],
+        "file_sha256": note.get("file_sha256", ""),
+        "current_file_sha256": note.get("current_file_sha256", ""),
+        "stale": note.get("stale"),
+        "stale_reason": note.get("stale_reason", ""),
         "source": note["source"],
         "created_at": note["created_at"],
+    }
+
+
+def _file_sha256(store: GraphStore, path: str) -> str | None:
+    row = store.connection.execute("SELECT sha256 FROM files WHERE path = ?", (path,)).fetchone()
+    return str(row["sha256"]) if row and row["sha256"] else None
+
+
+def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str]) -> dict[str, Any]:
+    path = str(note["path"])
+    stored_hash = str(note.get("file_sha256") or "")
+    current_hash = str(current_hashes.get(path) or "")
+    if not current_hash:
+        stale = True
+        reason = "file is not indexed"
+    elif not stored_hash:
+        stale = None
+        reason = "memory predates file hash tracking"
+    elif stored_hash != current_hash:
+        stale = True
+        reason = "file changed since memory was recorded"
+    else:
+        stale = False
+        reason = ""
+    return {
+        **note,
+        "current_file_sha256": current_hash,
+        "stale": stale,
+        "stale_reason": reason,
     }
 
 

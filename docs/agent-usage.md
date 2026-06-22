@@ -114,3 +114,4 @@ expected files, install paths and reload behavior.
 - Record feedback only after verifying files.
 - Keep feedback reasons factual and do not store source snippets.
 - Keep memory notes short, factual and tied to files already inspected.
+- Treat stale memory notes as hints only; re-read the file before relying on them.

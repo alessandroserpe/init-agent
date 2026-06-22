@@ -82,6 +82,15 @@ Follow-up ideas:
 - [x] Add feedback similarity diagnostics so agents can inspect why a feedback item matched a query.
 - [x] Add optional feedback decay or weighting by source after enough real agent sessions.
 
+## Phase 7b: Local Agent File Memory
+
+- [x] Add local agent notes tied to project-relative file paths.
+- [x] Expose memory tools through CLI and MCP: `repo_memory_add`, `repo_memory_search`, `repo_file_notes`.
+- [x] Keep notes short, factual and local; do not store full source snippets.
+- [x] Store the indexed file hash with each note and mark notes stale when the file changes.
+- [ ] Add memory clear/export/import commands if real usage shows notes accumulating too quickly.
+- [ ] Consider summarizing repeated notes per file only after enough real agent sessions.
+
 ## Phase 8: Public Release Readiness
 
 - [x] Review `.gitignore` for generated indexes, build output and local benchmark folders.

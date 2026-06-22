@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS agent_notes (
     query TEXT,
     note TEXT NOT NULL,
     note_tokens_json TEXT NOT NULL,
+    file_sha256 TEXT,
     source TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -125,7 +126,17 @@ class GraphStore:
 
     def initialize(self) -> None:
         self.connection.executescript(SCHEMA)
+        self._migrate_schema()
         self.connection.commit()
+
+    def _migrate_schema(self) -> None:
+        self._ensure_column("agent_notes", "file_sha256", "TEXT")
+
+    def _ensure_column(self, table: str, column: str, column_type: str) -> None:
+        rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        if column not in existing:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
     def set_meta(self, key: str, value: Any) -> None:
         stored = value if isinstance(value, str) else json.dumps(value, sort_keys=True)

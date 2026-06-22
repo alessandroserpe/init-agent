@@ -224,7 +224,8 @@ init-agent tool repo_memory_search --query "login session validation" --json
 ```
 
 This is local working memory, not model training and not a replacement for
-reading files before editing.
+reading files before editing. Memory results include a stale flag when the
+indexed file hash changed after the note was recorded.
 
 ## Validation
 
