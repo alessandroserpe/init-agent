@@ -12,7 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .agent_tools import repo_entrypoints, repo_graph_search, repo_overview, repo_related_file, repo_symbol_callers
+from .agent_tools import (
+    repo_entrypoints,
+    repo_feedback_add,
+    repo_feedback_explain,
+    repo_graph_search,
+    repo_overview,
+    repo_related_file,
+    repo_symbol_callers,
+)
 
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -84,6 +92,8 @@ class InitAgentMcpServer:
         handlers: dict[str, ToolHandler] = {
             "repo_graph_search": _handle_repo_graph_search,
             "repo_entrypoints": _handle_repo_entrypoints,
+            "repo_feedback_add": _handle_repo_feedback_add,
+            "repo_feedback_explain": _handle_repo_feedback_explain,
             "repo_overview": _handle_repo_overview,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
@@ -140,6 +150,29 @@ def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[s
         raise ValueError("repo_symbol_callers requires symbol")
     limit = int(arguments.get("limit") or 50)
     return repo_symbol_callers(root, symbol, limit=limit, prepare=False)
+
+
+def _handle_repo_feedback_add(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    path = str(arguments.get("path") or "").strip()
+    rating = str(arguments.get("rating") or "").strip()
+    reason = str(arguments.get("reason") or "").strip()
+    source = str(arguments.get("source") or "agent").strip()
+    if not query:
+        raise ValueError("repo_feedback_add requires query")
+    if not path:
+        raise ValueError("repo_feedback_add requires path")
+    if not rating:
+        raise ValueError("repo_feedback_add requires rating")
+    return repo_feedback_add(root, query, path, rating, reason=reason, source=source)
+
+
+def _handle_repo_feedback_explain(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        raise ValueError("repo_feedback_explain requires query")
+    include_all = bool(arguments.get("include_all") or False)
+    return repo_feedback_explain(root, query, include_all=include_all)
 
 
 def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:
@@ -221,6 +254,39 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
                 },
                 "required": ["symbol"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_feedback_add",
+            "description": "Record local orientation feedback after an agent has verified whether a file was useful, noisy or missing for a query.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Original or similar user task/query."},
+                    "path": {"type": "string", "description": "Project-relative path being evaluated."},
+                    "rating": {
+                        "type": "string",
+                        "enum": ["crucial", "useful", "neutral", "noisy", "missing"],
+                        "description": "Use missing for important files absent from the original pack; use noisy for false positives.",
+                    },
+                    "reason": {"type": "string", "description": "Short factual reason; do not include source code snippets."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["query", "path", "rating"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_feedback_explain",
+            "description": "Explain local feedback signals that would affect a similar query.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Query to explain."},
+                    "include_all": {"type": "boolean", "default": False, "description": "Include ignored feedback entries."},
+                },
+                "required": ["query"],
                 "additionalProperties": False,
             },
         },

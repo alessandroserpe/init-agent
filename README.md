@@ -180,7 +180,8 @@ context.
 | `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
-| `init-agent mcp` | Run the read-only MCP stdio wrapper for the repo tool contracts. |
+| `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
+| `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
 | `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
 | `init-agent mcp uninstall-codex` | Remove init-agent MCP from Codex through `codex mcp remove`. |
 | `init-agent estimate "<task>"` | Estimate context savings. |
@@ -206,6 +207,11 @@ init-agent feedback explain "fix login session bug"
 
 Feedback stays local in `.agent/graph.sqlite`. It is a bounded ranking signal,
 not training data and not a source of truth.
+
+MCP-capable agents can also use `repo_feedback_add` and
+`repo_feedback_explain` directly after verifying files. This lets an agent
+record that a file was useful, noisy, or missing from the initial pack without
+making feedback mandatory.
 
 See [docs/feedback.md](docs/feedback.md) for details.
 

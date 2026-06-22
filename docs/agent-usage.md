@@ -45,10 +45,13 @@ init-agent tool repo_overview --json
 init-agent tool repo_entrypoints --json
 init-agent tool repo_related_file --path src/auth/session.py --json
 init-agent tool repo_symbol_callers --symbol validateSession --json
+init-agent tool repo_feedback_add --query "debug login session redirect" --path src/auth/session.py --rating useful --reason "verified session flow" --json
+init-agent tool repo_feedback_explain --query "debug login session redirect" --json
 ```
 
 These commands return stable JSON contracts with candidate files, symbols,
-file neighborhoods, callers, commits, follow-up commands and safety warnings.
+file neighborhoods, callers, commits, follow-up commands, optional local
+feedback and safety warnings.
 
 For MCP-capable agents, run the stdio server from the repository root:
 
@@ -63,7 +66,8 @@ init-agent-mcp --root /path/to/repository
 ```
 
 The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
-`repo_entrypoints`, `repo_related_file` and `repo_symbol_callers`.
+`repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
+`repo_feedback_add` and `repo_feedback_explain`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 
@@ -105,3 +109,4 @@ expected files, install paths and reload behavior.
 - Read the suggested files before changing code.
 - Do not commit `.agent/`.
 - Record feedback only after verifying files.
+- Keep feedback reasons factual and do not store source snippets.

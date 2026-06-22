@@ -24,6 +24,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
+| `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -234,6 +235,30 @@ The response includes definitions, callers, follow-up commands and warnings.
 It is designed for agents that need to move from a symbol name to the files
 that define or call it.
 
+## `init-agent tool repo_feedback_add`
+
+Records local orientation feedback after a user, agent or benchmark has
+verified a file:
+
+```bash
+init-agent tool repo_feedback_add --query "fix login session bug" --path src/auth/session.py --rating useful --reason "verified session flow" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path frontend/src/types/index.ts --rating noisy --reason "type barrel file, not runtime entrypoint" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path parser.php --rating missing --reason "verified important entrypoint absent from initial pack" --json
+```
+
+Ratings are `crucial`, `useful`, `neutral`, `noisy` and `missing`. Feedback is
+optional and local. Reasons should be factual and should not contain source
+code snippets.
+
+## `init-agent tool repo_feedback_explain`
+
+Explains which local feedback entries would influence a similar query:
+
+```bash
+init-agent tool repo_feedback_explain --query "fix login session bug" --json
+init-agent tool repo_feedback_explain --query "fix login session bug" --all --json
+```
+
 ## `init-agent mcp`
 
 Runs a minimal MCP stdio server exposing the same repo tool contracts:
@@ -254,12 +279,15 @@ The server exposes:
 - `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
+- `repo_feedback_add`
+- `repo_feedback_explain`
 
-The server is read-only for project source files and lazy against the existing
-SQLite index. MCP tool calls do not auto-map or refresh the repository; use
-`init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
-first when you want automatic preparation. It does not call an LLM and does not
-send source code over the network.
+The server does not modify project source files and is lazy against the
+existing SQLite index. Feedback tools may write feedback metadata to
+`.agent/graph.sqlite`. MCP tool calls do not auto-map or refresh the
+repository; use `init-agent run --overview --markdown` or
+`init-agent run "<task>" --markdown` first when you want automatic preparation.
+It does not call an LLM and does not send source code over the network.
 
 See [mcp.md](mcp.md) for Codex MCP setup, the `codex mcp add` flow and smoke
 testing.

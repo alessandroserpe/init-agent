@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .context_builder import build_context_pack
+from .feedback import add_feedback, explain_feedback
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -181,6 +182,69 @@ def repo_entrypoints(root: Path, prepare: bool = True, limit: int = 12) -> dict[
         "supporting_files": supporting_files,
         "manifests": manifests,
         "followup_commands": _entrypoint_followup_commands(entry_points, supporting_files),
+        "warnings": warnings,
+    }
+
+
+def repo_feedback_add(
+    root: Path,
+    query: str,
+    path: str,
+    rating: str,
+    reason: str = "",
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Record local orientation feedback after an agent verifies a file."""
+
+    readiness = _readiness(root)
+    warnings = list(readiness["warnings"])
+    result: dict[str, Any] = {
+        "tool": "repo_feedback_add",
+        "contract": TOOL_CONTRACT_VERSION,
+        "query": query,
+        "path": Path(path).as_posix().lstrip("./"),
+        "rating": rating,
+        "source": source,
+        "recorded": False,
+        "feedback": None,
+        "warnings": warnings,
+        "safety": [
+            "record feedback only after reading or otherwise verifying the file",
+            "store factual reasons only; do not include source code snippets",
+        ],
+    }
+    if not readiness["ready"]:
+        return result
+    record = add_feedback(root, query, path, rating, reason=reason, source=source)
+    result.update(
+        {
+            "path": record["path"],
+            "rating": record["rating"],
+            "source": record["source"],
+            "recorded": True,
+            "feedback": record,
+        }
+    )
+    return result
+
+
+def repo_feedback_explain(root: Path, query: str, include_all: bool = False) -> dict[str, Any]:
+    """Explain local feedback signals for a future or repeated query."""
+
+    readiness = _readiness(root)
+    warnings = list(readiness["warnings"])
+    explanation = explain_feedback(root, query, include_all=include_all) if readiness["ready"] else {
+        "query": query,
+        "query_tokens": [],
+        "min_similarity": 0.0,
+        "signals": [],
+        "ignored": [],
+    }
+    return {
+        "tool": "repo_feedback_explain",
+        "contract": TOOL_CONTRACT_VERSION,
+        "query": query,
+        "feedback": explanation,
         "warnings": warnings,
     }
 
@@ -379,6 +443,48 @@ def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_feedback_add_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_feedback_add",
+        "",
+        f"Query: {result['query']}",
+        f"Path: {result['path']}",
+        f"Rating: {result['rating']}",
+        f"Source: {result['source']}",
+        f"Recorded: {'yes' if result['recorded'] else 'no'}",
+    ]
+    if result.get("feedback"):
+        lines.append(f"Feedback id: {result['feedback']['id']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
+    feedback = result["feedback"]
+    lines = [
+        "Init Agent Tool: repo_feedback_explain",
+        "",
+        f"Query: {feedback['query']}",
+        f"Query tokens: {', '.join(feedback['query_tokens']) if feedback['query_tokens'] else '-'}",
+        "",
+        "Matched signals:",
+    ]
+    if not feedback["signals"]:
+        lines.append("-")
+    for signal in feedback["signals"]:
+        lines.append(f"- {signal['path']} net {signal['net']:+.2f}")
+        for item in signal.get("items", [])[:3]:
+            lines.append(f"  - #{item['id']} {item['rating']} similarity {item['similarity']:.2f}")
+            if item.get("reason"):
+                lines.append(f"    reason: {item['reason']}")
+    if feedback.get("ignored"):
+        lines.extend(["", "Ignored feedback:"])
+        for item in feedback["ignored"][:5]:
+            lines.append(f"- #{item['id']} {item['rating']} {item['path']} ({item['ignored_reason']})")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
 def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbols: list[dict[str, Any]]) -> list[dict[str, str]]:
     commands: list[dict[str, str]] = []
     seen_paths: set[str] = set()
@@ -413,8 +519,9 @@ def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbol
                 {
                     "tool": "repo_feedback_add",
                     "command": (
-                        f"init-agent feedback add {_shell_double_quote(query)} {first_path} "
-                        '--rating useful --source agent --reason "verified relevant"'
+                        "init-agent tool repo_feedback_add "
+                        f"--query {_shell_double_quote(query)} --path {_shell_double_quote(first_path)} "
+                        '--rating useful --source agent --reason "verified relevant" --json'
                     ),
                     "reason": "record local feedback only after verifying the file",
                 }

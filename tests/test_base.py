@@ -351,6 +351,7 @@ class InitAgentBaseTests(unittest.TestCase):
     def test_export_json_output_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
             previous = Path.cwd()
             try:
                 os.chdir(root)
@@ -401,6 +402,7 @@ class InitAgentBaseTests(unittest.TestCase):
     def test_tool_repo_graph_search_json_output_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
             previous = Path.cwd()
             try:
                 os.chdir(root)
@@ -437,7 +439,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(len(data["candidate_files"]), 1)
                 commands = [item["command"] for item in data["followup_commands"]]
                 self.assertTrue(any(command.startswith("init-agent tool repo_related_file ") for command in commands))
-                self.assertTrue(any("init-agent feedback add" in command for command in commands))
+                self.assertTrue(any(command.startswith("init-agent tool repo_feedback_add ") for command in commands))
             finally:
                 os.chdir(previous)
 
@@ -532,6 +534,51 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_feedback_add_and_explain_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                add_output = StringIO()
+                with redirect_stdout(add_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_feedback_add",
+                                "--query",
+                                "login session",
+                                "--path",
+                                "src/auth/session.py",
+                                "--rating",
+                                "crucial",
+                                "--reason",
+                                "verified session flow",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                added = json.loads(add_output.getvalue())
+                self.assertEqual(added["tool"], "repo_feedback_add")
+                self.assertTrue(added["recorded"])
+                self.assertEqual(added["feedback"]["rating"], "crucial")
+
+                explain_output = StringIO()
+                with redirect_stdout(explain_output):
+                    self.assertEqual(
+                        main(["tool", "repo_feedback_explain", "--query", "login session", "--json"]),
+                        0,
+                    )
+                explained = json.loads(explain_output.getvalue())
+                self.assertEqual(explained["tool"], "repo_feedback_explain")
+                paths = {item["path"] for item in explained["feedback"]["signals"]}
+                self.assertIn("src/auth/session.py", paths)
+            finally:
+                os.chdir(previous)
+
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = InitAgentMcpServer(Path(tmp))
@@ -543,7 +590,15 @@ class InitAgentBaseTests(unittest.TestCase):
             tool_names = {item["name"] for item in listed["result"]["tools"]}
             self.assertEqual(
                 tool_names,
-                {"repo_graph_search", "repo_entrypoints", "repo_overview", "repo_related_file", "repo_symbol_callers"},
+                {
+                    "repo_graph_search",
+                    "repo_entrypoints",
+                    "repo_feedback_add",
+                    "repo_feedback_explain",
+                    "repo_overview",
+                    "repo_related_file",
+                    "repo_symbol_callers",
+                },
             )
 
     def test_mcp_initialize_negotiates_supported_protocol_version(self) -> None:
@@ -670,6 +725,45 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(data["tool"], "repo_entrypoints")
             self.assertTrue(data["entry_points"])
             self.assertIn("pyproject.toml", {item["path"] for item in data["manifests"]})
+
+    def test_mcp_tool_call_repo_feedback_add_and_explain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            added = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 34,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_feedback_add",
+                        "arguments": {
+                            "query": "login session",
+                            "path": "src/internal/state.py",
+                            "rating": "missing",
+                            "reason": "verified important file absent from first context pack",
+                        },
+                    },
+                }
+            )
+            explained = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 35,
+                    "method": "tools/call",
+                    "params": {"name": "repo_feedback_explain", "arguments": {"query": "login session", "include_all": True}},
+                }
+            )
+            self.assertIsNotNone(added)
+            self.assertIsNotNone(explained)
+            added_data = added["result"]["structuredContent"]
+            self.assertEqual(added_data["tool"], "repo_feedback_add")
+            self.assertTrue(added_data["recorded"])
+            self.assertEqual(added_data["feedback"]["rating"], "missing")
+            explained_data = explained["result"]["structuredContent"]
+            self.assertEqual(explained_data["tool"], "repo_feedback_explain")
+            self.assertEqual(explained_data["feedback"]["query"], "login session")
 
     def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

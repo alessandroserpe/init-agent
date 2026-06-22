@@ -92,7 +92,12 @@ help future similar tasks:
 ```bash
 init-agent feedback add "<user task>" path/to/file --rating useful --source agent --reason "verified relevant flow"
 init-agent feedback add "<user task>" path/to/noisy-file --rating noisy --source agent --reason "matched words but not useful"
+init-agent feedback add "<user task>" path/to/missing-file --rating missing --source agent --reason "verified important file absent from initial pack"
 ```
+
+When init-agent MCP tools are available, prefer `repo_feedback_add` for the
+same workflow after verification. Feedback is optional; use it only when it
+would help future similar tasks.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

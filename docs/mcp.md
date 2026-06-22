@@ -10,10 +10,14 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
+- `repo_feedback_add`
+- `repo_feedback_explain`
 
-It does not call an LLM and does not modify project source files. MCP tool
+It does not call an LLM and does not modify project source files. Most MCP tool
 calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
-index and return warnings if the index is missing or empty. Use
+index and return warnings if the index is missing or empty. Feedback tools can
+write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
+files. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
@@ -76,6 +80,8 @@ include:
 - `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
+- `repo_feedback_add`
+- `repo_feedback_explain`
 
 ## Codex Configuration
 

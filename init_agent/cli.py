@@ -10,11 +10,15 @@ from pathlib import Path
 from . import __version__
 from .agent_tools import (
     render_repo_entrypoints_text,
+    render_repo_feedback_add_text,
+    render_repo_feedback_explain_text,
     render_repo_graph_search_text,
     render_repo_overview_text,
     render_repo_related_file_text,
     render_repo_symbol_callers_text,
     repo_entrypoints,
+    repo_feedback_add,
+    repo_feedback_explain,
     repo_graph_search,
     repo_overview,
     repo_related_file,
@@ -178,6 +182,21 @@ def build_parser() -> argparse.ArgumentParser:
     repo_entrypoints_parser.add_argument("--limit", type=int, default=12, help="Maximum entry/supporting files to return.")
     repo_entrypoints_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_entrypoints_parser.set_defaults(handler=cmd_tool_repo_entrypoints)
+
+    repo_feedback_add_parser = tool_subparsers.add_parser("repo_feedback_add", help="Record verified local orientation feedback.")
+    repo_feedback_add_parser.add_argument("--query", required=True, help="Original or similar query.")
+    repo_feedback_add_parser.add_argument("--path", required=True, help="Project-relative file path.")
+    repo_feedback_add_parser.add_argument("--rating", required=True, choices=["crucial", "useful", "neutral", "noisy", "missing"], help="Feedback rating.")
+    repo_feedback_add_parser.add_argument("--reason", default="", help="Short factual reason. Do not include source snippets.")
+    repo_feedback_add_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Feedback source.")
+    repo_feedback_add_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_feedback_add_parser.set_defaults(handler=cmd_tool_repo_feedback_add)
+
+    repo_feedback_explain_parser = tool_subparsers.add_parser("repo_feedback_explain", help="Explain local feedback signals for a query.")
+    repo_feedback_explain_parser.add_argument("--query", required=True, help="Query to explain.")
+    repo_feedback_explain_parser.add_argument("--all", action="store_true", help="Include ignored feedback entries.")
+    repo_feedback_explain_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_feedback_explain_parser.set_defaults(handler=cmd_tool_repo_feedback_explain)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -880,6 +899,30 @@ def cmd_tool_repo_entrypoints(args: argparse.Namespace) -> int:
     else:
         print(render_repo_entrypoints_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_feedback_add(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_feedback_add(root, args.query, args.path, args.rating, reason=args.reason, source=args.source)
+    except ValueError as exc:
+        print(f"Feedback failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_feedback_add_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_tool_repo_feedback_explain(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_feedback_explain(root, args.query, include_all=args.all)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_feedback_explain_text(result))
+    return 0 if not result.get("warnings") else 1
 
 
 def cmd_feedback_add(args: argparse.Namespace) -> int:

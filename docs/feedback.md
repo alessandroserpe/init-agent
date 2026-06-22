@@ -28,6 +28,20 @@ init-agent feedback clear --path README.md
 init-agent feedback clear --all
 ```
 
+Agent-facing JSON contracts expose the same workflow:
+
+```bash
+init-agent tool repo_feedback_add --query "find app entrypoints" --path src/app/main.py --rating crucial --reason "verified runtime entrypoint" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path src/types/index.ts --rating noisy --reason "type barrel file, not runtime entrypoint" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path parser.php --rating missing --reason "verified important entrypoint absent from initial pack" --json
+init-agent tool repo_feedback_explain --query "find app entrypoints" --json
+```
+
+MCP-capable agents can call `repo_feedback_add` and `repo_feedback_explain`
+directly. Feedback is optional; it is useful when an agent has verified files
+and wants future similar queries to understand what was useful, noisy or
+missing.
+
 ## Ranking Effect
 
 Feedback affects `context` and `run` only when query tokens are similar enough.
