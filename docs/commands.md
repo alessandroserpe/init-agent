@@ -265,13 +265,25 @@ init-agent tool repo_feedback_explain --query "fix login session bug" --all --js
 Records a short local note about what an agent learned after inspecting a file:
 
 ```bash
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --query "debug login redirect" --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --query "debug login redirect" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 ```
 
 Memory is optional local working context. Keep notes short, factual and free of
 source code snippets. init-agent stores the indexed file hash with each note;
 `repo_memory_search` and `repo_file_notes` mark notes stale when the file hash
-later changes in the index.
+later changes in the index. Evidence values are `read_full_file`,
+`read_excerpt`, `manifest_only` and `inferred_from_graph`.
+
+## `init-agent tool repo_memory_list`
+
+Lists local file notes, optionally filtered by file, topic or stale status:
+
+```bash
+init-agent tool repo_memory_list --json
+init-agent tool repo_memory_list --path src/auth/session.py --json
+init-agent tool repo_memory_list --topic "login session" --json
+init-agent tool repo_memory_list --stale --json
+```
 
 ## `init-agent tool repo_memory_search`
 
@@ -288,6 +300,14 @@ Lists local notes attached to one file:
 
 ```bash
 init-agent tool repo_file_notes --path src/auth/session.py --json
+```
+
+## `init-agent tool repo_memory_delete`
+
+Deletes one local file note by id:
+
+```bash
+init-agent tool repo_memory_delete --id 12 --json
 ```
 
 ## `init-agent mcp`
@@ -313,7 +333,9 @@ The server exposes:
 - `repo_feedback_add`
 - `repo_feedback_explain`
 - `repo_memory_add`
+- `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_delete`
 - `repo_file_notes`
 
 The server does not modify project source files and is lazy against the

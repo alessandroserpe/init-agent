@@ -19,6 +19,8 @@ from .agent_tools import (
     repo_file_notes,
     repo_graph_search,
     repo_memory_add,
+    repo_memory_delete,
+    repo_memory_list,
     repo_memory_search,
     repo_overview,
     repo_related_file,
@@ -100,6 +102,8 @@ class InitAgentMcpServer:
             "repo_file_notes": _handle_repo_file_notes,
             "repo_overview": _handle_repo_overview,
             "repo_memory_add": _handle_repo_memory_add,
+            "repo_memory_delete": _handle_repo_memory_delete,
+            "repo_memory_list": _handle_repo_memory_list,
             "repo_memory_search": _handle_repo_memory_search,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
@@ -187,11 +191,27 @@ def _handle_repo_memory_add(root: Path, arguments: dict[str, Any]) -> dict[str, 
     topic = str(arguments.get("topic") or "").strip()
     query = str(arguments.get("query") or "").strip()
     source = str(arguments.get("source") or "agent").strip()
+    evidence = str(arguments.get("evidence") or "read_excerpt").strip()
     if not path:
         raise ValueError("repo_memory_add requires path")
     if not note:
         raise ValueError("repo_memory_add requires note")
-    return repo_memory_add(root, path, note, topic=topic, query=query, source=source)
+    return repo_memory_add(root, path, note, topic=topic, query=query, source=source, evidence=evidence)
+
+
+def _handle_repo_memory_list(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    path = str(arguments.get("path") or "").strip() or None
+    topic = str(arguments.get("topic") or "").strip() or None
+    stale_only = bool(arguments.get("stale_only") or False)
+    limit = int(arguments.get("limit") or 20)
+    return repo_memory_list(root, path=path, topic=topic, stale_only=stale_only, limit=limit)
+
+
+def _handle_repo_memory_delete(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    note_id = int(arguments.get("id") or 0)
+    if note_id <= 0:
+        raise ValueError("repo_memory_delete requires positive id")
+    return repo_memory_delete(root, note_id)
 
 
 def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -337,8 +357,28 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "topic": {"type": "string", "description": "Optional topic such as badge messages or runtime entrypoints."},
                     "query": {"type": "string", "description": "Optional user task/query that led to the note."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                    "evidence": {
+                        "type": "string",
+                        "enum": ["read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"],
+                        "default": "read_excerpt",
+                        "description": "How the note was verified.",
+                    },
                 },
                 "required": ["path", "note"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_list",
+            "description": "List local agent file notes, optionally filtered by path, topic or stale status.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Optional project-relative file path filter."},
+                    "topic": {"type": "string", "description": "Optional exact topic filter."},
+                    "stale_only": {"type": "boolean", "default": False, "description": "Return only stale or unknown-staleness notes."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                },
                 "additionalProperties": False,
             },
         },
@@ -353,6 +393,18 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_delete",
+            "description": "Delete one local agent file note by id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Memory note id to delete."},
+                },
+                "required": ["id"],
                 "additionalProperties": False,
             },
         },

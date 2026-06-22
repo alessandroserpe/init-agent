@@ -47,8 +47,9 @@ init-agent tool repo_related_file --path src/auth/session.py --json
 init-agent tool repo_symbol_callers --symbol validateSession --json
 init-agent tool repo_feedback_add --query "debug login session redirect" --path src/auth/session.py --rating useful --reason "verified session flow" --json
 init-agent tool repo_feedback_explain --query "debug login session redirect" --json
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_search --query "login session validation" --json
+init-agent tool repo_memory_list --stale --json
 ```
 
 These commands return stable JSON contracts with candidate files, symbols,
@@ -70,7 +71,8 @@ init-agent-mcp --root /path/to/repository
 The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
 `repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
 `repo_feedback_add`, `repo_feedback_explain`, `repo_memory_add`,
-`repo_memory_search` and `repo_file_notes`.
+`repo_memory_list`, `repo_memory_search`, `repo_memory_delete` and
+`repo_file_notes`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

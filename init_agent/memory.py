@@ -12,6 +12,7 @@ from .utils import utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
+EVIDENCE_TYPES = {"read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"}
 
 
 def add_note(
@@ -21,15 +22,19 @@ def add_note(
     topic: str = "",
     query: str = "",
     source: str = "agent",
+    evidence: str = "read_excerpt",
 ) -> dict[str, Any]:
     normalized_source = source.lower().strip()
     if normalized_source not in SOURCES:
         raise ValueError(f"source must be one of: {', '.join(sorted(SOURCES))}")
+    normalized_evidence = evidence.lower().strip() or "read_excerpt"
+    if normalized_evidence not in EVIDENCE_TYPES:
+        raise ValueError(f"evidence must be one of: {', '.join(sorted(EVIDENCE_TYPES))}")
     normalized_path = _normalize_path(path)
     clean_note = note.strip()
     if not clean_note:
         raise ValueError("note is required")
-    token_text = " ".join([normalized_path, topic, query, clean_note])
+    token_text = " ".join([normalized_path, topic, query, normalized_evidence, clean_note])
     tokens = tokenize_query(token_text)
     record = {
         "path": normalized_path,
@@ -38,6 +43,7 @@ def add_note(
         "note": clean_note,
         "note_tokens_json": json.dumps(tokens, sort_keys=True),
         "file_sha256": None,
+        "evidence": normalized_evidence,
         "source": normalized_source,
         "created_at": utc_now(),
     }
@@ -46,8 +52,8 @@ def add_note(
         record["file_sha256"] = _file_sha256(store, normalized_path)
         cursor = store.connection.execute(
             """
-            INSERT INTO agent_notes(path, topic, query, note, note_tokens_json, file_sha256, source, created_at)
-            VALUES(:path, :topic, :query, :note, :note_tokens_json, :file_sha256, :source, :created_at)
+            INSERT INTO agent_notes(path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at)
+            VALUES(:path, :topic, :query, :note, :note_tokens_json, :file_sha256, :evidence, :source, :created_at)
             """,
             record,
         )
@@ -56,20 +62,30 @@ def add_note(
     return _record_to_note(record)
 
 
-def list_notes(root: Path, path: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+def list_notes(
+    root: Path,
+    path: str | None = None,
+    topic: str | None = None,
+    stale_only: bool = False,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
     bounded_limit = max(1, min(limit, 100))
     clauses = []
     params: list[Any] = []
     if path:
         clauses.append("path = ?")
         params.append(_normalize_path(path))
+    if topic:
+        clauses.append("topic = ?")
+        params.append(topic.strip())
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(bounded_limit)
+    row_limit = 500 if stale_only else bounded_limit
+    params.append(row_limit)
     with GraphStore(root) as store:
         store.initialize()
         rows = store.connection.execute(
             f"""
-            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, source, created_at
+            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             {where}
             ORDER BY id DESC
@@ -78,7 +94,32 @@ def list_notes(root: Path, path: str | None = None, limit: int = 20) -> list[dic
             params,
         ).fetchall()
         current_hashes = store.file_hashes()
-    return [_with_staleness(_row_to_note(row), current_hashes) for row in rows]
+    notes = [_with_staleness(_row_to_note(row), current_hashes) for row in rows]
+    if stale_only:
+        notes = [note for note in notes if note.get("stale") is not False]
+    return notes[:bounded_limit]
+
+
+def delete_note(root: Path, note_id: int) -> dict[str, Any]:
+    if note_id <= 0:
+        raise ValueError("note id must be positive")
+    with GraphStore(root) as store:
+        store.initialize()
+        row = store.connection.execute(
+            """
+            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            FROM agent_notes
+            WHERE id = ?
+            """,
+            (note_id,),
+        ).fetchone()
+        if row is None:
+            return {"deleted": False, "id": note_id, "note": None}
+        current_hashes = store.file_hashes()
+        note = _with_staleness(_row_to_note(row), current_hashes)
+        store.connection.execute("DELETE FROM agent_notes WHERE id = ?", (note_id,))
+        store.connection.commit()
+    return {"deleted": True, "id": note_id, "note": _public_note(note)}
 
 
 def search_notes(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
@@ -115,6 +156,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
         "note": row["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
         "file_sha256": row["file_sha256"] or "",
+        "evidence": row["evidence"] or "unknown",
         "source": row["source"],
         "created_at": row["created_at"],
     }
@@ -134,6 +176,7 @@ def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
         "current_file_sha256": file_sha256,
         "stale": False if file_sha256 else True,
         "stale_reason": "" if file_sha256 else "file is not indexed",
+        "evidence": record["evidence"],
         "source": record["source"],
         "created_at": record["created_at"],
     }
@@ -150,6 +193,7 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
         "current_file_sha256": note.get("current_file_sha256", ""),
         "stale": note.get("stale"),
         "stale_reason": note.get("stale_reason", ""),
+        "evidence": note.get("evidence", "unknown"),
         "source": note["source"],
         "created_at": note["created_at"],
     }

@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS agent_notes (
     note TEXT NOT NULL,
     note_tokens_json TEXT NOT NULL,
     file_sha256 TEXT,
+    evidence TEXT,
     source TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -131,6 +132,7 @@ class GraphStore:
 
     def _migrate_schema(self) -> None:
         self._ensure_column("agent_notes", "file_sha256", "TEXT")
+        self._ensure_column("agent_notes", "evidence", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()

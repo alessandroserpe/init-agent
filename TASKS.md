@@ -88,6 +88,11 @@ Follow-up ideas:
 - [x] Expose memory tools through CLI and MCP: `repo_memory_add`, `repo_memory_search`, `repo_file_notes`.
 - [x] Keep notes short, factual and local; do not store full source snippets.
 - [x] Store the indexed file hash with each note and mark notes stale when the file changes.
+- [x] Add evidence levels so agents can distinguish full-file reads, excerpts, manifest checks and graph-only inferences.
+- [x] Add memory management tools for listing stale notes and deleting wrong or duplicate notes.
+- [ ] Add memory update/supersede commands after real usage shows the right replacement semantics.
+- [ ] Add topic-level aggregate memories for repository areas such as server startup, frontend boot or routing.
+- [ ] Consider scope levels for notes: repo-wide, file-specific and symbol-specific.
 - [ ] Add memory clear/export/import commands if real usage shows notes accumulating too quickly.
 - [ ] Consider summarizing repeated notes per file only after enough real agent sessions.
 

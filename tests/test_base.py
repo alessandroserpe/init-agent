@@ -602,6 +602,8 @@ class InitAgentBaseTests(unittest.TestCase):
                                 "debug login session",
                                 "--note",
                                 "Session validation lives here; verified during login redirect debugging.",
+                                "--evidence",
+                                "read_full_file",
                                 "--json",
                             ]
                         ),
@@ -611,6 +613,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(added["tool"], "repo_memory_add")
                 self.assertTrue(added["recorded"])
                 self.assertFalse(added["memory"]["stale"])
+                self.assertEqual(added["memory"]["evidence"], "read_full_file")
 
                 search_output = StringIO()
                 with redirect_stdout(search_output):
@@ -632,6 +635,36 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(notes["tool"], "repo_file_notes")
                 self.assertEqual(notes["notes"][0]["path"], "src/auth/session.py")
                 self.assertFalse(notes["notes"][0]["stale"])
+                self.assertEqual(notes["notes"][0]["evidence"], "read_full_file")
+
+                list_output = StringIO()
+                with redirect_stdout(list_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_list", "--topic", "login session", "--json"]),
+                        0,
+                    )
+                listed = json.loads(list_output.getvalue())
+                self.assertEqual(listed["tool"], "repo_memory_list")
+                self.assertEqual(listed["notes"][0]["path"], "src/auth/session.py")
+
+                delete_output = StringIO()
+                with redirect_stdout(delete_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_delete", "--id", str(added["memory"]["id"]), "--json"]),
+                        0,
+                    )
+                deleted = json.loads(delete_output.getvalue())
+                self.assertEqual(deleted["tool"], "repo_memory_delete")
+                self.assertTrue(deleted["deleted"])
+
+                empty_output = StringIO()
+                with redirect_stdout(empty_output):
+                    self.assertEqual(
+                        main(["tool", "repo_file_notes", "--path", "src/auth/session.py", "--json"]),
+                        0,
+                    )
+                empty_notes = json.loads(empty_output.getvalue())
+                self.assertEqual(empty_notes["notes"], [])
             finally:
                 os.chdir(previous)
 
@@ -676,6 +709,11 @@ class InitAgentBaseTests(unittest.TestCase):
                 notes = json.loads(notes_output.getvalue())
                 self.assertTrue(notes["notes"][0]["stale"])
                 self.assertEqual(notes["notes"][0]["stale_reason"], "file changed since memory was recorded")
+                stale_output = StringIO()
+                with redirect_stdout(stale_output):
+                    self.assertEqual(main(["tool", "repo_memory_list", "--stale", "--json"]), 0)
+                stale_notes = json.loads(stale_output.getvalue())
+                self.assertEqual(stale_notes["notes"][0]["path"], "src/auth/session.py")
             finally:
                 os.chdir(previous)
 
@@ -704,6 +742,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 store.initialize()
                 columns = {row["name"] for row in store.connection.execute("PRAGMA table_info(agent_notes)").fetchall()}
             self.assertIn("file_sha256", columns)
+            self.assertIn("evidence", columns)
 
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -724,6 +763,8 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_file_notes",
                     "repo_overview",
                     "repo_memory_add",
+                    "repo_memory_delete",
+                    "repo_memory_list",
                     "repo_memory_search",
                     "repo_related_file",
                     "repo_symbol_callers",
@@ -911,6 +952,7 @@ class InitAgentBaseTests(unittest.TestCase):
                             "topic": "login session",
                             "query": "debug login session",
                             "note": "Session validation lives here; verified during login redirect debugging.",
+                            "evidence": "read_full_file",
                         },
                     },
                 }
@@ -931,15 +973,37 @@ class InitAgentBaseTests(unittest.TestCase):
                     "params": {"name": "repo_file_notes", "arguments": {"path": "src/auth/session.py"}},
                 }
             )
+            listed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 39,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_list", "arguments": {"topic": "login session"}},
+                }
+            )
             self.assertIsNotNone(added)
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
+            self.assertIsNotNone(listed)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
+            self.assertEqual(added["result"]["structuredContent"]["memory"]["evidence"], "read_full_file")
             self.assertEqual(searched["result"]["structuredContent"]["memory"]["matches"][0]["path"], "src/auth/session.py")
             self.assertFalse(searched["result"]["structuredContent"]["memory"]["matches"][0]["stale"])
             self.assertEqual(notes["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
             self.assertFalse(notes["result"]["structuredContent"]["notes"][0]["stale"])
+            self.assertEqual(listed["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
+
+            deleted = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 40,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_delete", "arguments": {"id": added["result"]["structuredContent"]["memory"]["id"]}},
+                }
+            )
+            self.assertIsNotNone(deleted)
+            self.assertTrue(deleted["result"]["structuredContent"]["deleted"])
 
     def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,7 +13,9 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_feedback_add`
 - `repo_feedback_explain`
 - `repo_memory_add`
+- `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_delete`
 - `repo_file_notes`
 
 It does not call an LLM and does not modify project source files. Most MCP tool

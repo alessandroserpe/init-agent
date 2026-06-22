@@ -15,6 +15,8 @@ from .agent_tools import (
     render_repo_file_notes_text,
     render_repo_graph_search_text,
     render_repo_memory_add_text,
+    render_repo_memory_delete_text,
+    render_repo_memory_list_text,
     render_repo_memory_search_text,
     render_repo_overview_text,
     render_repo_related_file_text,
@@ -25,6 +27,8 @@ from .agent_tools import (
     repo_file_notes,
     repo_graph_search,
     repo_memory_add,
+    repo_memory_delete,
+    repo_memory_list,
     repo_memory_search,
     repo_overview,
     repo_related_file,
@@ -210,8 +214,22 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_add_parser.add_argument("--topic", default="", help="Optional topic for the note.")
     repo_memory_add_parser.add_argument("--query", default="", help="Optional task/query that led to the note.")
     repo_memory_add_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Memory source.")
+    repo_memory_add_parser.add_argument(
+        "--evidence",
+        default="read_excerpt",
+        choices=["read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"],
+        help="How the note was verified.",
+    )
     repo_memory_add_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_add_parser.set_defaults(handler=cmd_tool_repo_memory_add)
+
+    repo_memory_list_parser = tool_subparsers.add_parser("repo_memory_list", help="List local agent file notes.")
+    repo_memory_list_parser.add_argument("--path", help="Restrict to one project-relative file path.")
+    repo_memory_list_parser.add_argument("--topic", help="Restrict to an exact topic.")
+    repo_memory_list_parser.add_argument("--stale", action="store_true", help="Show only stale or unknown-staleness notes.")
+    repo_memory_list_parser.add_argument("--limit", type=int, default=20, help="Maximum notes to return.")
+    repo_memory_list_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_list_parser.set_defaults(handler=cmd_tool_repo_memory_list)
 
     repo_memory_search_parser = tool_subparsers.add_parser("repo_memory_search", help="Search local agent file notes.")
     repo_memory_search_parser.add_argument("--query", required=True, help="Task, topic or question to search.")
@@ -225,6 +243,11 @@ def build_parser() -> argparse.ArgumentParser:
     repo_file_notes_parser.add_argument("--limit", type=int, default=20, help="Maximum notes to return.")
     repo_file_notes_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_file_notes_parser.set_defaults(handler=cmd_tool_repo_file_notes)
+
+    repo_memory_delete_parser = tool_subparsers.add_parser("repo_memory_delete", help="Delete one local agent file note by id.")
+    repo_memory_delete_parser.add_argument("--id", type=int, required=True, help="Memory note id to delete.")
+    repo_memory_delete_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_delete_parser.set_defaults(handler=cmd_tool_repo_memory_delete)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -956,7 +979,15 @@ def cmd_tool_repo_feedback_explain(args: argparse.Namespace) -> int:
 def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
     root = project_root()
     try:
-        result = repo_memory_add(root, args.path, args.note, topic=args.topic, query=args.query, source=args.source)
+        result = repo_memory_add(
+            root,
+            args.path,
+            args.note,
+            topic=args.topic,
+            query=args.query,
+            source=args.source,
+            evidence=args.evidence,
+        )
     except ValueError as exc:
         print(f"Memory failed: {exc}", file=sys.stderr)
         return 2
@@ -965,6 +996,16 @@ def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
     else:
         print(render_repo_memory_add_text(result))
     return 0 if result.get("recorded") else 1
+
+
+def cmd_tool_repo_memory_list(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_memory_list(root, path=args.path, topic=args.topic, stale_only=args.stale, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_list_text(result))
+    return 0 if not result.get("warnings") else 1
 
 
 def cmd_tool_repo_memory_search(args: argparse.Namespace) -> int:
@@ -985,6 +1026,20 @@ def cmd_tool_repo_file_notes(args: argparse.Namespace) -> int:
     else:
         print(render_repo_file_notes_text(result))
     return 0 if not result.get("warnings") else 1
+
+
+def cmd_tool_repo_memory_delete(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_memory_delete(root, args.id)
+    except ValueError as exc:
+        print(f"Memory delete failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_delete_text(result))
+    return 0 if result.get("deleted") else 1
 
 
 def cmd_feedback_add(args: argparse.Namespace) -> int:
