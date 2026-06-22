@@ -12,14 +12,20 @@ from .agent_tools import (
     render_repo_entrypoints_text,
     render_repo_feedback_add_text,
     render_repo_feedback_explain_text,
+    render_repo_file_notes_text,
     render_repo_graph_search_text,
+    render_repo_memory_add_text,
+    render_repo_memory_search_text,
     render_repo_overview_text,
     render_repo_related_file_text,
     render_repo_symbol_callers_text,
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
+    repo_file_notes,
     repo_graph_search,
+    repo_memory_add,
+    repo_memory_search,
     repo_overview,
     repo_related_file,
     repo_symbol_callers,
@@ -197,6 +203,28 @@ def build_parser() -> argparse.ArgumentParser:
     repo_feedback_explain_parser.add_argument("--all", action="store_true", help="Include ignored feedback entries.")
     repo_feedback_explain_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_feedback_explain_parser.set_defaults(handler=cmd_tool_repo_feedback_explain)
+
+    repo_memory_add_parser = tool_subparsers.add_parser("repo_memory_add", help="Record a local agent note for a file.")
+    repo_memory_add_parser.add_argument("--path", required=True, help="Project-relative file path.")
+    repo_memory_add_parser.add_argument("--note", required=True, help="Short factual note. Do not include source snippets.")
+    repo_memory_add_parser.add_argument("--topic", default="", help="Optional topic for the note.")
+    repo_memory_add_parser.add_argument("--query", default="", help="Optional task/query that led to the note.")
+    repo_memory_add_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Memory source.")
+    repo_memory_add_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_add_parser.set_defaults(handler=cmd_tool_repo_memory_add)
+
+    repo_memory_search_parser = tool_subparsers.add_parser("repo_memory_search", help="Search local agent file notes.")
+    repo_memory_search_parser.add_argument("--query", required=True, help="Task, topic or question to search.")
+    repo_memory_search_parser.add_argument("--path", help="Restrict search to one project-relative file path.")
+    repo_memory_search_parser.add_argument("--limit", type=int, default=10, help="Maximum notes to return.")
+    repo_memory_search_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_search_parser.set_defaults(handler=cmd_tool_repo_memory_search)
+
+    repo_file_notes_parser = tool_subparsers.add_parser("repo_file_notes", help="List local agent notes for one file.")
+    repo_file_notes_parser.add_argument("--path", required=True, help="Project-relative file path.")
+    repo_file_notes_parser.add_argument("--limit", type=int, default=20, help="Maximum notes to return.")
+    repo_file_notes_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_file_notes_parser.set_defaults(handler=cmd_tool_repo_file_notes)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -922,6 +950,40 @@ def cmd_tool_repo_feedback_explain(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_feedback_explain_text(result))
+    return 0 if not result.get("warnings") else 1
+
+
+def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_memory_add(root, args.path, args.note, topic=args.topic, query=args.query, source=args.source)
+    except ValueError as exc:
+        print(f"Memory failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_add_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_tool_repo_memory_search(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_memory_search(root, args.query, path=args.path, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_search_text(result))
+    return 0 if not result.get("warnings") else 1
+
+
+def cmd_tool_repo_file_notes(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_file_notes(root, args.path, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_file_notes_text(result))
     return 0 if not result.get("warnings") else 1
 
 

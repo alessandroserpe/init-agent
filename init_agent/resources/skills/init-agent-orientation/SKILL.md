@@ -99,6 +99,11 @@ When init-agent MCP tools are available, prefer `repo_feedback_add` for the
 same workflow after verification. Feedback is optional; use it only when it
 would help future similar tasks.
 
+When an inspected file contains useful operational knowledge, record a short
+local note with `repo_memory_add` or search previous notes with
+`repo_memory_search`. Notes should explain what was learned about the file,
+not copy source code.
+
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:
 

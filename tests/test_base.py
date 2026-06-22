@@ -579,6 +579,59 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_memory_add_search_and_file_notes_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                add_output = StringIO()
+                with redirect_stdout(add_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--path",
+                                "src/auth/session.py",
+                                "--topic",
+                                "login session",
+                                "--query",
+                                "debug login session",
+                                "--note",
+                                "Session validation lives here; verified during login redirect debugging.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                added = json.loads(add_output.getvalue())
+                self.assertEqual(added["tool"], "repo_memory_add")
+                self.assertTrue(added["recorded"])
+
+                search_output = StringIO()
+                with redirect_stdout(search_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_search", "--query", "login session validation", "--json"]),
+                        0,
+                    )
+                searched = json.loads(search_output.getvalue())
+                self.assertEqual(searched["tool"], "repo_memory_search")
+                self.assertEqual(searched["memory"]["matches"][0]["path"], "src/auth/session.py")
+
+                notes_output = StringIO()
+                with redirect_stdout(notes_output):
+                    self.assertEqual(
+                        main(["tool", "repo_file_notes", "--path", "src/auth/session.py", "--json"]),
+                        0,
+                    )
+                notes = json.loads(notes_output.getvalue())
+                self.assertEqual(notes["tool"], "repo_file_notes")
+                self.assertEqual(notes["notes"][0]["path"], "src/auth/session.py")
+            finally:
+                os.chdir(previous)
+
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = InitAgentMcpServer(Path(tmp))
@@ -595,7 +648,10 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_entrypoints",
                     "repo_feedback_add",
                     "repo_feedback_explain",
+                    "repo_file_notes",
                     "repo_overview",
+                    "repo_memory_add",
+                    "repo_memory_search",
                     "repo_related_file",
                     "repo_symbol_callers",
                 },
@@ -764,6 +820,50 @@ class InitAgentBaseTests(unittest.TestCase):
             explained_data = explained["result"]["structuredContent"]
             self.assertEqual(explained_data["tool"], "repo_feedback_explain")
             self.assertEqual(explained_data["feedback"]["query"], "login session")
+
+    def test_mcp_tool_call_repo_memory_add_search_and_file_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            added = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 36,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_memory_add",
+                        "arguments": {
+                            "path": "src/auth/session.py",
+                            "topic": "login session",
+                            "query": "debug login session",
+                            "note": "Session validation lives here; verified during login redirect debugging.",
+                        },
+                    },
+                }
+            )
+            searched = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 37,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_search", "arguments": {"query": "login session validation"}},
+                }
+            )
+            notes = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 38,
+                    "method": "tools/call",
+                    "params": {"name": "repo_file_notes", "arguments": {"path": "src/auth/session.py"}},
+                }
+            )
+            self.assertIsNotNone(added)
+            self.assertIsNotNone(searched)
+            self.assertIsNotNone(notes)
+            self.assertTrue(added["result"]["structuredContent"]["recorded"])
+            self.assertEqual(searched["result"]["structuredContent"]["memory"]["matches"][0]["path"], "src/auth/session.py")
+            self.assertEqual(notes["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
 
     def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

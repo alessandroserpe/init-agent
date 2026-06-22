@@ -181,6 +181,7 @@ context.
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
+| `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
 | `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
 | `init-agent mcp uninstall-codex` | Remove init-agent MCP from Codex through `codex mcp remove`. |
@@ -214,6 +215,16 @@ record that a file was useful, noisy, or missing from the initial pack without
 making feedback mandatory.
 
 See [docs/feedback.md](docs/feedback.md) for details.
+
+Agents can also store short local file notes after understanding code:
+
+```bash
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_search --query "login session validation" --json
+```
+
+This is local working memory, not model training and not a replacement for
+reading files before editing.
 
 ## Validation
 

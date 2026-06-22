@@ -16,7 +16,10 @@ from .agent_tools import (
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
+    repo_file_notes,
     repo_graph_search,
+    repo_memory_add,
+    repo_memory_search,
     repo_overview,
     repo_related_file,
     repo_symbol_callers,
@@ -94,7 +97,10 @@ class InitAgentMcpServer:
             "repo_entrypoints": _handle_repo_entrypoints,
             "repo_feedback_add": _handle_repo_feedback_add,
             "repo_feedback_explain": _handle_repo_feedback_explain,
+            "repo_file_notes": _handle_repo_file_notes,
             "repo_overview": _handle_repo_overview,
+            "repo_memory_add": _handle_repo_memory_add,
+            "repo_memory_search": _handle_repo_memory_search,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
         }
@@ -173,6 +179,36 @@ def _handle_repo_feedback_explain(root: Path, arguments: dict[str, Any]) -> dict
         raise ValueError("repo_feedback_explain requires query")
     include_all = bool(arguments.get("include_all") or False)
     return repo_feedback_explain(root, query, include_all=include_all)
+
+
+def _handle_repo_memory_add(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    path = str(arguments.get("path") or "").strip()
+    note = str(arguments.get("note") or "").strip()
+    topic = str(arguments.get("topic") or "").strip()
+    query = str(arguments.get("query") or "").strip()
+    source = str(arguments.get("source") or "agent").strip()
+    if not path:
+        raise ValueError("repo_memory_add requires path")
+    if not note:
+        raise ValueError("repo_memory_add requires note")
+    return repo_memory_add(root, path, note, topic=topic, query=query, source=source)
+
+
+def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    path = str(arguments.get("path") or "").strip() or None
+    limit = int(arguments.get("limit") or 10)
+    if not query:
+        raise ValueError("repo_memory_search requires query")
+    return repo_memory_search(root, query, path=path, limit=limit)
+
+
+def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    path = str(arguments.get("path") or "").strip()
+    limit = int(arguments.get("limit") or 20)
+    if not path:
+        raise ValueError("repo_file_notes requires path")
+    return repo_file_notes(root, path, limit=limit)
 
 
 def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:
@@ -287,6 +323,49 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "include_all": {"type": "boolean", "default": False, "description": "Include ignored feedback entries."},
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_add",
+            "description": "Record a short local note about what an agent learned after verifying a repository file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Project-relative file path."},
+                    "note": {"type": "string", "description": "Short factual note; do not include source code snippets."},
+                    "topic": {"type": "string", "description": "Optional topic such as badge messages or runtime entrypoints."},
+                    "query": {"type": "string", "description": "Optional user task/query that led to the note."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["path", "note"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_search",
+            "description": "Search local agent file notes for a task, topic or question.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Task, topic or question to search in local notes."},
+                    "path": {"type": "string", "description": "Optional project-relative file path filter."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_file_notes",
+            "description": "Return local agent notes attached to one project file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Project-relative file path."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                },
+                "required": ["path"],
                 "additionalProperties": False,
             },
         },

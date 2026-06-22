@@ -8,6 +8,7 @@ from typing import Any
 
 from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback
+from .memory import add_note, list_notes, search_notes
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -249,6 +250,86 @@ def repo_feedback_explain(root: Path, query: str, include_all: bool = False) -> 
     }
 
 
+def repo_memory_add(
+    root: Path,
+    path: str,
+    note: str,
+    topic: str = "",
+    query: str = "",
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Record a local file note after an agent understands a file."""
+
+    readiness = _readiness(root)
+    warnings = list(readiness["warnings"])
+    normalized_path = Path(path).as_posix().lstrip("./")
+    result: dict[str, Any] = {
+        "tool": "repo_memory_add",
+        "contract": TOOL_CONTRACT_VERSION,
+        "path": normalized_path,
+        "topic": topic,
+        "query": query,
+        "source": source,
+        "recorded": False,
+        "memory": None,
+        "warnings": warnings,
+        "safety": [
+            "record memory only after reading or otherwise verifying the file",
+            "store short factual notes only; do not include source code snippets",
+        ],
+    }
+    if not readiness["ready"]:
+        return result
+    record = add_note(root, normalized_path, note, topic=topic, query=query, source=source)
+    result.update(
+        {
+            "path": record["path"],
+            "topic": record["topic"],
+            "query": record["query"],
+            "source": record["source"],
+            "recorded": True,
+            "memory": record,
+        }
+    )
+    return result
+
+
+def repo_memory_search(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
+    """Search local file notes for a task or topic."""
+
+    readiness = _readiness(root)
+    warnings = list(readiness["warnings"])
+    memory = search_notes(root, query, path=path, limit=limit) if readiness["ready"] else {
+        "query": query,
+        "query_tokens": [],
+        "path": path,
+        "matches": [],
+    }
+    return {
+        "tool": "repo_memory_search",
+        "contract": TOOL_CONTRACT_VERSION,
+        "query": query,
+        "memory": memory,
+        "warnings": warnings,
+    }
+
+
+def repo_file_notes(root: Path, path: str, limit: int = 20) -> dict[str, Any]:
+    """Return local notes attached to one project file."""
+
+    readiness = _readiness(root)
+    warnings = list(readiness["warnings"])
+    normalized_path = Path(path).as_posix().lstrip("./")
+    notes = list_notes(root, path=normalized_path, limit=limit) if readiness["ready"] else []
+    return {
+        "tool": "repo_file_notes",
+        "contract": TOOL_CONTRACT_VERSION,
+        "path": normalized_path,
+        "notes": notes,
+        "warnings": warnings,
+    }
+
+
 def _readiness(root: Path) -> dict[str, Any]:
     db_path = root / ".agent" / "graph.sqlite"
     if not db_path.is_file():
@@ -481,6 +562,59 @@ def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
         lines.extend(["", "Ignored feedback:"])
         for item in feedback["ignored"][:5]:
             lines.append(f"- #{item['id']} {item['rating']} {item['path']} ({item['ignored_reason']})")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_memory_add_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_memory_add",
+        "",
+        f"Path: {result['path']}",
+        f"Topic: {result['topic'] or '-'}",
+        f"Query: {result['query'] or '-'}",
+        f"Source: {result['source']}",
+        f"Recorded: {'yes' if result['recorded'] else 'no'}",
+    ]
+    if result.get("memory"):
+        lines.append(f"Memory id: {result['memory']['id']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_memory_search_text(result: dict[str, Any]) -> str:
+    memory = result["memory"]
+    lines = [
+        "Init Agent Tool: repo_memory_search",
+        "",
+        f"Query: {memory['query']}",
+        "Matches:",
+    ]
+    if not memory["matches"]:
+        lines.append("-")
+    for item in memory["matches"]:
+        lines.append(f"- {item['path']} score {item['score']:.2f}")
+        if item.get("topic"):
+            lines.append(f"  topic: {item['topic']}")
+        lines.append(f"  note: {item['note']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_file_notes_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_file_notes",
+        "",
+        f"Path: {result['path']}",
+        "Notes:",
+    ]
+    if not result["notes"]:
+        lines.append("-")
+    for item in result["notes"]:
+        lines.append(f"- #{item['id']} {item['created_at']}")
+        if item.get("topic"):
+            lines.append(f"  topic: {item['topic']}")
+        lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

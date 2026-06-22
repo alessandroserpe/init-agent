@@ -92,6 +92,17 @@ CREATE TABLE IF NOT EXISTS orientation_feedback (
     source TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS agent_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL,
+    topic TEXT,
+    query TEXT,
+    note TEXT NOT NULL,
+    note_tokens_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 

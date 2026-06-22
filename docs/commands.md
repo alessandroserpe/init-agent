@@ -25,6 +25,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
+| `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -259,6 +260,34 @@ init-agent tool repo_feedback_explain --query "fix login session bug" --json
 init-agent tool repo_feedback_explain --query "fix login session bug" --all --json
 ```
 
+## `init-agent tool repo_memory_add`
+
+Records a short local note about what an agent learned after inspecting a file:
+
+```bash
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --query "debug login redirect" --note "Session validation lives here; verified during redirect debugging." --json
+```
+
+Memory is optional local working context. Keep notes short, factual and free of
+source code snippets.
+
+## `init-agent tool repo_memory_search`
+
+Searches local file notes:
+
+```bash
+init-agent tool repo_memory_search --query "login session validation" --json
+init-agent tool repo_memory_search --query "badge unread count" --path src/ui/messages.js --json
+```
+
+## `init-agent tool repo_file_notes`
+
+Lists local notes attached to one file:
+
+```bash
+init-agent tool repo_file_notes --path src/auth/session.py --json
+```
+
 ## `init-agent mcp`
 
 Runs a minimal MCP stdio server exposing the same repo tool contracts:
@@ -281,9 +310,12 @@ The server exposes:
 - `repo_symbol_callers`
 - `repo_feedback_add`
 - `repo_feedback_explain`
+- `repo_memory_add`
+- `repo_memory_search`
+- `repo_file_notes`
 
 The server does not modify project source files and is lazy against the
-existing SQLite index. Feedback tools may write feedback metadata to
+existing SQLite index. Feedback and memory tools may write metadata to
 `.agent/graph.sqlite`. MCP tool calls do not auto-map or refresh the
 repository; use `init-agent run --overview --markdown` or
 `init-agent run "<task>" --markdown` first when you want automatic preparation.
