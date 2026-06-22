@@ -61,8 +61,9 @@ class InitAgentBaseTests(unittest.TestCase):
     def test_main_readme_documents_two_command_codex_install(self) -> None:
         root = Path(__file__).resolve().parents[1]
         content = (root / "README.md").read_text(encoding="utf-8")
-        self.assertIn("## Optional: Codex Skill", content)
+        self.assertIn("## Use With Codex", content)
         self.assertIn("pipx install git+https://github.com/alessandroserpe/init-agent.git", content)
+        self.assertIn("init-agent mcp install-codex", content)
         self.assertIn("init-agent install-skill codex", content)
 
     def test_mcp_docs_include_codex_config_and_smoke_test(self) -> None:

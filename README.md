@@ -101,12 +101,24 @@ Query: fix login session bug
 The output is orientation material. The agent should still read and verify the
 suggested files before changing code.
 
-## Optional: Codex Skill
+## Use With Codex
 
-Install the CLI, then install the bundled Codex skill:
+Install the CLI once, then register the MCP server with Codex:
 
 ```bash
 pipx install git+https://github.com/alessandroserpe/init-agent.git
+init-agent mcp install-codex
+```
+
+This registers `init-agent` as a general Codex MCP server. It uses the current
+Codex session working directory, so you do not need to reinstall it for every
+repository. Use `--root /path/to/repo` only when you intentionally want to pin
+the server to one repository.
+
+You can also install the bundled Codex skill, which teaches Codex when to call
+the CLI/MCP tools and how to verify the suggested files:
+
+```bash
 init-agent install-skill codex
 ```
 
@@ -116,7 +128,8 @@ Then open Codex from any repository and ask:
 Use the init-agent-orientation skill to orient yourself in this repository.
 ```
 
-See [skills/README.md](skills/README.md) for skill details and troubleshooting.
+See [docs/mcp.md](docs/mcp.md) for MCP setup and
+[skills/README.md](skills/README.md) for skill details and troubleshooting.
 
 ## Other Coding Agents
 
@@ -226,6 +239,7 @@ See [docs/security.md](docs/security.md) for details.
 - Symbol extraction is regex-based and intentionally shallow.
 - Import/include resolution is best-effort.
 - Context ranking is heuristic and may surface relevant-looking but non-essential files.
+- Entrypoint discovery is heuristic and may miss custom boot files or include support files.
 - Context packs are a starting point, not a source of truth.
 - Refresh is incremental by file hash, but it does not yet do dependency-aware cascading updates.
 - No built-in LLM execution.
@@ -233,11 +247,12 @@ See [docs/security.md](docs/security.md) for details.
 
 ## Roadmap
 
-- JSON graph export for external tools and visualization.
-- Agent-facing repo tool contracts for search, overview, related files and symbol callers.
-- MCP configuration examples for specific agent runtimes.
+- More precise entrypoint classification for frontend, deploy, docs and custom PHP projects.
+- Better filtering of barrel/type/schema files from runtime entrypoint results.
+- MCP and skill installers for additional agent runtimes after their formats are verified.
 - Link chat and agent sessions to repository context packs.
 - Dependency-aware incremental updates.
+- Graph visualization.
 - Language and framework plugin support.
 - Optional tree-sitter support for more precise parsing.
 
