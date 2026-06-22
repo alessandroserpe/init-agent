@@ -4,6 +4,7 @@ All notable changes to `init-agent` are documented here.
 
 ## Unreleased
 
+- Added `init-agent tool repo_graph_search --query ... --json` as an agent-facing JSON search contract.
 - Added `init-agent export --json` to export the local graph metadata without source contents.
 - Added GitHub Actions CI for Python 3.11, 3.12 and 3.13.
 - Made benchmark strict mode usable in CI by falling back to the current checkout for the init-agent overview case.

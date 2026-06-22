@@ -19,6 +19,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent overview` | Print a broad repository orientation pack. |
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
+| `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
 | `init-agent query <text>` | Search paths, symbols, roles and commits. |
@@ -152,6 +153,32 @@ init-agent run "login sessione admin" --markdown
 ```
 
 Use `init-agent run --overview --markdown` for broad repository orientation.
+
+## `init-agent tool repo_graph_search`
+
+Returns a compact JSON contract designed for agent/tool integrations. It uses
+the same preparation pipeline as `run`, then reshapes the context pack into
+stable tool fields:
+
+```bash
+init-agent tool repo_graph_search --query "login session bug" --json
+```
+
+The response includes:
+
+- `tool`
+- `contract`
+- `query`
+- `preparation`
+- `candidate_files`
+- `suggested_first_reads`
+- `symbols`
+- `related_commits`
+- `followup_commands`
+- `warnings`
+
+This is not a full MCP server yet. It is the JSON contract that a future MCP
+tool can expose without asking an agent to parse terminal Markdown.
 
 ## `init-agent overview`
 

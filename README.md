@@ -162,6 +162,7 @@ context.
 |---|---|
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
+| `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
 | `init-agent estimate "<task>"` | Estimate context savings. |
 | `init-agent export --json` | Export the local graph metadata for external tools. |
 | `init-agent doctor` | Check local index health. |

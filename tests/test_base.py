@@ -135,6 +135,49 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_graph_search_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["tool", "repo_graph_search", "--query", "login session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_graph_search")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertEqual(data["query"], "login session")
+                self.assertIn("preparation", data)
+                self.assertGreaterEqual(len(data["candidate_files"]), 1)
+                self.assertIn("src/auth/session.py", data["suggested_first_reads"])
+                self.assertIn("symbols", data)
+                self.assertIn("related_commits", data)
+                self.assertIn("followup_commands", data)
+                self.assertIn("warnings", data)
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_graph_search_limit_and_followups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["tool", "repo_graph_search", "--query", "login session", "--limit", "1", "--json"]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                self.assertEqual(len(data["candidate_files"]), 1)
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any(command.startswith("init-agent related ") for command in commands))
+                self.assertTrue(any("init-agent feedback add" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
     def test_experiment_cases_manifest_is_valid(self) -> None:
         cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"
         cases = json.loads(cases_path.read_text(encoding="utf-8"))

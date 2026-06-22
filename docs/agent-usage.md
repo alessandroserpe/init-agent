@@ -37,6 +37,16 @@ For context savings:
 init-agent estimate "debug login session redirect"
 ```
 
+For structured agent integrations:
+
+```bash
+init-agent tool repo_graph_search --query "debug login session redirect" --json
+```
+
+This returns a stable JSON contract with candidate files, symbols, commits,
+follow-up commands and safety warnings. It is the bridge toward future MCP
+support without requiring an MCP server yet.
+
 ## Codex
 
 Install the bundled Codex skill:

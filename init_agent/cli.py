@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .agent_tools import render_repo_graph_search_text, repo_graph_search
 from .context_builder import build_context_pack
 from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
@@ -107,6 +108,15 @@ def build_parser() -> argparse.ArgumentParser:
     install_skill_parser.add_argument("--target-dir", help="Override the skills directory, mainly for testing.")
     install_skill_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     install_skill_parser.set_defaults(handler=cmd_install_skill)
+
+    tool_parser = subparsers.add_parser("tool", help="Run agent-facing tool contracts.")
+    tool_subparsers = tool_parser.add_subparsers(dest="tool_command")
+
+    repo_graph_search_parser = tool_subparsers.add_parser("repo_graph_search", help="Search the local graph for an agent task.")
+    repo_graph_search_parser.add_argument("--query", required=True, help="Free-text task or question.")
+    repo_graph_search_parser.add_argument("--limit", type=int, default=10, help="Maximum candidate files to return.")
+    repo_graph_search_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_graph_search_parser.set_defaults(handler=cmd_tool_repo_graph_search)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -585,6 +595,16 @@ def cmd_install_skill(args: argparse.Namespace) -> int:
         print(f"- Target: {result['target']}")
         print("Open a new Codex session to load the skill.")
     return 0
+
+
+def cmd_tool_repo_graph_search(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_graph_search(root, args.query, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_graph_search_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 
 def cmd_feedback_add(args: argparse.Namespace) -> int:
