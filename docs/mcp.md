@@ -39,8 +39,13 @@ init-agent-mcp --help
 
 ## Smoke Test
 
-This sends two framed JSON-RPC messages to the stdio server. MCP stdio uses
-`Content-Length` framing:
+This sends two framed JSON-RPC messages to the stdio server. `init-agent-mcp`
+supports both common stdio framings:
+
+- `Content-Length` framed JSON-RPC messages.
+- JSON-line messages, which Codex may use when launching local MCP servers.
+
+The smoke test below uses `Content-Length` framing:
 
 ```bash
 python3 - <<'PY'
@@ -204,6 +209,8 @@ enabled_tools = ["repo_overview", "repo_graph_search"]
 ## Notes
 
 - `init-agent-mcp` is a stdio server. It is not meant to be used interactively.
+- The server auto-detects input framing and responds with the same framing
+  style: `Content-Length` or JSON-line.
 - MCP tool calls read the existing local index and do not auto-map or refresh
   the repository.
 - MCP clients start the process and exchange JSON-RPC messages through
