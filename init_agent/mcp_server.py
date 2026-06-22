@@ -20,6 +20,7 @@ PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 
 
 ToolHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
+JsonRpcMessage = tuple[dict[str, Any], str]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,17 +44,18 @@ class InitAgentMcpServer:
         output_stream = sys.stdout.buffer
         while True:
             try:
-                request = _read_message(input_stream)
-                if request is None:
+                read_result = _read_message(input_stream)
+                if read_result is None:
                     self._debug("server_eof", {})
                     break
+                request, response_format = read_result
                 self._debug("request", _debug_request_payload(request))
                 response = self.handle(request)
             except Exception as exc:
                 self._debug("error", {"message": str(exc)})
                 response = _error_response(None, -32603, str(exc))
             if response is not None:
-                _write_message(response, output_stream)
+                _write_message(response, output_stream, response_format=response_format)
         return 0
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any] | None:
@@ -232,12 +234,12 @@ def _error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
-def _read_message(stream: BufferedIOBase) -> dict[str, Any] | None:
+def _read_message(stream: BufferedIOBase) -> JsonRpcMessage | None:
     first_line = _read_non_empty_line(stream)
     if first_line is None:
         return None
     if first_line.startswith(b"{"):
-        return json.loads(first_line.decode("utf-8"))
+        return json.loads(first_line.decode("utf-8")), "jsonl"
 
     headers = [first_line]
     while True:
@@ -257,7 +259,7 @@ def _read_message(stream: BufferedIOBase) -> dict[str, Any] | None:
         body = stream.read(content_length)
         if len(body) != content_length:
             raise ValueError("unexpected EOF while reading MCP body")
-        return json.loads(body.decode("utf-8"))
+        return json.loads(body.decode("utf-8")), "content_length"
     raise ValueError("missing MCP Content-Length header")
 
 
@@ -281,11 +283,14 @@ def _parse_content_length(line: bytes) -> int:
     return length
 
 
-def _write_message(message: dict[str, Any], stream: BufferedIOBase | None = None) -> None:
+def _write_message(message: dict[str, Any], stream: BufferedIOBase | None = None, response_format: str = "content_length") -> None:
     body = json.dumps(message, separators=(",", ":")).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
     output = stream or sys.stdout.buffer
-    output.write(header + body)
+    if response_format == "jsonl":
+        output.write(body + b"\n")
+    else:
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        output.write(header + body)
     output.flush()
 
 

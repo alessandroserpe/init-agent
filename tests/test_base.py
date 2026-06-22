@@ -536,8 +536,9 @@ class InitAgentBaseTests(unittest.TestCase):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         body = json.dumps(request, separators=(",", ":")).encode("utf-8")
         framed = b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
-        parsed = _read_message(BytesIO(framed))
+        parsed, message_format = _read_message(BytesIO(framed))
         self.assertEqual(parsed, request)
+        self.assertEqual(message_format, "content_length")
 
         output = BytesIO()
         _write_message({"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}, output)
@@ -546,6 +547,16 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertTrue(header.startswith(b"Content-Length: "))
         self.assertEqual(int(header.split(b":", 1)[1].strip()), len(response_body))
         self.assertEqual(json.loads(response_body.decode("utf-8"))["result"]["ok"], True)
+
+    def test_mcp_json_line_framing_round_trips(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+        parsed, message_format = _read_message(BytesIO(json.dumps(request).encode("utf-8") + b"\n"))
+        self.assertEqual(parsed, request)
+        self.assertEqual(message_format, "jsonl")
+
+        output = BytesIO()
+        _write_message({"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}, output, response_format="jsonl")
+        self.assertEqual(json.loads(output.getvalue().decode("utf-8"))["result"]["ok"], True)
 
     def test_mcp_framing_accepts_extra_headers_before_content_length(self) -> None:
         request = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
@@ -557,7 +568,9 @@ class InitAgentBaseTests(unittest.TestCase):
             + b"\r\n\r\n"
             + body
         )
-        self.assertEqual(_read_message(BytesIO(framed)), request)
+        parsed, message_format = _read_message(BytesIO(framed))
+        self.assertEqual(parsed, request)
+        self.assertEqual(message_format, "content_length")
 
     def test_mcp_tool_call_repo_graph_search_returns_structured_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
