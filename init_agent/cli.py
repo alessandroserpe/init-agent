@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
     mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
     mcp_install_codex = mcp_subparsers.add_parser("install-codex", help="Register init-agent MCP with Codex using `codex mcp add`.")
-    mcp_install_codex.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    mcp_install_codex.add_argument("--root", help="Optional repository root to pin. Omit to use the Codex session working directory.")
     mcp_install_codex.add_argument("--server-name", default="init_agent", help="MCP server name to register.")
     mcp_install_codex.add_argument("--replace", action="store_true", help="Remove an existing Codex MCP server with the same name before adding it.")
     mcp_install_codex.add_argument("--codex-command", help="Override the codex executable path, mainly for testing.")
@@ -411,7 +411,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
     try:
         if args.manual_config:
             result = install_codex_mcp_config(
-                Path(args.root),
+                Path(args.root) if args.root else None,
                 config_path=Path(args.config_path) if args.config_path else None,
                 server_name=args.server_name,
                 replace=args.replace,
@@ -419,7 +419,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
             result["method"] = "manual_config"
         else:
             result = install_codex_mcp_cli(
-                Path(args.root),
+                Path(args.root) if args.root else None,
                 server_name=args.server_name,
                 codex_command=args.codex_command,
                 replace=args.replace,
@@ -446,7 +446,12 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
             print(f"Backup: {result['backup_path']}")
         print(f"Server: {result['server_name']}")
         print(f"Command: {result['command']}")
-        print(f"Root: {result['root']}")
+        if result.get("root"):
+            print(f"Root: {result['root']}")
+        else:
+            print("Root: Codex session working directory")
+        if result.get("root_mode"):
+            print(f"Root mode: {result['root_mode']}")
         for warning in result.get("warnings", []):
             print(f"Warning: {warning}")
         print()

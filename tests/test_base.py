@@ -76,6 +76,42 @@ class InitAgentBaseTests(unittest.TestCase):
 
     def test_mcp_install_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            log_path = Path(tmp) / "codex_args.json"
+            fake_codex = _fake_codex(Path(tmp), log_path)
+
+            output = StringIO()
+            previous_codex_home = os.environ.get("CODEX_HOME")
+            os.environ["CODEX_HOME"] = str(codex_home)
+            try:
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["mcp", "install-codex", "--codex-command", str(fake_codex), "--json"]),
+                        0,
+                    )
+            finally:
+                if previous_codex_home is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = previous_codex_home
+
+            data = json.loads(output.getvalue())
+            self.assertTrue(data["installed"])
+            self.assertEqual(data["method"], "codex_cli")
+            self.assertEqual(data["root_mode"], "dynamic")
+            self.assertIsNone(data["root"])
+            self.assertEqual(data["timeout_patch"]["status"], "updated")
+            args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
+            self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
+            self.assertEqual(len(args), 5)
+            self.assertNotIn("--root", args)
+            config = (codex_home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn("startup_timeout_sec = 120", config)
+            self.assertIn("tool_timeout_sec = 120", config)
+
+    def test_mcp_install_codex_can_pin_root_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             root.mkdir()
             codex_home = Path(tmp) / ".codex"
@@ -100,14 +136,11 @@ class InitAgentBaseTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertTrue(data["installed"])
-            self.assertEqual(data["method"], "codex_cli")
-            self.assertEqual(data["timeout_patch"]["status"], "updated")
+            self.assertEqual(data["root_mode"], "pinned")
+            self.assertEqual(data["root"], str(root.resolve()))
             args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
             self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
             self.assertEqual(args[-2:], ["--root", str(root.resolve())])
-            config = (codex_home / "config.toml").read_text(encoding="utf-8")
-            self.assertIn("startup_timeout_sec = 120", config)
-            self.assertIn("tool_timeout_sec = 120", config)
 
     def test_mcp_uninstall_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -242,7 +242,8 @@ Runs a minimal MCP stdio server exposing the same repo tool contracts:
 init-agent mcp
 init-agent mcp --root /path/to/repository
 init-agent-mcp --root /path/to/repository
-init-agent mcp install-codex --root .
+init-agent mcp install-codex
+init-agent mcp install-codex --root /path/to/repository
 init-agent mcp uninstall-codex
 ```
 
@@ -250,6 +251,7 @@ The server exposes:
 
 - `repo_graph_search`
 - `repo_overview`
+- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
 

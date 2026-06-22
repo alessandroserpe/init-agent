@@ -17,7 +17,7 @@ SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def install_codex_mcp_cli(
-    root: Path,
+    root: Path | None = None,
     server_name: str = DEFAULT_SERVER_NAME,
     command: str | None = None,
     codex_command: str | None = None,
@@ -25,7 +25,7 @@ def install_codex_mcp_cli(
 ) -> dict[str, Any]:
     """Install the server through Codex's own MCP management command."""
     _validate_server_name(server_name)
-    resolved_root = root.expanduser().resolve()
+    resolved_root = root.expanduser().resolve() if root is not None else None
     resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
     resolved_codex = codex_command or shutil.which("codex")
     if not resolved_codex:
@@ -34,7 +34,8 @@ def install_codex_mcp_cli(
             "status": "codex_not_found",
             "method": "codex_cli",
             "server_name": server_name,
-            "root": str(resolved_root),
+            "root": str(resolved_root) if resolved_root else None,
+            "root_mode": "pinned" if resolved_root else "dynamic",
             "command": resolved_command,
             "message": "Could not find the codex executable. Install Codex or use --manual-config --experimental.",
         }
@@ -55,9 +56,9 @@ def install_codex_mcp_cli(
         server_name,
         "--",
         resolved_command,
-        "--root",
-        str(resolved_root),
     ]
+    if resolved_root is not None:
+        add_command.extend(["--root", str(resolved_root)])
     add_result = subprocess.run(add_command, capture_output=True, text=True, check=False)
     if add_result.returncode != 0:
         return {
@@ -65,7 +66,8 @@ def install_codex_mcp_cli(
             "status": "failed",
             "method": "codex_cli",
             "server_name": server_name,
-            "root": str(resolved_root),
+            "root": str(resolved_root) if resolved_root else None,
+            "root_mode": "pinned" if resolved_root else "dynamic",
             "command": resolved_command,
             "codex_command": add_command,
             "returncode": add_result.returncode,
@@ -89,7 +91,8 @@ def install_codex_mcp_cli(
         "config_path": timeout_patch.get("config_path"),
         "backup_path": timeout_patch.get("backup_path"),
         "server_name": server_name,
-        "root": str(resolved_root),
+        "root": str(resolved_root) if resolved_root else None,
+        "root_mode": "pinned" if resolved_root else "dynamic",
         "command": resolved_command,
         "codex_command": add_command,
         "stdout": add_result.stdout,
@@ -144,7 +147,7 @@ def uninstall_codex_mcp_cli(
 
 
 def install_codex_mcp_config(
-    root: Path,
+    root: Path | None = None,
     config_path: Path | None = None,
     server_name: str = DEFAULT_SERVER_NAME,
     command: str | None = None,
@@ -154,7 +157,7 @@ def install_codex_mcp_config(
 
     target_config = config_path or DEFAULT_CODEX_CONFIG
     target_config = target_config.expanduser()
-    resolved_root = root.expanduser().resolve()
+    resolved_root = root.expanduser().resolve() if root is not None else None
     resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
     section_header = f"[mcp_servers.{server_name}]"
     block = _config_block(section_header, resolved_command, resolved_root)
@@ -173,7 +176,8 @@ def install_codex_mcp_config(
                     "config_path": str(target_config),
                     "backup_path": str(backup_path),
                     "server_name": server_name,
-                    "root": str(resolved_root),
+                    "root": str(resolved_root) if resolved_root else None,
+                    "root_mode": "pinned" if resolved_root else "dynamic",
                     "command": resolved_command,
                     "message": "Codex MCP config updated. Restart Codex to load init-agent MCP tools.",
                 }
@@ -183,7 +187,8 @@ def install_codex_mcp_config(
                 "config_path": str(target_config),
                 "backup_path": None,
                 "server_name": server_name,
-                "root": str(resolved_root),
+                "root": str(resolved_root) if resolved_root else None,
+                "root_mode": "pinned" if resolved_root else "dynamic",
                 "command": resolved_command,
                 "message": f"Codex MCP server already exists: {section_header}. Use --replace to update only that section.",
             }
@@ -203,7 +208,8 @@ def install_codex_mcp_config(
         "config_path": str(target_config),
         "backup_path": str(backup_path) if backup_path else None,
         "server_name": server_name,
-        "root": str(resolved_root),
+        "root": str(resolved_root) if resolved_root else None,
+        "root_mode": "pinned" if resolved_root else "dynamic",
         "command": resolved_command,
         "message": "Codex MCP config updated. Restart Codex to load init-agent MCP tools.",
     }
@@ -324,11 +330,12 @@ def _backup_config(config_path: Path) -> Path:
     return backup_path
 
 
-def _config_block(section_header: str, command: str, root: Path) -> str:
+def _config_block(section_header: str, command: str, root: Path | None) -> str:
+    args_line = f'args = ["--root", "{_toml_string(str(root))}"]\n' if root is not None else "args = []\n"
     return (
         f"{section_header}\n"
         f'command = "{_toml_string(command)}"\n'
-        f'args = ["--root", "{_toml_string(str(root))}"]\n'
+        f"{args_line}"
         "startup_timeout_sec = 120\n"
         "tool_timeout_sec = 120\n"
     )

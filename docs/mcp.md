@@ -85,17 +85,25 @@ through `config.toml`.
 Use the installer to call Codex's official MCP registration command:
 
 ```bash
-cd /path/to/repository
-init-agent mcp install-codex --root .
+init-agent mcp install-codex
 ```
 
 Under the hood, this runs the equivalent of:
 
 ```bash
-codex mcp add init_agent -- init-agent-mcp --root /absolute/path/to/repository
+codex mcp add init_agent -- init-agent-mcp
 ```
 
-Restart Codex after running it, then check `/mcp` inside Codex.
+Restart Codex after running it, then check `/mcp` inside Codex. In this
+default mode, the server is general: it serves the current Codex session
+working directory, the same way other stdio MCP servers are usually registered.
+
+If you intentionally want to pin one server registration to one repository, use
+`--root`:
+
+```bash
+init-agent mcp install-codex --root /absolute/path/to/repository
+```
 
 Codex currently defaults MCP startup to 30 seconds. After registration,
 init-agent checks the generated Codex config block and adds:
@@ -111,7 +119,7 @@ is created before changing the file.
 If a previous init-agent MCP registration already exists, replace it with:
 
 ```bash
-init-agent mcp install-codex --root . --replace
+init-agent mcp install-codex --replace
 ```
 
 To remove the registration:
@@ -132,8 +140,8 @@ Directly editing `config.toml` is available only as an explicit experimental
 fallback:
 
 ```bash
-init-agent mcp install-codex --root . --manual-config --experimental
-init-agent mcp install-codex --root . --replace --manual-config --experimental
+init-agent mcp install-codex --manual-config --experimental
+init-agent mcp install-codex --replace --manual-config --experimental
 init-agent mcp uninstall-codex --manual-config --experimental
 ```
 
@@ -157,13 +165,13 @@ Project-level config is loaded only for trusted projects.
 
 ### User-Level Example
 
-This makes one MCP server available from Codex sessions. The server root is
-the current working directory used when Codex starts the server:
+This makes one MCP server available from Codex sessions. The server uses the
+current working directory used when Codex starts the server:
 
 ```toml
 [mcp_servers.init_agent]
 command = "/Users/me/.local/bin/init-agent-mcp"
-args = ["--root", "."]
+args = []
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
@@ -176,7 +184,7 @@ Inside a repository:
 # .codex/config.toml
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
-args = ["--root", "."]
+args = []
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
@@ -204,7 +212,7 @@ overview and graph search:
 ```toml
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
-args = ["--root", "."]
+args = []
 enabled_tools = ["repo_overview", "repo_entrypoints", "repo_graph_search"]
 ```
 
