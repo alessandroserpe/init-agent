@@ -474,6 +474,30 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_entrypoints_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            docs = root / "docs"
+            docs.mkdir()
+            (docs / "guide.md").write_text("# Run\n\nDocumentation run instructions.\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["tool", "repo_entrypoints", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_entrypoints")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertTrue(data["entry_points"])
+                self.assertNotIn("heading", {item["kind"] for item in data["entry_points"]})
+                self.assertNotIn("docs/guide.md", {item["path"] for item in data["entry_points"]})
+                self.assertIn("pyproject.toml", {item["path"] for item in data["manifests"]})
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any("repo_related_file" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = InitAgentMcpServer(Path(tmp))
@@ -485,7 +509,7 @@ class InitAgentBaseTests(unittest.TestCase):
             tool_names = {item["name"] for item in listed["result"]["tools"]}
             self.assertEqual(
                 tool_names,
-                {"repo_graph_search", "repo_overview", "repo_related_file", "repo_symbol_callers"},
+                {"repo_graph_search", "repo_entrypoints", "repo_overview", "repo_related_file", "repo_symbol_callers"},
             )
 
     def test_mcp_initialize_negotiates_supported_protocol_version(self) -> None:
@@ -591,6 +615,27 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(result["structuredContent"]["tool"], "repo_graph_search")
             self.assertIn("src/auth/session.py", result["structuredContent"]["suggested_first_reads"])
             self.assertEqual(result["content"][0]["type"], "text")
+
+    def test_mcp_tool_call_repo_entrypoints_returns_structured_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 33,
+                    "method": "tools/call",
+                    "params": {"name": "repo_entrypoints", "arguments": {"limit": 5}},
+                }
+            )
+            self.assertIsNotNone(response)
+            result = response["result"]
+            self.assertFalse(result["isError"])
+            data = result["structuredContent"]
+            self.assertEqual(data["tool"], "repo_entrypoints")
+            self.assertTrue(data["entry_points"])
+            self.assertIn("pyproject.toml", {item["path"] for item in data["manifests"]})
 
     def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

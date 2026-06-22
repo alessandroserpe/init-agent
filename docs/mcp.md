@@ -7,6 +7,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 
 - `repo_graph_search`
 - `repo_overview`
+- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
 
@@ -72,6 +73,7 @@ include:
 
 - `repo_graph_search`
 - `repo_overview`
+- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
 
@@ -203,7 +205,7 @@ overview and graph search:
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
 args = ["--root", "."]
-enabled_tools = ["repo_overview", "repo_graph_search"]
+enabled_tools = ["repo_overview", "repo_entrypoints", "repo_graph_search"]
 ```
 
 ## Notes

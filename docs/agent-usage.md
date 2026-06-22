@@ -42,6 +42,7 @@ For structured agent integrations:
 ```bash
 init-agent tool repo_graph_search --query "debug login session redirect" --json
 init-agent tool repo_overview --json
+init-agent tool repo_entrypoints --json
 init-agent tool repo_related_file --path src/auth/session.py --json
 init-agent tool repo_symbol_callers --symbol validateSession --json
 ```
@@ -61,8 +62,8 @@ Or point it at a root explicitly:
 init-agent-mcp --root /path/to/repository
 ```
 
-The MCP server exposes the same four tools: `repo_graph_search`,
-`repo_overview`, `repo_related_file` and `repo_symbol_callers`.
+The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
+`repo_entrypoints`, `repo_related_file` and `repo_symbol_callers`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

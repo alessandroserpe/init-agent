@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .agent_tools import repo_graph_search, repo_overview, repo_related_file, repo_symbol_callers
+from .agent_tools import repo_entrypoints, repo_graph_search, repo_overview, repo_related_file, repo_symbol_callers
 
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -83,6 +83,7 @@ class InitAgentMcpServer:
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         handlers: dict[str, ToolHandler] = {
             "repo_graph_search": _handle_repo_graph_search,
+            "repo_entrypoints": _handle_repo_entrypoints,
             "repo_overview": _handle_repo_overview,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
@@ -119,6 +120,11 @@ def _handle_repo_graph_search(root: Path, arguments: dict[str, Any]) -> dict[str
 
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     return repo_overview(root, prepare=False)
+
+
+def _handle_repo_entrypoints(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    limit = int(arguments.get("limit") or 12)
+    return repo_entrypoints(root, prepare=False, limit=limit)
 
 
 def _handle_repo_related_file(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +189,17 @@ def _tool_definitions() -> list[dict[str, Any]]:
             "name": "repo_overview",
             "description": "Return a broad local repository overview with likely entry points, manifests and subsystems.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+        {
+            "name": "repo_entrypoints",
+            "description": "Return a focused list of likely project entry points and supporting files.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 12},
+                },
+                "additionalProperties": False,
+            },
         },
         {
             "name": "repo_related_file",

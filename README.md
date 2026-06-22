@@ -164,6 +164,7 @@ context.
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
 | `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
+| `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
 | `init-agent mcp` | Run the read-only MCP stdio wrapper for the repo tool contracts. |

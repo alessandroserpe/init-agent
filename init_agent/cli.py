@@ -9,10 +9,12 @@ from pathlib import Path
 
 from . import __version__
 from .agent_tools import (
+    render_repo_entrypoints_text,
     render_repo_graph_search_text,
     render_repo_overview_text,
     render_repo_related_file_text,
     render_repo_symbol_callers_text,
+    repo_entrypoints,
     repo_graph_search,
     repo_overview,
     repo_related_file,
@@ -171,6 +173,11 @@ def build_parser() -> argparse.ArgumentParser:
     repo_overview_parser = tool_subparsers.add_parser("repo_overview", help="Return a broad repository overview contract.")
     repo_overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_overview_parser.set_defaults(handler=cmd_tool_repo_overview)
+
+    repo_entrypoints_parser = tool_subparsers.add_parser("repo_entrypoints", help="Return likely repository entry points.")
+    repo_entrypoints_parser.add_argument("--limit", type=int, default=12, help="Maximum entry/supporting files to return.")
+    repo_entrypoints_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_entrypoints_parser.set_defaults(handler=cmd_tool_repo_entrypoints)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -857,6 +864,16 @@ def cmd_tool_repo_overview(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_overview_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_entrypoints(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_entrypoints(root, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_entrypoints_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 

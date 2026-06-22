@@ -21,6 +21,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
+| `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
@@ -195,6 +196,19 @@ init-agent tool repo_overview --json
 The response includes preparation state, project metadata, suggested first
 reads, likely entry points, package manifests, major subsystems, follow-up
 commands and warnings.
+
+## `init-agent tool repo_entrypoints`
+
+Returns a focused contract for likely startup/runtime entry points:
+
+```bash
+init-agent tool repo_entrypoints --json
+init-agent tool repo_entrypoints --limit 20 --json
+```
+
+The response includes likely entry points, supporting files, manifests/config
+and follow-up `repo_related_file` commands. It is narrower than
+`repo_overview` and useful when an agent asks where a project starts.
 
 ## `init-agent tool repo_related_file`
 

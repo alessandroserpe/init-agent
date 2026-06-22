@@ -149,6 +149,42 @@ def repo_overview(root: Path, prepare: bool = True) -> dict[str, Any]:
     }
 
 
+def repo_entrypoints(root: Path, prepare: bool = True, limit: int = 12) -> dict[str, Any]:
+    """Return a focused JSON contract for likely project entry points."""
+
+    bounded_limit = max(1, min(limit, 30))
+    if prepare:
+        run_result = run_query(root, "repository entrypoints startup runtime", overview=True)
+        overview = run_result.get("overview") or build_overview_pack(root)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        overview = build_overview_pack(root) if readiness["ready"] else _empty_overview(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+
+    entry_points = _focused_entry_points(list(overview.get("entry_points", [])), bounded_limit)
+    suggested = list(overview.get("suggested_first_reads", []))
+    manifests = list(overview.get("manifests", []))[:10]
+    entry_paths = {str(item.get("path") or "") for item in entry_points}
+    supporting_files = [
+        item for item in suggested
+        if str(item.get("path") or "") not in entry_paths
+    ][: max(0, bounded_limit - len(entry_points))]
+    return {
+        "tool": "repo_entrypoints",
+        "contract": TOOL_CONTRACT_VERSION,
+        "preparation": preparation,
+        "project": overview.get("project", {}),
+        "entry_points": entry_points,
+        "supporting_files": supporting_files,
+        "manifests": manifests,
+        "followup_commands": _entrypoint_followup_commands(entry_points, supporting_files),
+        "warnings": warnings,
+    }
+
+
 def _readiness(root: Path) -> dict[str, Any]:
     db_path = root / ".agent" / "graph.sqlite"
     if not db_path.is_file():
@@ -310,6 +346,39 @@ def render_repo_overview_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
+    project = result["project"]
+    lines = [
+        "Init Agent Tool: repo_entrypoints",
+        "",
+        f"Project: {project.get('name') or '-'}",
+        f"Root: {project.get('root') or '-'}",
+        "",
+        "Likely entry points:",
+    ]
+    if not result["entry_points"]:
+        lines.append("-")
+    for index, item in enumerate(result["entry_points"], start=1):
+        detail = f":{item['line']}" if item.get("line") else ""
+        lines.append(f"{index}. {item['path']}{detail} {item['kind']} {item['name']}")
+    lines.extend(["", "Supporting files:"])
+    if not result["supporting_files"]:
+        lines.append("-")
+    for item in result["supporting_files"]:
+        lines.append(f"- {item['path']} ({item.get('role') or '-'} / {item.get('language') or '-'})")
+        for reason in item.get("reasons", [])[:3]:
+            lines.append(f"  - {reason}")
+    lines.extend(["", "Manifests and config:"])
+    if not result["manifests"]:
+        lines.append("-")
+    for item in result["manifests"]:
+        lines.append(f"- {item['path']}")
+    lines.extend(["", "Follow-up commands:"])
+    _append_commands(lines, result["followup_commands"])
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
 def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbols: list[dict[str, Any]]) -> list[dict[str, str]]:
     commands: list[dict[str, str]] = []
     seen_paths: set[str] = set()
@@ -408,6 +477,40 @@ def _overview_followup_commands(overview: dict[str, Any]) -> list[dict[str, str]
                     "reason": "inspect a likely entry file neighborhood",
                 }
             )
+    return commands
+
+
+def _focused_entry_points(entries: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in entries:
+        path = str(item.get("path") or "")
+        kind = str(item.get("kind") or "")
+        if kind in {"heading", "command_example"}:
+            continue
+        if Path(path).suffix.lower() in {".md", ".rst", ".txt"}:
+            continue
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _entrypoint_followup_commands(entry_points: list[dict[str, Any]], supporting_files: list[dict[str, Any]]) -> list[dict[str, str]]:
+    commands: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for item in [*entry_points, *supporting_files]:
+        path = str(item.get("path") or "")
+        if path and path not in seen_paths:
+            seen_paths.add(path)
+            commands.append(
+                {
+                    "tool": "repo_related_file",
+                    "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                    "reason": "inspect entry-point symbols, imports, calls and callers",
+                }
+            )
+        if len(commands) >= 6:
+            break
     return commands
 
 
