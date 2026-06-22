@@ -81,6 +81,48 @@ def install_codex_mcp_config(
     }
 
 
+def uninstall_codex_mcp_config(
+    config_path: Path | None = None,
+    server_name: str = DEFAULT_SERVER_NAME,
+) -> dict[str, Any]:
+    if not SERVER_NAME_RE.match(server_name):
+        raise ValueError("server name must contain only letters, numbers, underscores or hyphens")
+
+    target_config = (config_path or DEFAULT_CODEX_CONFIG).expanduser()
+    section_header = f"[mcp_servers.{server_name}]"
+    if not target_config.exists():
+        return {
+            "removed": False,
+            "status": "missing_config",
+            "config_path": str(target_config),
+            "backup_path": None,
+            "server_name": server_name,
+            "message": "Codex config.toml was not found.",
+        }
+
+    original = target_config.read_text(encoding="utf-8")
+    if section_header not in original:
+        return {
+            "removed": False,
+            "status": "missing_section",
+            "config_path": str(target_config),
+            "backup_path": None,
+            "server_name": server_name,
+            "message": f"Codex MCP server section was not found: {section_header}",
+        }
+
+    backup_path = _backup_config(target_config)
+    target_config.write_text(_remove_section(original, section_header), encoding="utf-8")
+    return {
+        "removed": True,
+        "status": "removed",
+        "config_path": str(target_config),
+        "backup_path": str(backup_path),
+        "server_name": server_name,
+        "message": "Codex MCP config removed. Restart Codex to apply the change.",
+    }
+
+
 def _backup_config(config_path: Path) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     backup_path = config_path.with_name(f"{config_path.name}.bak-{timestamp}")
@@ -128,3 +170,27 @@ def _replace_section(original: str, section_header: str, block: str) -> str:
     if end < len(lines) and not replacement.endswith("\n\n"):
         replacement += "\n"
     return "".join(lines[:start]) + replacement + "".join(lines[end:])
+
+
+def _remove_section(original: str, section_header: str) -> str:
+    lines = original.splitlines(keepends=True)
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == section_header:
+            start = index
+            break
+    if start is None:
+        return original
+
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        stripped = lines[index].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end = index
+            break
+
+    result = "".join(lines[:start]).rstrip() + "\n"
+    tail = "".join(lines[end:]).lstrip("\n")
+    if tail:
+        result += "\n" + tail
+    return result

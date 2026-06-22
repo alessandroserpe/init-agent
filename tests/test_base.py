@@ -84,7 +84,7 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config)]),
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--experimental"]),
                     0,
                 )
 
@@ -110,7 +110,7 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--json"]),
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--experimental", "--json"]),
                     0,
                 )
 
@@ -139,7 +139,7 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--replace"]),
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--replace", "--experimental"]),
                     0,
                 )
 
@@ -153,6 +153,52 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
             self.assertIn("Status: replaced", output.getvalue())
+
+    def test_mcp_install_codex_requires_experimental_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            config = Path(tmp) / "config.toml"
+            original = 'model = "gpt-5.5"\n'
+            config.write_text(original, encoding="utf-8")
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--json"]),
+                    2,
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(data["status"], "experimental_required")
+            self.assertEqual(config.read_text(encoding="utf-8"), original)
+
+    def test_mcp_uninstall_codex_removes_only_init_agent_section(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            original = (
+                'model = "gpt-5.5"\n\n'
+                "[mcp_servers.init_agent]\n"
+                'command = "init-agent-mcp"\n'
+                'args = ["--root", "/repo"]\n\n'
+                "[mcp_servers.node_repl]\n"
+                'command = "node_repl"\n'
+            )
+            config.write_text(original, encoding="utf-8")
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(["mcp", "uninstall-codex", "--config-path", str(config), "--json"]), 0)
+
+            data = json.loads(output.getvalue())
+            updated = config.read_text(encoding="utf-8")
+            self.assertTrue(data["removed"])
+            self.assertNotIn("[mcp_servers.init_agent]", updated)
+            self.assertIn("[mcp_servers.node_repl]", updated)
+            self.assertIn('model = "gpt-5.5"', updated)
+            backups = list(config.parent.glob("config.toml.bak-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
 
     def test_install_skill_codex_copies_bundled_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -167,7 +167,7 @@ context.
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
 | `init-agent mcp` | Run the read-only MCP stdio wrapper for the repo tool contracts. |
-| `init-agent mcp install-codex --root .` | Append Codex MCP config with a backup. |
+| `init-agent mcp uninstall-codex` | Remove experimental Codex MCP config with a backup. |
 | `init-agent estimate "<task>"` | Estimate context savings. |
 | `init-agent export --json` | Export the local graph metadata for external tools. |
 | `init-agent doctor` | Check local index health. |

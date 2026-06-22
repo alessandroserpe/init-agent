@@ -74,11 +74,13 @@ include:
 
 Codex supports MCP stdio servers through `config.toml`.
 
-The safest setup path is the assisted installer:
+Native Codex MCP configuration is currently experimental for init-agent. The
+stable Codex workflow remains the bundled skill plus CLI commands. If you want
+to test native MCP anyway, use the explicit experimental installer:
 
 ```bash
 cd /path/to/repository
-init-agent mcp install-codex --root .
+init-agent mcp install-codex --root . --experimental
 ```
 
 This command preserves the existing Codex config, creates a timestamped backup
@@ -88,12 +90,20 @@ block. Restart Codex after running it.
 If a previous init-agent MCP block already exists, update only that block with:
 
 ```bash
-init-agent mcp install-codex --root . --replace
+init-agent mcp install-codex --root . --replace --experimental
 ```
 
 This also creates a backup first. It is useful when Codex cannot resolve the
 `init-agent-mcp` command from its app environment, because the installer prefers
 the absolute executable path when it can find one.
+
+To remove the generated block:
+
+```bash
+init-agent mcp uninstall-codex
+```
+
+This creates a backup and removes only `[mcp_servers.init_agent]`.
 
 User-level configuration lives at:
 
