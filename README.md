@@ -163,6 +163,7 @@ context.
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
 | `init-agent estimate "<task>"` | Estimate context savings. |
+| `init-agent export --json` | Export the local graph metadata for external tools. |
 | `init-agent doctor` | Check local index health. |
 | `init-agent symbol <name>` | Show symbol definitions, callers and candidate files. |
 | `init-agent callers <name>` | Show files that call a symbol/function. |

@@ -11,6 +11,7 @@ from . import __version__
 from .context_builder import build_context_pack
 from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
+from .exporter import export_graph
 from .feedback import add_feedback, clear_feedback, explain_feedback, export_feedback, import_feedback, list_feedback
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
@@ -65,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     overview_parser.add_argument("--markdown", action="store_true", help="Print compact Markdown.")
     overview_parser.set_defaults(handler=cmd_overview)
+
+    export_parser = subparsers.add_parser("export", help="Export the indexed graph as JSON.")
+    export_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    export_parser.set_defaults(handler=cmd_export)
 
     git_parser = subparsers.add_parser("git", help="Read Git metadata into the local index.")
     git_parser.set_defaults(handler=cmd_git)
@@ -272,6 +277,27 @@ def cmd_estimate(args: argparse.Namespace) -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         print(render_estimate_text(report))
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    root = project_root()
+    if not _ensure_initialized(root):
+        return 1
+    data = export_graph(root)
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+        return 0
+    print("Init Agent Graph Export")
+    print()
+    print(f"Format: {data['format']}")
+    print(f"Project: {data['project']['name']}")
+    print(f"Files: {data['stats']['files']}")
+    print(f"Symbols: {data['stats']['symbols']}")
+    print(f"Relations: {data['stats']['relations']}")
+    print(f"Git commits: {data['stats']['git_commits']}")
+    print()
+    print("Use --json to print the full graph export.")
     return 0
 
 

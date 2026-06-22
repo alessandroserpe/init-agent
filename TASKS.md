@@ -109,7 +109,7 @@ Follow-up ideas:
 
 ## Phase 10: Next Architecture Priorities
 
-- [ ] Add `init-agent export --json` for external tools and future graph visualization.
+- [x] Add `init-agent export --json` for external tools and future graph visualization.
 - [ ] Design `repo_graph_search` as an agent-facing tool, preferably MCP-compatible or with a stable tool JSON contract.
 - [ ] Link chat and agent sessions to repository context packs, including verified files and useful/noisy feedback.
 - [ ] Add dependency-aware refresh so related files can be marked stale or re-ranked when an upstream include/import changes.

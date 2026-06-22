@@ -21,6 +21,12 @@ The SQLite database stores metadata such as:
 
 It intentionally does not store full file contents.
 
+## Graph Export
+
+`init-agent export --json` exports the indexed metadata graph for external
+tools. It includes paths, symbols, relations, Git metadata, feedback and run
+summaries, but not full source file contents.
+
 ## When Files Are Read
 
 File contents may be read locally during:

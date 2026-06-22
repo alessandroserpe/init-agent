@@ -85,6 +85,56 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(data["skill"], "init-agent-orientation")
             self.assertTrue((target / "init-agent-orientation" / "SKILL.md").exists())
 
+    def test_export_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                self.assertEqual(main(["init"]), 0)
+                self.assertEqual(main(["map"]), 0)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["export", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["format"], "init-agent.graph.v1")
+                self.assertEqual(data["project"]["name"], root.name)
+                self.assertGreaterEqual(data["stats"]["files"], 3)
+                self.assertGreaterEqual(data["stats"]["symbols"], 2)
+                self.assertGreaterEqual(data["stats"]["relations"], 1)
+                self.assertIn("files", data)
+                self.assertIn("symbols", data)
+                self.assertIn("relations", data)
+                self.assertIn("git_commits", data)
+                self.assertIn("feedback", data)
+                self.assertIn("runs", data)
+            finally:
+                os.chdir(previous)
+
+    def test_export_does_not_include_source_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            secret = "super_secret_source_literal"
+            (root / "src" / "auth" / "secret.py").write_text(
+                f"def hidden():\n    return '{secret}'\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                self.assertEqual(main(["init"]), 0)
+                self.assertEqual(main(["map"]), 0)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["export", "--json"]), 0)
+                raw = output.getvalue()
+                self.assertNotIn(secret, raw)
+                data = json.loads(raw)
+                paths = {item["path"] for item in data["files"]}
+                self.assertIn("src/auth/secret.py", paths)
+            finally:
+                os.chdir(previous)
+
     def test_experiment_cases_manifest_is_valid(self) -> None:
         cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"
         cases = json.loads(cases_path.read_text(encoding="utf-8"))

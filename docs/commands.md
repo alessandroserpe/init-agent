@@ -20,6 +20,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
+| `init-agent export --json` | Export the indexed graph metadata for external tools. |
 | `init-agent query <text>` | Search paths, symbols, roles and commits. |
 | `init-agent context "<task>"` | Build a context pack from the existing index. |
 | `init-agent related <path>` | Inspect a file neighborhood. |
@@ -177,6 +178,19 @@ savings with `ceil(characters / 4)`.
 init-agent estimate "login sessione admin"
 init-agent estimate "login sessione admin" --json
 ```
+
+## `init-agent export`
+
+Exports the local graph as JSON for external tools, visualizers or future agent
+tool integrations.
+
+```bash
+init-agent export --json
+```
+
+The export includes project metadata, stats, files, symbols, relations, recent
+Git commits, local feedback and runs. It does not include full source file
+contents.
 
 ## Symbol And File Commands
 
