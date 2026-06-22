@@ -8,7 +8,16 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .agent_tools import render_repo_graph_search_text, repo_graph_search
+from .agent_tools import (
+    render_repo_graph_search_text,
+    render_repo_overview_text,
+    render_repo_related_file_text,
+    render_repo_symbol_callers_text,
+    repo_graph_search,
+    repo_overview,
+    repo_related_file,
+    repo_symbol_callers,
+)
 from .context_builder import build_context_pack
 from .doctor import run_doctor
 from .estimate import estimate_query, render_estimate_text
@@ -117,6 +126,21 @@ def build_parser() -> argparse.ArgumentParser:
     repo_graph_search_parser.add_argument("--limit", type=int, default=10, help="Maximum candidate files to return.")
     repo_graph_search_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_graph_search_parser.set_defaults(handler=cmd_tool_repo_graph_search)
+
+    repo_related_file_parser = tool_subparsers.add_parser("repo_related_file", help="Inspect one indexed file neighborhood.")
+    repo_related_file_parser.add_argument("--path", required=True, help="Project-relative file path.")
+    repo_related_file_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_related_file_parser.set_defaults(handler=cmd_tool_repo_related_file)
+
+    repo_symbol_callers_parser = tool_subparsers.add_parser("repo_symbol_callers", help="Inspect symbol definitions and callers.")
+    repo_symbol_callers_parser.add_argument("--symbol", required=True, help="Function, class or symbol name.")
+    repo_symbol_callers_parser.add_argument("--limit", type=int, default=50, help="Maximum callers to return.")
+    repo_symbol_callers_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_symbol_callers_parser.set_defaults(handler=cmd_tool_repo_symbol_callers)
+
+    repo_overview_parser = tool_subparsers.add_parser("repo_overview", help="Return a broad repository overview contract.")
+    repo_overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_overview_parser.set_defaults(handler=cmd_tool_repo_overview)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -604,6 +628,38 @@ def cmd_tool_repo_graph_search(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_graph_search_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_related_file(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_related_file(root, args.path)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_related_file_text(result))
+    if result.get("preparation", {}).get("map") == "failed":
+        return 1
+    return 0 if result.get("file") else 1
+
+
+def cmd_tool_repo_symbol_callers(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_symbol_callers(root, args.symbol, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_symbol_callers_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_overview(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_overview(root)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_overview_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 

@@ -20,6 +20,9 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
+| `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
+| `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
+| `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
 | `init-agent query <text>` | Search paths, symbols, roles and commits. |
@@ -179,6 +182,42 @@ The response includes:
 
 This is not a full MCP server yet. It is the JSON contract that a future MCP
 tool can expose without asking an agent to parse terminal Markdown.
+
+## `init-agent tool repo_overview`
+
+Returns the broad repository overview in an agent-facing JSON contract:
+
+```bash
+init-agent tool repo_overview --json
+```
+
+The response includes preparation state, project metadata, suggested first
+reads, likely entry points, package manifests, major subsystems, follow-up
+commands and warnings.
+
+## `init-agent tool repo_related_file`
+
+Returns the indexed neighborhood for one file:
+
+```bash
+init-agent tool repo_related_file --path src/auth/session.py --json
+```
+
+The response includes file metadata, symbols defined in the file, lightweight
+relations, resolved calls where available, caller files, recent commits,
+co-changed files, follow-up commands and warnings.
+
+## `init-agent tool repo_symbol_callers`
+
+Returns definitions and caller files for a symbol:
+
+```bash
+init-agent tool repo_symbol_callers --symbol validateSession --json
+```
+
+The response includes definitions, callers, follow-up commands and warnings.
+It is designed for agents that need to move from a symbol name to the files
+that define or call it.
 
 ## `init-agent overview`
 

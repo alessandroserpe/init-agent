@@ -41,11 +41,15 @@ For structured agent integrations:
 
 ```bash
 init-agent tool repo_graph_search --query "debug login session redirect" --json
+init-agent tool repo_overview --json
+init-agent tool repo_related_file --path src/auth/session.py --json
+init-agent tool repo_symbol_callers --symbol validateSession --json
 ```
 
-This returns a stable JSON contract with candidate files, symbols, commits,
-follow-up commands and safety warnings. It is the bridge toward future MCP
-support without requiring an MCP server yet.
+These commands return stable JSON contracts with candidate files, symbols,
+file neighborhoods, callers, commits, follow-up commands and safety warnings.
+They are the bridge toward future MCP support without requiring an MCP server
+yet.
 
 ## Codex
 

@@ -163,6 +163,9 @@ context.
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
+| `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
+| `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
+| `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
 | `init-agent estimate "<task>"` | Estimate context savings. |
 | `init-agent export --json` | Export the local graph metadata for external tools. |
 | `init-agent doctor` | Check local index health. |
@@ -225,7 +228,8 @@ See [docs/security.md](docs/security.md) for details.
 ## Roadmap
 
 - JSON graph export for external tools and visualization.
-- Tool `repo_graph_search` for agent runtimes.
+- Agent-facing repo tool contracts for search, overview, related files and symbol callers.
+- MCP wrapper for the repo tool contracts.
 - Link chat and agent sessions to repository context packs.
 - Dependency-aware incremental updates.
 - Language and framework plugin support.

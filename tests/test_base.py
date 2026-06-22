@@ -173,8 +173,75 @@ class InitAgentBaseTests(unittest.TestCase):
                 data = json.loads(output.getvalue())
                 self.assertEqual(len(data["candidate_files"]), 1)
                 commands = [item["command"] for item in data["followup_commands"]]
-                self.assertTrue(any(command.startswith("init-agent related ") for command in commands))
+                self.assertTrue(any(command.startswith("init-agent tool repo_related_file ") for command in commands))
                 self.assertTrue(any("init-agent feedback add" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_related_file_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["tool", "repo_related_file", "--path", "include/functions.php", "--json"]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_related_file")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertEqual(data["path"], "include/functions.php")
+                self.assertEqual(data["file"]["path"], "include/functions.php")
+                self.assertIn("buildForm", {item["name"] for item in data["symbols"]})
+                self.assertIn(("index.php", "buildForm"), {(item["path"], item["name"]) for item in data["called_by"]})
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any("repo_symbol_callers" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_symbol_callers_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["tool", "repo_symbol_callers", "--symbol", "buildForm", "--json"]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_symbol_callers")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertEqual(data["symbol"], "buildForm")
+                self.assertIn("include/functions.php", {item["path"] for item in data["definitions"]})
+                self.assertIn("index.php", {item["path"] for item in data["callers"]})
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any("repo_related_file" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_overview_json_output_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_overview_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["tool", "repo_overview", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_overview")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertEqual(data["project"]["name"], root.name)
+                self.assertIn("pyproject.toml", {item["path"] for item in data["suggested_first_reads"]})
+                self.assertIn("pyproject.toml", {item["path"] for item in data["manifests"]})
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any("repo_related_file" in command for command in commands))
             finally:
                 os.chdir(previous)
 
