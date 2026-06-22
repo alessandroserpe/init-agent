@@ -196,21 +196,29 @@ def _read_message(stream: BufferedIOBase) -> dict[str, Any] | None:
     first_line = _read_non_empty_line(stream)
     if first_line is None:
         return None
-    if first_line.lower().startswith(b"content-length:"):
-        content_length = _parse_content_length(first_line)
-        while True:
-            header_line = stream.readline()
-            if header_line == b"":
-                raise ValueError("unexpected EOF while reading MCP headers")
-            if header_line in {b"\r\n", b"\n"}:
-                break
-            if header_line.lower().startswith(b"content-length:"):
-                content_length = _parse_content_length(header_line)
+    if first_line.startswith(b"{"):
+        return json.loads(first_line.decode("utf-8"))
+
+    headers = [first_line]
+    while True:
+        header_line = stream.readline()
+        if header_line == b"":
+            raise ValueError("unexpected EOF while reading MCP headers")
+        if header_line in {b"\r\n", b"\n"}:
+            break
+        headers.append(header_line.strip())
+
+    content_length = None
+    for header in headers:
+        if header.lower().startswith(b"content-length:"):
+            content_length = _parse_content_length(header)
+            break
+    if content_length is not None:
         body = stream.read(content_length)
         if len(body) != content_length:
             raise ValueError("unexpected EOF while reading MCP body")
         return json.loads(body.decode("utf-8"))
-    return json.loads(first_line.decode("utf-8"))
+    raise ValueError("missing MCP Content-Length header")
 
 
 def _read_non_empty_line(stream: BufferedIOBase) -> bytes | None:

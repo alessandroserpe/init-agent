@@ -365,6 +365,18 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertEqual(int(header.split(b":", 1)[1].strip()), len(response_body))
         self.assertEqual(json.loads(response_body.decode("utf-8"))["result"]["ok"], True)
 
+    def test_mcp_framing_accepts_extra_headers_before_content_length(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+        body = json.dumps(request, separators=(",", ":")).encode("utf-8")
+        framed = (
+            b"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n"
+            + b"Content-Length: "
+            + str(len(body)).encode("ascii")
+            + b"\r\n\r\n"
+            + body
+        )
+        self.assertEqual(_read_message(BytesIO(framed)), request)
+
     def test_mcp_tool_call_repo_graph_search_returns_structured_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
