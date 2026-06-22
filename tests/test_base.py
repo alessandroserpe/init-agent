@@ -91,8 +91,9 @@ class InitAgentBaseTests(unittest.TestCase):
             updated = config.read_text(encoding="utf-8")
             self.assertTrue(updated.startswith(original))
             self.assertIn("[mcp_servers.init_agent]", updated)
-            self.assertIn('command = "init-agent-mcp"', updated)
+            self.assertRegex(updated, r'command = ".*init-agent-mcp"')
             self.assertIn(f'args = ["--root", "{root.resolve()}"]', updated)
+            self.assertIn("startup_timeout_sec = 120", updated)
             backups = list(config.parent.glob("config.toml.bak-*"))
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
@@ -118,6 +119,40 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(data["status"], "exists")
             self.assertEqual(config.read_text(encoding="utf-8"), existing)
             self.assertEqual(list(config.parent.glob("config.toml.bak-*")), [])
+
+    def test_mcp_install_codex_replace_updates_only_existing_section(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            config = Path(tmp) / "config.toml"
+            original = (
+                'model = "gpt-5.5"\n\n'
+                "[mcp_servers.init_agent]\n"
+                'command = "init-agent-mcp"\n'
+                'args = ["--root", "/old"]\n'
+                "startup_timeout_sec = 30\n\n"
+                "[mcp_servers.node_repl]\n"
+                'command = "node_repl"\n'
+            )
+            config.write_text(original, encoding="utf-8")
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--replace"]),
+                    0,
+                )
+
+            updated = config.read_text(encoding="utf-8")
+            self.assertIn('model = "gpt-5.5"', updated)
+            self.assertIn("[mcp_servers.node_repl]", updated)
+            self.assertIn(f'args = ["--root", "{root.resolve()}"]', updated)
+            self.assertIn("startup_timeout_sec = 120", updated)
+            self.assertNotIn('args = ["--root", "/old"]', updated)
+            backups = list(config.parent.glob("config.toml.bak-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
+            self.assertIn("Status: replaced", output.getvalue())
 
     def test_install_skill_codex_copies_bundled_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -83,6 +83,16 @@ This command preserves the existing Codex config, creates a timestamped backup
 when `config.toml` already exists, and appends only the init-agent MCP server
 block. Restart Codex after running it.
 
+If a previous init-agent MCP block already exists, update only that block with:
+
+```bash
+init-agent mcp install-codex --root . --replace
+```
+
+This also creates a backup first. It is useful when Codex cannot resolve the
+`init-agent-mcp` command from its app environment, because the installer prefers
+the absolute executable path when it can find one.
+
 User-level configuration lives at:
 
 ```text
@@ -104,9 +114,9 @@ the current working directory used when Codex starts the server:
 
 ```toml
 [mcp_servers.init_agent]
-command = "init-agent-mcp"
+command = "/Users/me/.local/bin/init-agent-mcp"
 args = ["--root", "."]
-startup_timeout_sec = 20
+startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
 
@@ -119,7 +129,7 @@ Inside a repository:
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
 args = ["--root", "."]
-startup_timeout_sec = 20
+startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
 
@@ -134,7 +144,7 @@ directory:
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
 args = ["--root", "/Users/me/projects/my-repo"]
-startup_timeout_sec = 20
+startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
 

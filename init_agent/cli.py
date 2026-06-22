@@ -90,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_install_codex.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
     mcp_install_codex.add_argument("--config-path", help="Override Codex config path, mainly for testing.")
     mcp_install_codex.add_argument("--server-name", default="init_agent", help="MCP server name to add under [mcp_servers.<name>].")
+    mcp_install_codex.add_argument("--replace", action="store_true", help="Replace an existing init-agent MCP section after creating a backup.")
     mcp_install_codex.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     mcp_install_codex.set_defaults(handler=cmd_mcp_install_codex)
     mcp_parser.set_defaults(handler=cmd_mcp)
@@ -358,6 +359,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
             Path(args.root),
             config_path=Path(args.config_path) if args.config_path else None,
             server_name=args.server_name,
+            replace=args.replace,
         )
     except Exception as exc:
         if args.json:
@@ -373,11 +375,12 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
     print("Init Agent MCP Codex Setup")
     print()
     if result["installed"]:
-        print("Status: installed")
+        print(f"Status: {result['status']}")
         print(f"Config: {result['config_path']}")
         if result["backup_path"]:
             print(f"Backup: {result['backup_path']}")
         print(f"Server: {result['server_name']}")
+        print(f"Command: {result['command']}")
         print(f"Root: {result['root']}")
         print()
         print(result["message"])
@@ -385,6 +388,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
         print("Status: already configured")
         print(f"Config: {result['config_path']}")
         print(f"Server: {result['server_name']}")
+        print(f"Command: {result['command']}")
         print(f"Root: {result['root']}")
         print()
         print(result["message"])
