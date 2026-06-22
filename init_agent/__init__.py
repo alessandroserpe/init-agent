@@ -1,3 +1,3 @@
 """Project Orientation Layer for AI CLI agents."""
 
-__version__ = "0.19.4"
+__version__ = "0.20.0"

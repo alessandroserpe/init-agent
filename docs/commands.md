@@ -228,7 +228,7 @@ Runs a minimal MCP stdio server exposing the same repo tool contracts:
 init-agent mcp
 init-agent mcp --root /path/to/repository
 init-agent-mcp --root /path/to/repository
-init-agent mcp install-codex --root . --experimental
+init-agent mcp install-codex --root .
 init-agent mcp uninstall-codex
 ```
 
@@ -245,7 +245,8 @@ SQLite index. MCP tool calls do not auto-map or refresh the repository; use
 first when you want automatic preparation. It does not call an LLM and does not
 send source code over the network.
 
-See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
+See [mcp.md](mcp.md) for Codex MCP setup, the `codex mcp add` flow and smoke
+testing.
 
 ## `init-agent overview`
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,126 @@ DEFAULT_SERVER_NAME = "init_agent"
 SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def install_codex_mcp_cli(
+    root: Path,
+    server_name: str = DEFAULT_SERVER_NAME,
+    command: str | None = None,
+    codex_command: str | None = None,
+    replace: bool = False,
+) -> dict[str, Any]:
+    """Install the server through Codex's own MCP management command."""
+    _validate_server_name(server_name)
+    resolved_root = root.expanduser().resolve()
+    resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
+    resolved_codex = codex_command or shutil.which("codex")
+    if not resolved_codex:
+        return {
+            "installed": False,
+            "status": "codex_not_found",
+            "method": "codex_cli",
+            "server_name": server_name,
+            "root": str(resolved_root),
+            "command": resolved_command,
+            "message": "Could not find the codex executable. Install Codex or use --manual-config --experimental.",
+        }
+
+    remove_result: subprocess.CompletedProcess[str] | None = None
+    if replace:
+        remove_result = subprocess.run(
+            [resolved_codex, "mcp", "remove", server_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    add_command = [
+        resolved_codex,
+        "mcp",
+        "add",
+        server_name,
+        "--",
+        resolved_command,
+        "--root",
+        str(resolved_root),
+    ]
+    add_result = subprocess.run(add_command, capture_output=True, text=True, check=False)
+    if add_result.returncode != 0:
+        return {
+            "installed": False,
+            "status": "failed",
+            "method": "codex_cli",
+            "server_name": server_name,
+            "root": str(resolved_root),
+            "command": resolved_command,
+            "codex_command": add_command,
+            "returncode": add_result.returncode,
+            "stdout": add_result.stdout,
+            "stderr": add_result.stderr,
+            "message": "Codex MCP registration failed. No config.toml fallback was attempted.",
+        }
+
+    warnings = []
+    if remove_result is not None and remove_result.returncode != 0:
+        warnings.append((remove_result.stderr or remove_result.stdout or "codex mcp remove returned a non-zero status").strip())
+
+    return {
+        "installed": True,
+        "status": "installed",
+        "method": "codex_cli",
+        "server_name": server_name,
+        "root": str(resolved_root),
+        "command": resolved_command,
+        "codex_command": add_command,
+        "stdout": add_result.stdout,
+        "stderr": add_result.stderr,
+        "warnings": warnings,
+        "message": "Codex MCP server registered through `codex mcp add`. Restart Codex or check /mcp.",
+    }
+
+
+def uninstall_codex_mcp_cli(
+    server_name: str = DEFAULT_SERVER_NAME,
+    codex_command: str | None = None,
+) -> dict[str, Any]:
+    """Remove the server through Codex's own MCP management command."""
+    _validate_server_name(server_name)
+    resolved_codex = codex_command or shutil.which("codex")
+    if not resolved_codex:
+        return {
+            "removed": False,
+            "status": "codex_not_found",
+            "method": "codex_cli",
+            "server_name": server_name,
+            "message": "Could not find the codex executable. Use --manual-config --experimental if you need to edit config.toml directly.",
+        }
+
+    remove_command = [resolved_codex, "mcp", "remove", server_name]
+    result = subprocess.run(remove_command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return {
+            "removed": False,
+            "status": "failed",
+            "method": "codex_cli",
+            "server_name": server_name,
+            "codex_command": remove_command,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "message": "Codex MCP removal failed.",
+        }
+
+    return {
+        "removed": True,
+        "status": "removed",
+        "method": "codex_cli",
+        "server_name": server_name,
+        "codex_command": remove_command,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "message": "Codex MCP server removed through `codex mcp remove`. Restart Codex or check /mcp.",
+    }
+
+
 def install_codex_mcp_config(
     root: Path,
     config_path: Path | None = None,
@@ -21,8 +142,7 @@ def install_codex_mcp_config(
     command: str | None = None,
     replace: bool = False,
 ) -> dict[str, Any]:
-    if not SERVER_NAME_RE.match(server_name):
-        raise ValueError("server name must contain only letters, numbers, underscores or hyphens")
+    _validate_server_name(server_name)
 
     target_config = config_path or DEFAULT_CODEX_CONFIG
     target_config = target_config.expanduser()
@@ -85,8 +205,7 @@ def uninstall_codex_mcp_config(
     config_path: Path | None = None,
     server_name: str = DEFAULT_SERVER_NAME,
 ) -> dict[str, Any]:
-    if not SERVER_NAME_RE.match(server_name):
-        raise ValueError("server name must contain only letters, numbers, underscores or hyphens")
+    _validate_server_name(server_name)
 
     target_config = (config_path or DEFAULT_CODEX_CONFIG).expanduser()
     section_header = f"[mcp_servers.{server_name}]"
@@ -121,6 +240,11 @@ def uninstall_codex_mcp_config(
         "server_name": server_name,
         "message": "Codex MCP config removed. Restart Codex to apply the change.",
     }
+
+
+def _validate_server_name(server_name: str) -> None:
+    if not SERVER_NAME_RE.match(server_name):
+        raise ValueError("server name must contain only letters, numbers, underscores or hyphens")
 
 
 def _backup_config(config_path: Path) -> Path:

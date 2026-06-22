@@ -72,38 +72,56 @@ include:
 
 ## Codex Configuration
 
-Codex supports MCP stdio servers through `config.toml`.
+Codex supports MCP stdio servers through its own `codex mcp` commands and
+through `config.toml`.
 
-Native Codex MCP configuration is currently experimental for init-agent. The
-stable Codex workflow remains the bundled skill plus CLI commands. If you want
-to test native MCP anyway, use the explicit experimental installer:
+Use the installer to call Codex's official MCP registration command:
 
 ```bash
 cd /path/to/repository
-init-agent mcp install-codex --root . --experimental
+init-agent mcp install-codex --root .
 ```
 
-This command preserves the existing Codex config, creates a timestamped backup
-when `config.toml` already exists, and appends only the init-agent MCP server
-block. Restart Codex after running it.
-
-If a previous init-agent MCP block already exists, update only that block with:
+Under the hood, this runs the equivalent of:
 
 ```bash
-init-agent mcp install-codex --root . --replace --experimental
+codex mcp add init_agent -- init-agent-mcp --root /absolute/path/to/repository
 ```
 
-This also creates a backup first. It is useful when Codex cannot resolve the
-`init-agent-mcp` command from its app environment, because the installer prefers
-the absolute executable path when it can find one.
+Restart Codex after running it, then check `/mcp` inside Codex.
 
-To remove the generated block:
+If a previous init-agent MCP registration already exists, replace it with:
+
+```bash
+init-agent mcp install-codex --root . --replace
+```
+
+To remove the registration:
 
 ```bash
 init-agent mcp uninstall-codex
 ```
 
-This creates a backup and removes only `[mcp_servers.init_agent]`.
+This runs:
+
+```bash
+codex mcp remove init_agent
+```
+
+### Manual Config Fallback
+
+Directly editing `config.toml` is available only as an explicit experimental
+fallback:
+
+```bash
+init-agent mcp install-codex --root . --manual-config --experimental
+init-agent mcp install-codex --root . --replace --manual-config --experimental
+init-agent mcp uninstall-codex --manual-config --experimental
+```
+
+The manual fallback preserves the existing Codex config, creates a timestamped
+backup when `config.toml` already exists, and edits only the
+`[mcp_servers.init_agent]` block.
 
 User-level configuration lives at:
 

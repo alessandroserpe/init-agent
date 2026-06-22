@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import argparse
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -67,11 +68,50 @@ class InitAgentBaseTests(unittest.TestCase):
     def test_mcp_docs_include_codex_config_and_smoke_test(self) -> None:
         root = Path(__file__).resolve().parents[1]
         content = (root / "docs" / "mcp.md").read_text(encoding="utf-8")
-        self.assertIn("[mcp_servers.init_agent]", content)
-        self.assertIn('command = "init-agent-mcp"', content)
+        self.assertIn("codex mcp add", content)
+        self.assertIn("--manual-config --experimental", content)
         self.assertIn("Content-Length", content)
         self.assertIn("tools/list", content)
         self.assertIn("repo_graph_search", content)
+
+    def test_mcp_install_codex_uses_codex_cli_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            log_path = Path(tmp) / "codex_args.json"
+            fake_codex = _fake_codex(Path(tmp), log_path)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "install-codex", "--root", str(root), "--codex-command", str(fake_codex), "--json"]),
+                    0,
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertTrue(data["installed"])
+            self.assertEqual(data["method"], "codex_cli")
+            args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
+            self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
+            self.assertEqual(args[-2:], ["--root", str(root.resolve())])
+
+    def test_mcp_uninstall_codex_uses_codex_cli_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "codex_args.json"
+            fake_codex = _fake_codex(Path(tmp), log_path)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "uninstall-codex", "--codex-command", str(fake_codex), "--json"]),
+                    0,
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertTrue(data["removed"])
+            self.assertEqual(data["method"], "codex_cli")
+            args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
+            self.assertEqual(args, ["mcp", "remove", "init_agent"])
 
     def test_mcp_install_codex_appends_config_and_creates_backup(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,7 +124,18 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--experimental"]),
+                    main(
+                        [
+                            "mcp",
+                            "install-codex",
+                            "--root",
+                            str(root),
+                            "--manual-config",
+                            "--config-path",
+                            str(config),
+                            "--experimental",
+                        ]
+                    ),
                     0,
                 )
 
@@ -110,7 +161,19 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--experimental", "--json"]),
+                    main(
+                        [
+                            "mcp",
+                            "install-codex",
+                            "--root",
+                            str(root),
+                            "--manual-config",
+                            "--config-path",
+                            str(config),
+                            "--experimental",
+                            "--json",
+                        ]
+                    ),
                     0,
                 )
 
@@ -139,7 +202,19 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--replace", "--experimental"]),
+                    main(
+                        [
+                            "mcp",
+                            "install-codex",
+                            "--root",
+                            str(root),
+                            "--manual-config",
+                            "--config-path",
+                            str(config),
+                            "--replace",
+                            "--experimental",
+                        ]
+                    ),
                     0,
                 )
 
@@ -154,7 +229,7 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
             self.assertIn("Status: replaced", output.getvalue())
 
-    def test_mcp_install_codex_requires_experimental_flag(self) -> None:
+    def test_mcp_install_codex_manual_config_requires_experimental_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             root.mkdir()
@@ -165,7 +240,7 @@ class InitAgentBaseTests(unittest.TestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--json"]),
+                    main(["mcp", "install-codex", "--root", str(root), "--manual-config", "--config-path", str(config), "--json"]),
                     2,
                 )
 
@@ -188,7 +263,10 @@ class InitAgentBaseTests(unittest.TestCase):
 
             output = StringIO()
             with redirect_stdout(output):
-                self.assertEqual(main(["mcp", "uninstall-codex", "--config-path", str(config), "--json"]), 0)
+                self.assertEqual(
+                    main(["mcp", "uninstall-codex", "--manual-config", "--config-path", str(config), "--experimental", "--json"]),
+                    0,
+                )
 
             data = json.loads(output.getvalue())
             updated = config.read_text(encoding="utf-8")
@@ -2828,6 +2906,28 @@ def _mark_index_stale(root: Path) -> None:
     with GraphStore(root) as store:
         store.connection.execute("DELETE FROM project_meta WHERE key = 'index_version'")
         store.connection.commit()
+
+
+def _fake_codex(tmp: Path, log_path: Path) -> Path:
+    script = tmp / ("fake_codex.py" if os.name == "nt" else "fake-codex")
+    script.write_text(
+        "\n".join(
+            [
+                f"#!{sys.executable}",
+                "import json",
+                "import pathlib",
+                "import sys",
+                f"log = pathlib.Path({str(log_path)!r})",
+                "entries = json.loads(log.read_text(encoding='utf-8')) if log.exists() else []",
+                "entries.append(sys.argv[1:])",
+                "log.write_text(json.dumps(entries), encoding='utf-8')",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
 
 
 if __name__ == "__main__":
