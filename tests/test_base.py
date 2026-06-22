@@ -64,6 +64,14 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("pipx install git+https://github.com/alessandroserpe/init-agent.git", content)
         self.assertIn("init-agent install-skill codex", content)
 
+    def test_mcp_docs_include_codex_config_and_smoke_test(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "docs" / "mcp.md").read_text(encoding="utf-8")
+        self.assertIn("[mcp_servers.init_agent]", content)
+        self.assertIn('command = "init-agent-mcp"', content)
+        self.assertIn("tools/list", content)
+        self.assertIn("repo_graph_search", content)
+
     def test_install_skill_codex_copies_bundled_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "skills"

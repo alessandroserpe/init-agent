@@ -64,6 +64,8 @@ init-agent-mcp --root /path/to/repository
 The MCP server exposes the same four tools: `repo_graph_search`,
 `repo_overview`, `repo_related_file` and `repo_symbol_callers`.
 
+See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
+
 ## Codex
 
 Install the bundled Codex skill:

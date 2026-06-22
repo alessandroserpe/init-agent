@@ -241,6 +241,8 @@ The server is read-only for project source files. Like `init-agent run`, it may
 create or update `.agent/` so the local SQLite index stays fresh. It does not
 call an LLM and does not send source code over the network.
 
+See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
+
 ## `init-agent overview`
 
 Builds a broad repository orientation pack from the existing SQLite index. It

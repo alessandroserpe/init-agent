@@ -113,7 +113,8 @@ Follow-up ideas:
 - [x] Design `repo_graph_search` as an agent-facing CLI tool with a stable JSON contract.
 - [x] Add `repo_overview`, `repo_related_file` and `repo_symbol_callers` CLI tool contracts before MCP.
 - [x] Expose the repo tool contracts through a minimal MCP stdio server.
-- [ ] Add verified MCP configuration examples for specific agent runtimes.
+- [x] Add verified Codex MCP configuration examples for `config.toml`.
+- [ ] Test Codex MCP loading in a fresh session and document any client-specific caveats.
 - [ ] Link chat and agent sessions to repository context packs, including verified files and useful/noisy feedback.
 - [ ] Add dependency-aware refresh so related files can be marked stale or re-ranked when an upstream include/import changes.
 - [ ] Design language and framework plugin support so new extractors can be added without bloating the core.

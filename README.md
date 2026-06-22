@@ -177,6 +177,8 @@ context.
 
 See [docs/commands.md](docs/commands.md) for the full command reference.
 
+See [docs/mcp.md](docs/mcp.md) for MCP setup and Codex configuration examples.
+
 ## Feedback
 
 Agents can record local feedback after verifying files:
