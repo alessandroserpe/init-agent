@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
+from .context_builder import build_context_pack
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -13,12 +15,20 @@ from .run import run_query
 TOOL_CONTRACT_VERSION = "init-agent.tool.v1"
 
 
-def repo_graph_search(root: Path, query: str, limit: int = 10) -> dict[str, Any]:
+def repo_graph_search(root: Path, query: str, limit: int = 10, prepare: bool = True) -> dict[str, Any]:
     """Return a compact JSON contract for agent graph search."""
 
     bounded_limit = max(1, min(limit, 20))
-    run_result = run_query(root, query, overview=False)
-    context = run_result.get("context", {})
+    if prepare:
+        run_result = run_query(root, query, overview=False)
+        context = run_result.get("context", {})
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+        context = build_context_pack(root, query) if readiness["ready"] else _empty_context(query)
     candidate_files = list(context.get("candidate_files", []))[:bounded_limit]
     symbols = list(context.get("related_symbols", []))[:10]
     related_commits = list(context.get("recent_commits", []))[:5]
@@ -26,27 +36,34 @@ def repo_graph_search(root: Path, query: str, limit: int = 10) -> dict[str, Any]
         "tool": "repo_graph_search",
         "contract": TOOL_CONTRACT_VERSION,
         "query": query,
-        "preparation": run_result.get("preparation", {}),
+        "preparation": preparation,
         "candidate_files": candidate_files,
         "suggested_first_reads": [item["path"] for item in candidate_files[:5]],
         "symbols": symbols,
         "related_commits": related_commits,
         "followup_commands": _followup_commands(query, candidate_files, symbols),
-        "warnings": _warnings(run_result),
+        "warnings": warnings,
     }
 
 
-def repo_related_file(root: Path, path: str) -> dict[str, Any]:
+def repo_related_file(root: Path, path: str, prepare: bool = True) -> dict[str, Any]:
     """Return a compact JSON contract for one indexed file neighborhood."""
 
     normalized_path = Path(path).as_posix().lstrip("./")
-    run_result = run_query(root, f"related file {normalized_path}", overview=False)
-    related_data = related(root, normalized_path)
+    if prepare:
+        run_result = run_query(root, f"related file {normalized_path}", overview=False)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+    related_data = related(root, normalized_path) if prepare or readiness["ready"] else None
     result = {
         "tool": "repo_related_file",
         "contract": TOOL_CONTRACT_VERSION,
         "path": normalized_path,
-        "preparation": run_result.get("preparation", {}),
+        "preparation": preparation,
         "file": None,
         "symbols": [],
         "relations": [],
@@ -55,7 +72,7 @@ def repo_related_file(root: Path, path: str) -> dict[str, Any]:
         "recent_commits": [],
         "cochanged_files": [],
         "followup_commands": [],
-        "warnings": _warnings(run_result),
+        "warnings": warnings,
     }
     if related_data is None:
         result["warnings"].append(f"file not found in index: {normalized_path}")
@@ -75,41 +92,104 @@ def repo_related_file(root: Path, path: str) -> dict[str, Any]:
     return result
 
 
-def repo_symbol_callers(root: Path, symbol: str, limit: int = 50) -> dict[str, Any]:
+def repo_symbol_callers(root: Path, symbol: str, limit: int = 50, prepare: bool = True) -> dict[str, Any]:
     """Return a compact JSON contract for symbol definitions and callers."""
 
     normalized_symbol = symbol.strip()
     bounded_limit = max(1, min(limit, 100))
-    run_result = run_query(root, f"symbol callers {normalized_symbol}", overview=False)
-    data = callers_for_symbol(root, normalized_symbol, limit=bounded_limit)
+    if prepare:
+        run_result = run_query(root, f"symbol callers {normalized_symbol}", overview=False)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+    data = callers_for_symbol(root, normalized_symbol, limit=bounded_limit) if prepare or readiness["ready"] else {
+        "symbol": normalized_symbol,
+        "definitions": [],
+        "callers": [],
+    }
     return {
         "tool": "repo_symbol_callers",
         "contract": TOOL_CONTRACT_VERSION,
         "symbol": data["symbol"],
-        "preparation": run_result.get("preparation", {}),
+        "preparation": preparation,
         "definitions": list(data["definitions"]),
         "callers": list(data["callers"]),
         "followup_commands": _symbol_followup_commands(data),
-        "warnings": _warnings(run_result),
+        "warnings": warnings,
     }
 
 
-def repo_overview(root: Path) -> dict[str, Any]:
+def repo_overview(root: Path, prepare: bool = True) -> dict[str, Any]:
     """Return a compact JSON contract for broad repository orientation."""
 
-    run_result = run_query(root, "repository overview", overview=True)
-    overview = run_result.get("overview") or build_overview_pack(root)
+    if prepare:
+        run_result = run_query(root, "repository overview", overview=True)
+        overview = run_result.get("overview") or build_overview_pack(root)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        overview = build_overview_pack(root) if readiness["ready"] else _empty_overview(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
     return {
         "tool": "repo_overview",
         "contract": TOOL_CONTRACT_VERSION,
-        "preparation": run_result.get("preparation", {}),
+        "preparation": preparation,
         "project": overview.get("project", {}),
         "suggested_first_reads": overview.get("suggested_first_reads", []),
         "entry_points": overview.get("entry_points", []),
         "manifests": overview.get("manifests", []),
         "subsystems": overview.get("subsystems", []),
         "followup_commands": _overview_followup_commands(overview),
-        "warnings": _warnings(run_result),
+        "warnings": warnings,
+    }
+
+
+def _readiness(root: Path) -> dict[str, Any]:
+    db_path = root / ".agent" / "graph.sqlite"
+    if not db_path.is_file():
+        return {"ready": False, "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"]}
+    try:
+        with sqlite3.connect(db_path) as conn:
+            files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    except sqlite3.Error as exc:
+        return {"ready": False, "warnings": [f"init-agent index could not be read: {exc}"]}
+    if files <= 0:
+        return {"ready": False, "warnings": ["init-agent index is empty. Run: init-agent run --overview --markdown"]}
+    return {"ready": True, "warnings": []}
+
+
+def _lazy_preparation(warnings: list[str]) -> dict[str, Any]:
+    return {
+        "init": "skipped",
+        "map": "skipped",
+        "refresh": "skipped",
+        "git": "skipped",
+        "warnings": warnings,
+    }
+
+
+def _empty_context(query: str) -> dict[str, Any]:
+    return {
+        "query": query,
+        "candidate_files": [],
+        "suggested_first_reads": [],
+        "related_symbols": [],
+        "recent_commits": [],
+    }
+
+
+def _empty_overview(root: Path) -> dict[str, Any]:
+    return {
+        "project": {"name": root.name, "root": str(root), "git": False, "branch": None, "last_map": None},
+        "suggested_first_reads": [],
+        "entry_points": [],
+        "manifests": [],
+        "subsystems": [],
     }
 
 

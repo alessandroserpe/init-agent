@@ -238,9 +238,11 @@ The server exposes:
 - `repo_related_file`
 - `repo_symbol_callers`
 
-The server is read-only for project source files. Like `init-agent run`, it may
-create or update `.agent/` so the local SQLite index stays fresh. It does not
-call an LLM and does not send source code over the network.
+The server is read-only for project source files and lazy against the existing
+SQLite index. MCP tool calls do not auto-map or refresh the repository; use
+`init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
+first when you want automatic preparation. It does not call an LLM and does not
+send source code over the network.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

@@ -92,18 +92,18 @@ def _handle_repo_graph_search(root: Path, arguments: dict[str, Any]) -> dict[str
     if not query:
         raise ValueError("repo_graph_search requires query")
     limit = int(arguments.get("limit") or 10)
-    return repo_graph_search(root, query, limit=limit)
+    return repo_graph_search(root, query, limit=limit, prepare=False)
 
 
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
-    return repo_overview(root)
+    return repo_overview(root, prepare=False)
 
 
 def _handle_repo_related_file(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     path = str(arguments.get("path") or "").strip()
     if not path:
         raise ValueError("repo_related_file requires path")
-    return repo_related_file(root, path)
+    return repo_related_file(root, path, prepare=False)
 
 
 def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -111,7 +111,7 @@ def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[s
     if not symbol:
         raise ValueError("repo_symbol_callers requires symbol")
     limit = int(arguments.get("limit") or 50)
-    return repo_symbol_callers(root, symbol, limit=limit)
+    return repo_symbol_callers(root, symbol, limit=limit, prepare=False)
 
 
 def _initialize_result() -> dict[str, Any]:

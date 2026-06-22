@@ -31,8 +31,8 @@ summaries, but not full source file contents.
 
 `init-agent mcp` exposes the same local metadata contracts over stdio for
 MCP-capable agents. It does not contact external services and does not execute
-an LLM. The tools are read-only for project source files, but they may create
-or update `.agent/` to keep the local SQLite index fresh.
+an LLM. The tools are read-only for project source files and read the existing
+SQLite index without auto-mapping or refreshing the repository.
 
 ## When Files Are Read
 

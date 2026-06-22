@@ -380,6 +380,7 @@ class InitAgentBaseTests(unittest.TestCase):
     def test_mcp_tool_call_repo_graph_search_returns_structured_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
             server = InitAgentMcpServer(root)
             response = server.handle(
                 {
@@ -396,9 +397,30 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIn("src/auth/session.py", result["structuredContent"]["suggested_first_reads"])
             self.assertEqual(result["content"][0]["type"], "text")
 
+    def test_mcp_tools_do_not_auto_initialize_or_refresh_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            (root / "src" / "app.py").write_text("def main():\n    return True\n", encoding="utf-8")
+            server = InitAgentMcpServer(root)
+            response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "repo_graph_search", "arguments": {"query": "main app"}},
+                }
+            )
+            self.assertIsNotNone(response)
+            result = response["result"]["structuredContent"]
+            self.assertFalse((root / ".agent").exists())
+            self.assertEqual(result["candidate_files"], [])
+            self.assertTrue(result["warnings"])
+
     def test_mcp_tool_call_related_and_callers_are_json_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_php_call_fixture(Path(tmp))
+            _prepare_index(root)
             server = InitAgentMcpServer(root)
             related = server.handle(
                 {
@@ -2737,6 +2759,18 @@ def _create_ignore_fixture(root: Path) -> Path:
     (egg_info / "PKG-INFO").write_text("ignored", encoding="utf-8")
     (dist_info / "METADATA").write_text("ignored", encoding="utf-8")
     return root
+
+
+def _prepare_index(root: Path) -> None:
+    previous = Path.cwd()
+    output = StringIO()
+    try:
+        os.chdir(root)
+        with redirect_stdout(output):
+            main(["init"])
+            main(["map"])
+    finally:
+        os.chdir(previous)
 
 
 def _indexed_paths(root: Path) -> set[str]:

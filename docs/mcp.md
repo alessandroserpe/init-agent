@@ -10,9 +10,11 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_related_file`
 - `repo_symbol_callers`
 
-It does not call an LLM and does not modify project source files. Like
-`init-agent run`, it may create or update `.agent/` so the local SQLite index
-stays fresh.
+It does not call an LLM and does not modify project source files. MCP tool
+calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
+index and return warnings if the index is missing or empty. Use
+`init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
+first when you want automatic init/map/refresh behavior.
 
 ## Install
 
@@ -163,6 +165,8 @@ enabled_tools = ["repo_overview", "repo_graph_search"]
 ## Notes
 
 - `init-agent-mcp` is a stdio server. It is not meant to be used interactively.
+- MCP tool calls read the existing local index and do not auto-map or refresh
+  the repository.
 - MCP clients start the process and exchange JSON-RPC messages through
   stdin/stdout.
 - Use `init-agent run --overview --markdown` or `init-agent tool ... --json`

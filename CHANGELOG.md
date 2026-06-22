@@ -4,6 +4,7 @@ All notable changes to `init-agent` are documented here.
 
 ## Unreleased
 
+- Made MCP tool calls lazy/read-only against the existing SQLite index so client startup or tool discovery cannot trigger `init`, `map`, `refresh` or Git import work.
 - Hardened MCP stdio parsing to accept additional headers before `Content-Length`, matching more real MCP client startup behavior.
 - Improved `init-agent mcp install-codex` to prefer the absolute `init-agent-mcp` path, use a longer startup timeout and support `--replace` for updating only the existing init-agent MCP section with a backup.
 - Added `init-agent mcp install-codex` to append init-agent MCP configuration to Codex `config.toml` with a backup and without rewriting existing settings.
