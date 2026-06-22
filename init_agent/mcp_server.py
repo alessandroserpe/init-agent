@@ -47,7 +47,7 @@ class InitAgentMcpServer:
                 if request is None:
                     self._debug("server_eof", {})
                     break
-                self._debug("request", {"id": request.get("id"), "method": request.get("method"), "keys": sorted(request.keys())})
+                self._debug("request", _debug_request_payload(request))
                 response = self.handle(request)
             except Exception as exc:
                 self._debug("error", {"message": str(exc)})
@@ -62,7 +62,7 @@ class InitAgentMcpServer:
         params = request.get("params") if isinstance(request.get("params"), dict) else {}
 
         if not method:
-            self._debug("ignored_message", {"id": request_id, "keys": sorted(request.keys())})
+            self._debug("ignored_message", _debug_request_payload(request))
             return None
         if method == "initialize":
             return _result_response(request_id, _initialize_result(params))
@@ -132,6 +132,24 @@ def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[s
         raise ValueError("repo_symbol_callers requires symbol")
     limit = int(arguments.get("limit") or 50)
     return repo_symbol_callers(root, symbol, limit=limit, prepare=False)
+
+
+def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": request.get("id"),
+        "method": request.get("method"),
+        "keys": sorted(request.keys()),
+    }
+    if isinstance(request.get("params"), dict) and request.get("method") == "initialize":
+        payload["protocolVersion"] = request["params"].get("protocolVersion")
+    if isinstance(request.get("error"), dict):
+        error = request["error"]
+        payload["error"] = {
+            "code": error.get("code"),
+            "message": error.get("message"),
+            "data": error.get("data"),
+        }
+    return payload
 
 
 def _initialize_result(params: dict[str, Any] | None = None) -> dict[str, Any]:

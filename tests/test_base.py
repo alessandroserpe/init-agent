@@ -508,6 +508,13 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsNone(server.handle({"jsonrpc": "2.0", "result": {"ok": True}}))
             self.assertIsNone(server.handle({"jsonrpc": "2.0", "id": None}))
 
+    def test_mcp_debug_payload_records_error_messages(self) -> None:
+        from init_agent.mcp_server import _debug_request_payload
+
+        payload = _debug_request_payload({"jsonrpc": "2.0", "error": {"code": -32602, "message": "bad initialize"}})
+        self.assertEqual(payload["error"]["code"], -32602)
+        self.assertEqual(payload["error"]["message"], "bad initialize")
+
     def test_mcp_debug_log_records_start_and_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             debug_log = Path(tmp) / "mcp.log"
