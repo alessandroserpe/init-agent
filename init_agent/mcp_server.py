@@ -47,7 +47,7 @@ class InitAgentMcpServer:
                 if request is None:
                     self._debug("server_eof", {})
                     break
-                self._debug("request", {"id": request.get("id"), "method": request.get("method")})
+                self._debug("request", {"id": request.get("id"), "method": request.get("method"), "keys": sorted(request.keys())})
                 response = self.handle(request)
             except Exception as exc:
                 self._debug("error", {"message": str(exc)})
@@ -61,6 +61,9 @@ class InitAgentMcpServer:
         method = request.get("method")
         params = request.get("params") if isinstance(request.get("params"), dict) else {}
 
+        if not method:
+            self._debug("ignored_message", {"id": request_id, "keys": sorted(request.keys())})
+            return None
         if method == "initialize":
             return _result_response(request_id, _initialize_result(params))
         if method == "notifications/initialized":

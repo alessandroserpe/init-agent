@@ -502,6 +502,12 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsNotNone(initialized)
             self.assertEqual(initialized["result"]["protocolVersion"], "2025-06-18")
 
+    def test_mcp_ignores_messages_without_method(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = InitAgentMcpServer(Path(tmp))
+            self.assertIsNone(server.handle({"jsonrpc": "2.0", "result": {"ok": True}}))
+            self.assertIsNone(server.handle({"jsonrpc": "2.0", "id": None}))
+
     def test_mcp_debug_log_records_start_and_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             debug_log = Path(tmp) / "mcp.log"
