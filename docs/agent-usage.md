@@ -48,8 +48,21 @@ init-agent tool repo_symbol_callers --symbol validateSession --json
 
 These commands return stable JSON contracts with candidate files, symbols,
 file neighborhoods, callers, commits, follow-up commands and safety warnings.
-They are the bridge toward future MCP support without requiring an MCP server
-yet.
+
+For MCP-capable agents, run the stdio server from the repository root:
+
+```bash
+init-agent mcp
+```
+
+Or point it at a root explicitly:
+
+```bash
+init-agent-mcp --root /path/to/repository
+```
+
+The MCP server exposes the same four tools: `repo_graph_search`,
+`repo_overview`, `repo_related_file` and `repo_symbol_callers`.
 
 ## Codex
 

@@ -25,6 +25,7 @@ from .exporter import export_graph
 from .feedback import add_feedback, clear_feedback, explain_feedback, export_feedback, import_feedback, list_feedback
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
+from .mcp_server import main as mcp_main
 from .overview import build_overview_pack, render_overview_markdown, render_overview_text
 from .query import callers_for_symbol, related as related_query
 from .query import search
@@ -80,6 +81,10 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser = subparsers.add_parser("export", help="Export the indexed graph as JSON.")
     export_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     export_parser.set_defaults(handler=cmd_export)
+
+    mcp_parser = subparsers.add_parser("mcp", help="Run the MCP stdio server for agent integrations.")
+    mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    mcp_parser.set_defaults(handler=cmd_mcp)
 
     git_parser = subparsers.add_parser("git", help="Read Git metadata into the local index.")
     git_parser.set_defaults(handler=cmd_git)
@@ -333,6 +338,10 @@ def cmd_export(args: argparse.Namespace) -> int:
     print()
     print("Use --json to print the full graph export.")
     return 0
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    return mcp_main(["--root", args.root])
 
 
 def cmd_git(args: argparse.Namespace) -> int:

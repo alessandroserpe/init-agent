@@ -23,6 +23,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
+| `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
 | `init-agent query <text>` | Search paths, symbols, roles and commits. |
@@ -218,6 +219,27 @@ init-agent tool repo_symbol_callers --symbol validateSession --json
 The response includes definitions, callers, follow-up commands and warnings.
 It is designed for agents that need to move from a symbol name to the files
 that define or call it.
+
+## `init-agent mcp`
+
+Runs a minimal MCP stdio server exposing the same repo tool contracts:
+
+```bash
+init-agent mcp
+init-agent mcp --root /path/to/repository
+init-agent-mcp --root /path/to/repository
+```
+
+The server exposes:
+
+- `repo_graph_search`
+- `repo_overview`
+- `repo_related_file`
+- `repo_symbol_callers`
+
+The server is read-only for project source files. Like `init-agent run`, it may
+create or update `.agent/` so the local SQLite index stays fresh. It does not
+call an LLM and does not send source code over the network.
 
 ## `init-agent overview`
 

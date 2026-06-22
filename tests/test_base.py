@@ -15,6 +15,7 @@ from init_agent.doctor import run_doctor
 from init_agent.estimate import estimate_tokens
 from init_agent.graph_store import GraphStore
 from init_agent.language_detector import detect_role
+from init_agent.mcp_server import InitAgentMcpServer
 from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
@@ -244,6 +245,80 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertTrue(any("repo_related_file" in command for command in commands))
             finally:
                 os.chdir(previous)
+
+    def test_mcp_initialize_and_tools_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = InitAgentMcpServer(Path(tmp))
+            initialized = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+            self.assertIsNotNone(initialized)
+            self.assertEqual(initialized["result"]["serverInfo"]["name"], "init-agent")
+            listed = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+            self.assertIsNotNone(listed)
+            tool_names = {item["name"] for item in listed["result"]["tools"]}
+            self.assertEqual(
+                tool_names,
+                {"repo_graph_search", "repo_overview", "repo_related_file", "repo_symbol_callers"},
+            )
+
+    def test_mcp_tool_call_repo_graph_search_returns_structured_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            server = InitAgentMcpServer(root)
+            response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "repo_graph_search", "arguments": {"query": "login session", "limit": 3}},
+                }
+            )
+            self.assertIsNotNone(response)
+            result = response["result"]
+            self.assertFalse(result["isError"])
+            self.assertEqual(result["structuredContent"]["tool"], "repo_graph_search")
+            self.assertIn("src/auth/session.py", result["structuredContent"]["suggested_first_reads"])
+            self.assertEqual(result["content"][0]["type"], "text")
+
+    def test_mcp_tool_call_related_and_callers_are_json_contracts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_call_fixture(Path(tmp))
+            server = InitAgentMcpServer(root)
+            related = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "tools/call",
+                    "params": {"name": "repo_related_file", "arguments": {"path": "include/functions.php"}},
+                }
+            )
+            callers = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 5,
+                    "method": "tools/call",
+                    "params": {"name": "repo_symbol_callers", "arguments": {"symbol": "buildForm"}},
+                }
+            )
+            self.assertIsNotNone(related)
+            self.assertIsNotNone(callers)
+            self.assertEqual(related["result"]["structuredContent"]["tool"], "repo_related_file")
+            self.assertEqual(callers["result"]["structuredContent"]["tool"], "repo_symbol_callers")
+            self.assertIn("index.php", {item["path"] for item in callers["result"]["structuredContent"]["callers"]})
+
+    def test_mcp_unknown_tool_returns_tool_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = InitAgentMcpServer(Path(tmp))
+            response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 6,
+                    "method": "tools/call",
+                    "params": {"name": "not_real", "arguments": {}},
+                }
+            )
+            self.assertIsNotNone(response)
+            self.assertTrue(response["result"]["isError"])
+            self.assertIn("unknown tool", response["result"]["content"][0]["text"])
 
     def test_experiment_cases_manifest_is_valid(self) -> None:
         cases_path = Path(__file__).resolve().parents[1] / "experiments" / "cases.json"

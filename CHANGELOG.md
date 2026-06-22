@@ -4,6 +4,7 @@ All notable changes to `init-agent` are documented here.
 
 ## Unreleased
 
+- Added `init-agent mcp` and `init-agent-mcp` as a minimal MCP stdio server exposing the repo tool contracts.
 - Added `init-agent tool repo_graph_search --query ... --json` as an agent-facing JSON search contract.
 - Added `init-agent tool repo_overview --json`, `repo_related_file --path ... --json` and `repo_symbol_callers --symbol ... --json` as additional agent-facing contracts before MCP.
 - Added `init-agent export --json` to export the local graph metadata without source contents.

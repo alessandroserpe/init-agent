@@ -27,6 +27,13 @@ It intentionally does not store full file contents.
 tools. It includes paths, symbols, relations, Git metadata, feedback and run
 summaries, but not full source file contents.
 
+## MCP Server
+
+`init-agent mcp` exposes the same local metadata contracts over stdio for
+MCP-capable agents. It does not contact external services and does not execute
+an LLM. The tools are read-only for project source files, but they may create
+or update `.agent/` to keep the local SQLite index fresh.
+
 ## When Files Are Read
 
 File contents may be read locally during:
