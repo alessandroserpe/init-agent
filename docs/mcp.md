@@ -72,6 +72,17 @@ include:
 
 Codex supports MCP stdio servers through `config.toml`.
 
+The safest setup path is the assisted installer:
+
+```bash
+cd /path/to/repository
+init-agent mcp install-codex --root .
+```
+
+This command preserves the existing Codex config, creates a timestamped backup
+when `config.toml` already exists, and appends only the init-agent MCP server
+block. Restart Codex after running it.
+
 User-level configuration lives at:
 
 ```text

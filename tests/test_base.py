@@ -73,6 +73,52 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("tools/list", content)
         self.assertIn("repo_graph_search", content)
 
+    def test_mcp_install_codex_appends_config_and_creates_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            config = Path(tmp) / "config.toml"
+            original = 'model = "gpt-5.5"\n\n[mcp_servers.node_repl]\ncommand = "node_repl"\n'
+            config.write_text(original, encoding="utf-8")
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config)]),
+                    0,
+                )
+
+            updated = config.read_text(encoding="utf-8")
+            self.assertTrue(updated.startswith(original))
+            self.assertIn("[mcp_servers.init_agent]", updated)
+            self.assertIn('command = "init-agent-mcp"', updated)
+            self.assertIn(f'args = ["--root", "{root.resolve()}"]', updated)
+            backups = list(config.parent.glob("config.toml.bak-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), original)
+            self.assertIn("Restart Codex", output.getvalue())
+
+    def test_mcp_install_codex_json_is_valid_and_does_not_duplicate_existing_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            config = Path(tmp) / "config.toml"
+            existing = '[mcp_servers.init_agent]\ncommand = "init-agent-mcp"\nargs = ["--root", "/old"]\n'
+            config.write_text(existing, encoding="utf-8")
+
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["mcp", "install-codex", "--root", str(root), "--config-path", str(config), "--json"]),
+                    0,
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertFalse(data["installed"])
+            self.assertEqual(data["status"], "exists")
+            self.assertEqual(config.read_text(encoding="utf-8"), existing)
+            self.assertEqual(list(config.parent.glob("config.toml.bak-*")), [])
+
     def test_install_skill_codex_copies_bundled_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "skills"

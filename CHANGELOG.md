@@ -4,6 +4,7 @@ All notable changes to `init-agent` are documented here.
 
 ## Unreleased
 
+- Added `init-agent mcp install-codex` to append init-agent MCP configuration to Codex `config.toml` with a backup and without rewriting existing settings.
 - Fixed MCP stdio transport to use `Content-Length` framing for real MCP clients while keeping the local repo tool contracts unchanged.
 - Added `init-agent mcp` and `init-agent-mcp` as a minimal MCP stdio server exposing the repo tool contracts.
 - Added MCP setup documentation with Codex `config.toml` examples and a stdio smoke test.

@@ -228,6 +228,7 @@ Runs a minimal MCP stdio server exposing the same repo tool contracts:
 init-agent mcp
 init-agent mcp --root /path/to/repository
 init-agent-mcp --root /path/to/repository
+init-agent mcp install-codex --root .
 ```
 
 The server exposes:

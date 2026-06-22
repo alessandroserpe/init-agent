@@ -25,6 +25,7 @@ from .exporter import export_graph
 from .feedback import add_feedback, clear_feedback, explain_feedback, export_feedback, import_feedback, list_feedback
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
+from .mcp_installer import install_codex_mcp_config
 from .mcp_server import main as mcp_main
 from .overview import build_overview_pack, render_overview_markdown, render_overview_text
 from .query import callers_for_symbol, related as related_query
@@ -82,8 +83,15 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     export_parser.set_defaults(handler=cmd_export)
 
-    mcp_parser = subparsers.add_parser("mcp", help="Run the MCP stdio server for agent integrations.")
+    mcp_parser = subparsers.add_parser("mcp", help="Run or install the MCP stdio server for agent integrations.")
     mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
+    mcp_install_codex = mcp_subparsers.add_parser("install-codex", help="Append init-agent MCP configuration to Codex config.toml.")
+    mcp_install_codex.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    mcp_install_codex.add_argument("--config-path", help="Override Codex config path, mainly for testing.")
+    mcp_install_codex.add_argument("--server-name", default="init_agent", help="MCP server name to add under [mcp_servers.<name>].")
+    mcp_install_codex.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    mcp_install_codex.set_defaults(handler=cmd_mcp_install_codex)
     mcp_parser.set_defaults(handler=cmd_mcp)
 
     git_parser = subparsers.add_parser("git", help="Read Git metadata into the local index.")
@@ -342,6 +350,45 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 def cmd_mcp(args: argparse.Namespace) -> int:
     return mcp_main(["--root", args.root])
+
+
+def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
+    try:
+        result = install_codex_mcp_config(
+            Path(args.root),
+            config_path=Path(args.config_path) if args.config_path else None,
+            server_name=args.server_name,
+        )
+    except Exception as exc:
+        if args.json:
+            print(json.dumps({"installed": False, "status": "error", "error": str(exc)}, indent=2, sort_keys=True))
+        else:
+            print(f"Could not install Codex MCP config: {exc}")
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["status"] in {"installed", "exists"} else 1
+
+    print("Init Agent MCP Codex Setup")
+    print()
+    if result["installed"]:
+        print("Status: installed")
+        print(f"Config: {result['config_path']}")
+        if result["backup_path"]:
+            print(f"Backup: {result['backup_path']}")
+        print(f"Server: {result['server_name']}")
+        print(f"Root: {result['root']}")
+        print()
+        print(result["message"])
+    else:
+        print("Status: already configured")
+        print(f"Config: {result['config_path']}")
+        print(f"Server: {result['server_name']}")
+        print(f"Root: {result['root']}")
+        print()
+        print(result["message"])
+    return 0
 
 
 def cmd_git(args: argparse.Namespace) -> int:
