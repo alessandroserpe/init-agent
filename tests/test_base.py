@@ -800,6 +800,44 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_memory_audit_allows_multiple_repo_decisions_per_topic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                for note in (
+                    "Use a standard Python src layout for the initial package.",
+                    "Keep the command line interface dependency-free while the project is small.",
+                ):
+                    with redirect_stdout(StringIO()):
+                        self.assertEqual(
+                            main(
+                                [
+                                    "tool",
+                                    "repo_memory_add",
+                                    "--scope",
+                                    "repo",
+                                    "--topic",
+                                    "project_decisions",
+                                    "--evidence",
+                                    "planning_note",
+                                    "--note",
+                                    note,
+                                    "--json",
+                                ]
+                            ),
+                            0,
+                        )
+                audit_output = StringIO()
+                with redirect_stdout(audit_output):
+                    self.assertEqual(main(["tool", "repo_memory_audit", "--json"]), 0)
+                audit = json.loads(audit_output.getvalue())
+                self.assertEqual(audit["audit"]["summary"]["duplicate_file_topic"], 0)
+                self.assertEqual(audit["audit"]["issues"]["duplicate_file_topic"], [])
+            finally:
+                os.chdir(previous)
+
     def test_tool_repo_memory_repo_scope_works_before_index_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

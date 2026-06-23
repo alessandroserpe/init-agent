@@ -307,12 +307,13 @@ def audit_notes(root: Path, limit: int = 100) -> dict[str, Any]:
         useful_tokens = tokenize_query(str(note.get("note") or ""))
         if len(useful_tokens) < 5:
             issues["short_note"].append(public)
-        group_key = (
-            str(note.get("scope") or "file"),
-            str(note.get("path") or ""),
-            str(note.get("topic") or ""),
-        )
-        grouped.setdefault(group_key, []).append(note)
+        if str(note.get("scope") or "file") == "file":
+            group_key = (
+                str(note.get("scope") or "file"),
+                str(note.get("path") or ""),
+                str(note.get("topic") or ""),
+            )
+            grouped.setdefault(group_key, []).append(note)
 
     for (scope, path, topic), items in grouped.items():
         if len(items) <= 1:
