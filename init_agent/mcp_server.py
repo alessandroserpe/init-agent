@@ -22,6 +22,7 @@ from .agent_tools import (
     repo_memory_delete,
     repo_memory_list,
     repo_memory_search,
+    repo_memory_topics,
     repo_memory_update,
     repo_overview,
     repo_related_file,
@@ -106,6 +107,7 @@ class InitAgentMcpServer:
             "repo_memory_delete": _handle_repo_memory_delete,
             "repo_memory_list": _handle_repo_memory_list,
             "repo_memory_search": _handle_repo_memory_search,
+            "repo_memory_topics": _handle_repo_memory_topics,
             "repo_memory_update": _handle_repo_memory_update,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
@@ -237,6 +239,13 @@ def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[st
     if not query:
         raise ValueError("repo_memory_search requires query")
     return repo_memory_search(root, query, path=path, limit=limit)
+
+
+def _handle_repo_memory_topics(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    topic = str(arguments.get("topic") or "").strip() or None
+    limit = int(arguments.get("limit") or 20)
+    notes_per_topic = int(arguments.get("notes_per_topic") or 5)
+    return repo_memory_topics(root, topic=topic, limit=limit, notes_per_topic=notes_per_topic)
 
 
 def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -419,6 +428,19 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_topics",
+            "description": "Return topic-level aggregates from local agent memory notes.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "Optional exact topic filter."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                    "notes_per_topic": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+                },
                 "additionalProperties": False,
             },
         },

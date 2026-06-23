@@ -92,7 +92,7 @@ Follow-up ideas:
 - [x] Add memory management tools for listing stale notes and deleting wrong or duplicate notes.
 - [x] Add a memory update command after real usage showed the replacement semantics.
 - [ ] Consider explicit memory supersede links only if update/delete are not enough.
-- [ ] Add topic-level aggregate memories for repository areas such as server startup, frontend boot or routing.
+- [x] Add topic-level aggregate memories for repository areas such as server startup, frontend boot or routing.
 - [ ] Consider scope levels for notes: repo-wide, file-specific and symbol-specific.
 - [ ] Add memory clear/export/import commands if real usage shows notes accumulating too quickly.
 - [ ] Consider summarizing repeated notes per file only after enough real agent sessions.

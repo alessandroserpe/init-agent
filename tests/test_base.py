@@ -626,6 +626,18 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(searched["tool"], "repo_memory_search")
                 self.assertEqual(searched["memory"]["matches"][0]["path"], "src/auth/session.py")
 
+                topics_output = StringIO()
+                with redirect_stdout(topics_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_topics", "--topic", "login session", "--json"]),
+                        0,
+                    )
+                topics = json.loads(topics_output.getvalue())
+                self.assertEqual(topics["tool"], "repo_memory_topics")
+                self.assertEqual(topics["memory"]["topics"][0]["topic"], "login session")
+                self.assertEqual(topics["memory"]["topics"][0]["note_count"], 1)
+                self.assertEqual(topics["memory"]["topics"][0]["paths"], ["src/auth/session.py"])
+
                 notes_output = StringIO()
                 with redirect_stdout(notes_output):
                     self.assertEqual(
@@ -914,6 +926,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_memory_delete",
                     "repo_memory_list",
                     "repo_memory_search",
+                    "repo_memory_topics",
                     "repo_memory_update",
                     "repo_related_file",
                     "repo_symbol_callers",
@@ -1130,10 +1143,19 @@ class InitAgentBaseTests(unittest.TestCase):
                     "params": {"name": "repo_memory_list", "arguments": {"topic": "login session"}},
                 }
             )
+            topics = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 44,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_topics", "arguments": {"topic": "login session"}},
+                }
+            )
             self.assertIsNotNone(added)
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
             self.assertIsNotNone(listed)
+            self.assertIsNotNone(topics)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
             self.assertEqual(added["result"]["structuredContent"]["memory"]["scope"], "file")
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
@@ -1143,6 +1165,7 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(notes["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
             self.assertFalse(notes["result"]["structuredContent"]["notes"][0]["stale"])
             self.assertEqual(listed["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
+            self.assertEqual(topics["result"]["structuredContent"]["memory"]["topics"][0]["topic"], "login session")
 
             repo_added = server.handle(
                 {

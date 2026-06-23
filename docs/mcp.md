@@ -15,6 +15,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_memory_add`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
 - `repo_file_notes`
@@ -26,7 +27,8 @@ write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
 files. Memory tools can store short local notes, also in `.agent/graph.sqlite`.
 File-scoped notes report stale status when the indexed file hash changed after
 the note was recorded; repo-scoped notes are useful for project-wide decisions
-and report stale status as not applicable. Use `repo_memory_update` after
+and report stale status as not applicable. Use `repo_memory_topics` to get a
+compact area-level memory map before opening files. Use `repo_memory_update` after
 re-reading a stale note to refresh it without creating duplicates. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
@@ -95,6 +97,7 @@ include:
 - `repo_memory_add`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
 - `repo_file_notes`

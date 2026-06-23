@@ -9,7 +9,7 @@ from typing import Any
 from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback
 from .graph_store import GraphStore
-from .memory import add_note, delete_note, list_notes, search_notes, update_note
+from .memory import add_note, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -348,6 +348,29 @@ def repo_memory_list(
         "scope": scope or None,
         "stale_only": stale_only,
         "notes": notes,
+        "warnings": warnings,
+    }
+
+
+def repo_memory_topics(
+    root: Path,
+    topic: str | None = None,
+    limit: int = 20,
+    notes_per_topic: int = 5,
+) -> dict[str, Any]:
+    """Return compact topic-level aggregates from local memory notes."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    memory = (
+        topic_summaries(root, topic=topic, limit=limit, notes_per_topic=notes_per_topic)
+        if readiness["ready"]
+        else {"topic": topic or None, "topics": []}
+    )
+    return {
+        "tool": "repo_memory_topics",
+        "contract": TOOL_CONTRACT_VERSION,
+        "memory": memory,
         "warnings": warnings,
     }
 
@@ -764,6 +787,32 @@ def render_repo_memory_list_text(result: dict[str, Any]) -> str:
         elif item.get("stale") is None:
             lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
+    memory = result["memory"]
+    lines = [
+        "Init Agent Tool: repo_memory_topics",
+        "",
+        f"Topic filter: {memory.get('topic') or '-'}",
+        "Topics:",
+    ]
+    if not memory["topics"]:
+        lines.append("-")
+    for item in memory["topics"]:
+        label = item["topic"] or "(untitled)"
+        lines.append(f"- {label}: {item['note_count']} notes, {item['file_count']} files")
+        if item.get("repo_note_count"):
+            lines.append(f"  repo notes: {item['repo_note_count']}")
+        if item.get("stale_count"):
+            lines.append(f"  stale notes: {item['stale_count']}")
+        if item.get("paths"):
+            lines.append(f"  paths: {', '.join(item['paths'][:5])}")
+        for note in item.get("notes", [])[:3]:
+            note_label = note.get("path") or "(repo)"
+            lines.append(f"  - #{note['id']} {note_label}: {note['note']}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

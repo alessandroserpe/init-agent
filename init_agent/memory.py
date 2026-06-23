@@ -246,6 +246,45 @@ def search_notes(root: Path, query: str, path: str | None = None, limit: int = 1
     }
 
 
+def topic_summaries(
+    root: Path,
+    topic: str | None = None,
+    limit: int = 20,
+    notes_per_topic: int = 5,
+) -> dict[str, Any]:
+    bounded_limit = max(1, min(limit, 100))
+    bounded_notes = max(1, min(notes_per_topic, 20))
+    notes = list_notes(root, topic=topic, limit=500)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for note in notes:
+        key = str(note.get("topic") or "")
+        grouped.setdefault(key, []).append(note)
+
+    topics = []
+    for key, items in grouped.items():
+        items.sort(key=lambda item: (-int(item["id"])))
+        paths = sorted({str(item.get("path") or "") for item in items if item.get("path")})
+        stale_count = sum(1 for item in items if item.get("stale") is True)
+        repo_notes = sum(1 for item in items if item.get("scope") == "repo")
+        topics.append(
+            {
+                "topic": key,
+                "note_count": len(items),
+                "file_count": len(paths),
+                "repo_note_count": repo_notes,
+                "stale_count": stale_count,
+                "latest_created_at": str(items[0].get("created_at") or ""),
+                "paths": paths[:10],
+                "notes": [_public_note(item) for item in items[:bounded_notes]],
+            }
+        )
+    topics.sort(key=lambda item: (-int(item["note_count"]), str(item["topic"])))
+    return {
+        "topic": topic or None,
+        "topics": topics[:bounded_limit],
+    }
+
+
 def _row_to_note(row: Any) -> dict[str, Any]:
     try:
         tokens = json.loads(row["note_tokens_json"])

@@ -26,6 +26,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
+| `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
@@ -303,6 +304,19 @@ init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_search --query "badge unread count" --path src/ui/messages.js --json
 ```
 
+## `init-agent tool repo_memory_topics`
+
+Returns compact topic-level aggregates from local memory notes:
+
+```bash
+init-agent tool repo_memory_topics --json
+init-agent tool repo_memory_topics --topic "server startup" --notes-per-topic 3 --json
+```
+
+This is useful when an agent wants an area map before opening files. It groups
+notes by topic, reports note/file/stale counts and includes recent notes for
+each topic.
+
 ## `init-agent tool repo_file_notes`
 
 Lists local notes attached to one file:
@@ -357,6 +371,7 @@ The server exposes:
 - `repo_memory_add`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
 - `repo_file_notes`

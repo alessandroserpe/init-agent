@@ -183,6 +183,7 @@ context.
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent tool repo_memory_add --scope repo --note "..." --json` | Record an optional repo-wide project note. |
+| `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent tool repo_memory_list --stale --json` | Audit local notes, including stale notes. |
 | `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
@@ -225,6 +226,7 @@ Agents can also store short local file notes after understanding code:
 init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
+init-agent tool repo_memory_topics --topic "login session" --json
 init-agent tool repo_memory_list --stale --json
 init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 ```
