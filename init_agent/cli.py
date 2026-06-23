@@ -24,6 +24,7 @@ from .agent_tools import (
     render_repo_memory_update_text,
     render_repo_overview_text,
     render_repo_related_file_text,
+    render_repo_session_summary_text,
     render_repo_symbol_callers_text,
     repo_entrypoints,
     repo_feedback_add,
@@ -39,6 +40,7 @@ from .agent_tools import (
     repo_memory_update,
     repo_overview,
     repo_related_file,
+    repo_session_summary,
     repo_symbol_callers,
 )
 from .context_builder import build_context_pack
@@ -266,6 +268,11 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_audit_parser.add_argument("--limit", type=int, default=100, help="Maximum notes to audit.")
     repo_memory_audit_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_audit_parser.set_defaults(handler=cmd_tool_repo_memory_audit)
+
+    repo_session_summary_parser = tool_subparsers.add_parser("repo_session_summary", help="Summarize local session metadata for agent handoff.")
+    repo_session_summary_parser.add_argument("--limit", type=int, default=10, help="Maximum recent notes, feedback and git status entries to return.")
+    repo_session_summary_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_session_summary_parser.set_defaults(handler=cmd_tool_repo_session_summary)
 
     repo_file_notes_parser = tool_subparsers.add_parser("repo_file_notes", help="List local agent notes for one file.")
     repo_file_notes_parser.add_argument("--path", required=True, help="Project-relative file path.")
@@ -1087,6 +1094,16 @@ def cmd_tool_repo_memory_audit(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_memory_audit_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_tool_repo_session_summary(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_session_summary(root, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_session_summary_text(result))
     return _memory_tool_exit_code(result)
 
 

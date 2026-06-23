@@ -104,7 +104,7 @@ Priority order:
 - [x] Add `repo_memory_audit` to report stale notes, unknown evidence, missing topics, likely duplicates and overly short notes.
 - [x] Document decision-log and area-map workflows using repo-scoped memories and `repo_memory_topics`.
 - [x] Add a lightweight end-of-task reminder so agents consider memory/feedback after verification.
-- [ ] Add lightweight session summary support only after enough real sessions show the right shape.
+- [x] Add lightweight session summary support as local handoff metadata without persistent session tracking.
 - [ ] Consider task memory linked to files/topics only if notes plus decision-log are not enough.
 - [ ] Avoid turning init-agent into a generic project manager; keep features repository-oriented and metadata-first.
 
@@ -140,6 +140,7 @@ Priority order:
 - [x] Split the long README into a product-first entry page plus focused `docs/` references.
 - [x] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Investigate Claude Code's supported instruction format before adding a dedicated `install-skill claude-code` command.
+  Deferred until a Claude Code environment or user can verify install paths, reload behavior and expected instruction format; use the generic Markdown/MCP workflow in the meantime.
 - [x] Add a lightweight issue template for bug reports and noisy-ranking reports.
 - [ ] Evaluate whether PyPI publishing is worth doing after external install testing.
 

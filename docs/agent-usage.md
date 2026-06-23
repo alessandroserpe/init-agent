@@ -105,7 +105,7 @@ The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
 `repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
 `repo_feedback_add`, `repo_feedback_explain`, `repo_memory_add`,
 `repo_memory_audit`, `repo_memory_list`, `repo_memory_search`,
-`repo_memory_topics`, `repo_memory_update`, `repo_memory_delete` and
+`repo_session_summary`, `repo_memory_topics`, `repo_memory_update`, `repo_memory_delete` and
 `repo_file_notes`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.

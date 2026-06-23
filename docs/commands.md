@@ -27,6 +27,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent tool repo_memory_audit --json` | Audit local memory quality. |
+| `init-agent tool repo_session_summary --json` | Summarize local handoff metadata after an agent session. |
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
@@ -336,6 +337,19 @@ The audit reports stale notes, notes with unknown evidence, missing topics,
 likely duplicate file/topic groups and overly short notes. Use it before adding
 many new memories or after a long refactoring session.
 
+## `init-agent tool repo_session_summary`
+
+Returns a compact local handoff summary for agents:
+
+```bash
+init-agent tool repo_session_summary --json
+init-agent tool repo_session_summary --limit 20 --json
+```
+
+The summary includes project/root metadata, Git status, recent memory notes,
+recent feedback and memory audit counts. It does not record a session, modify
+source files or replace tests/direct file reads.
+
 ## `init-agent tool repo_file_notes`
 
 Lists local notes attached to one file:
@@ -391,6 +405,7 @@ The server exposes:
 - `repo_memory_audit`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_session_summary`
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`

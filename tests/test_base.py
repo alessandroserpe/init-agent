@@ -577,6 +577,16 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(explained["tool"], "repo_feedback_explain")
                 paths = {item["path"] for item in explained["feedback"]["signals"]}
                 self.assertIn("src/auth/session.py", paths)
+
+                summary_output = StringIO()
+                with redirect_stdout(summary_output):
+                    self.assertEqual(main(["tool", "repo_session_summary", "--json"]), 0)
+                summary = json.loads(summary_output.getvalue())
+                self.assertEqual(summary["tool"], "repo_session_summary")
+                self.assertEqual(summary["contract"], "init-agent.tool.v1")
+                self.assertEqual(summary["project"]["name"], root.name)
+                self.assertTrue(summary["recent_feedback"])
+                self.assertEqual(summary["recent_feedback"][0]["path"], "src/auth/session.py")
             finally:
                 os.chdir(previous)
 
@@ -981,7 +991,8 @@ class InitAgentBaseTests(unittest.TestCase):
             agent = root / ".agent"
             agent.mkdir()
             db = agent / "graph.sqlite"
-            with sqlite3.connect(db) as conn:
+            conn = sqlite3.connect(db)
+            try:
                 conn.executescript(
                     """
                     CREATE TABLE agent_notes (
@@ -996,6 +1007,8 @@ class InitAgentBaseTests(unittest.TestCase):
                     );
                     """
                 )
+            finally:
+                conn.close()
             with GraphStore(root) as store:
                 store.initialize()
                 columns = {row["name"] for row in store.connection.execute("PRAGMA table_info(agent_notes)").fetchall()}
@@ -1026,6 +1039,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_memory_delete",
                     "repo_memory_list",
                     "repo_memory_search",
+                    "repo_session_summary",
                     "repo_memory_topics",
                     "repo_memory_update",
                     "repo_related_file",
@@ -1259,12 +1273,21 @@ class InitAgentBaseTests(unittest.TestCase):
                     "params": {"name": "repo_memory_audit", "arguments": {}},
                 }
             )
+            summary = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 46,
+                    "method": "tools/call",
+                    "params": {"name": "repo_session_summary", "arguments": {}},
+                }
+            )
             self.assertIsNotNone(added)
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
             self.assertIsNotNone(listed)
             self.assertIsNotNone(topics)
             self.assertIsNotNone(audit)
+            self.assertIsNotNone(summary)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
             self.assertEqual(added["result"]["structuredContent"]["memory"]["scope"], "file")
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
@@ -1276,6 +1299,8 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(listed["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
             self.assertEqual(topics["result"]["structuredContent"]["memory"]["topics"][0]["topic"], "login session")
             self.assertGreaterEqual(audit["result"]["structuredContent"]["audit"]["note_count"], 1)
+            self.assertEqual(summary["result"]["structuredContent"]["tool"], "repo_session_summary")
+            self.assertTrue(summary["result"]["structuredContent"]["recent_memory"])
 
             repo_added = server.handle(
                 {

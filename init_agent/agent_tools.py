@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .context_builder import build_context_pack
-from .feedback import add_feedback, explain_feedback
+from .feedback import add_feedback, explain_feedback, list_feedback
+from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
 from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
@@ -453,15 +454,84 @@ def repo_file_notes(root: Path, path: str, limit: int = 20) -> dict[str, Any]:
     }
 
 
+def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
+    """Return local metadata useful at the end of an agent session."""
+
+    bounded_limit = max(1, min(limit, 50))
+    readiness = _readiness(root)
+    memory_readiness = _memory_readiness(root)
+    warnings = list(dict.fromkeys([*readiness["warnings"], *memory_readiness["warnings"]]))
+    git_is_available = git_available(root)
+    recent_memory = (
+        [_compact_memory_note(note) for note in list_notes(root, limit=bounded_limit)]
+        if memory_readiness["ready"]
+        else []
+    )
+    audit = audit_notes(root, limit=100) if memory_readiness["ready"] else {
+        "note_count": 0,
+        "summary": {},
+        "issues": {},
+    }
+    recent_feedback = (
+        [_compact_feedback(item) for item in list_feedback(root)[:bounded_limit]]
+        if readiness["ready"]
+        else []
+    )
+    git = {
+        "available": git_is_available,
+        "branch": current_branch(root) if git_is_available else None,
+        "status": status_short(root)[:bounded_limit] if git_is_available else [],
+    }
+    followups: list[dict[str, str]] = []
+    if recent_memory:
+        followups.append(
+            {
+                "tool": "repo_memory_audit",
+                "command": "init-agent tool repo_memory_audit --json",
+                "reason": "check whether recently used local memory is stale or low quality",
+            }
+        )
+    if git["status"]:
+        followups.append(
+            {
+                "tool": "git_status",
+                "command": "git status --short",
+                "reason": "review modified files before committing or ending the session",
+            }
+        )
+    return {
+        "tool": "repo_session_summary",
+        "contract": TOOL_CONTRACT_VERSION,
+        "project": _project_summary(root),
+        "git": git,
+        "recent_memory": recent_memory,
+        "recent_feedback": recent_feedback,
+        "memory_audit": {
+            "note_count": audit.get("note_count", 0),
+            "summary": audit.get("summary", {}),
+        },
+        "followup_commands": followups,
+        "warnings": warnings,
+        "safety": [
+            "summary is local metadata only; verify files before editing",
+            "does not replace git status, tests or direct file reads",
+        ],
+    }
+
+
 def _readiness(root: Path) -> dict[str, Any]:
     db_path = root / ".agent" / "graph.sqlite"
     if not db_path.is_file():
         return {"ready": False, "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"]}
+    conn: sqlite3.Connection | None = None
     try:
-        with sqlite3.connect(db_path) as conn:
-            files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        conn = sqlite3.connect(db_path)
+        files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
     except sqlite3.Error as exc:
         return {"ready": False, "warnings": [f"init-agent index could not be read: {exc}"]}
+    finally:
+        if conn is not None:
+            conn.close()
     if files <= 0:
         return {"ready": False, "warnings": ["init-agent index is empty. Run: init-agent run --overview --markdown"]}
     return {"ready": True, "warnings": []}
@@ -483,6 +553,56 @@ def _memory_readiness(root: Path) -> dict[str, Any]:
     if files <= 0:
         warnings.append("init-agent index has no files; file-scoped memories may be stale until map runs")
     return {"ready": True, "warnings": warnings}
+
+
+def _project_summary(root: Path) -> dict[str, Any]:
+    git_is_available = git_available(root)
+    last_map = None
+    database = db_path(root)
+    if database.is_file():
+        try:
+            with GraphStore(root) as store:
+                store.initialize()
+                last_map = store.latest_map_time()
+        except (OSError, sqlite3.Error):
+            last_map = None
+    return {
+        "name": root.name,
+        "root": str(root),
+        "git": git_is_available,
+        "branch": current_branch(root) if git_is_available else None,
+        "last_map": last_map,
+    }
+
+
+def _compact_memory_note(note: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": note["id"],
+        "path": note.get("path", ""),
+        "scope": note.get("scope", "file"),
+        "topic": note.get("topic", ""),
+        "query": note.get("query", ""),
+        "note": note.get("note", ""),
+        "file_sha256": note.get("file_sha256", ""),
+        "current_file_sha256": note.get("current_file_sha256", ""),
+        "stale": note.get("stale"),
+        "stale_reason": note.get("stale_reason", ""),
+        "evidence": note.get("evidence", "unknown"),
+        "source": note.get("source", "agent"),
+        "created_at": note.get("created_at", ""),
+    }
+
+
+def _compact_feedback(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": item["id"],
+        "query": item.get("query", ""),
+        "path": item.get("path", ""),
+        "rating": item.get("rating", ""),
+        "reason": item.get("reason", ""),
+        "source": item.get("source", "agent"),
+        "created_at": item.get("created_at", ""),
+    }
 
 
 def _lazy_preparation(warnings: list[str]) -> dict[str, Any]:
@@ -900,6 +1020,59 @@ def render_repo_memory_update_text(result: dict[str, Any]) -> str:
             lines.append(f"Stale: {memory.get('stale_reason') or 'yes'}")
         elif memory.get("stale") is None:
             lines.append(f"Stale: unknown ({memory.get('stale_reason') or 'no file hash recorded'})")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_session_summary_text(result: dict[str, Any]) -> str:
+    project = result.get("project") or {}
+    git = result.get("git") or {}
+    lines = [
+        "Init Agent Tool: repo_session_summary",
+        "",
+        f"Project: {project.get('name') or '-'}",
+        f"Root: {project.get('root') or '-'}",
+        f"Git: {'yes' if git.get('available') else 'no'}",
+        f"Branch: {git.get('branch') or '-'}",
+        "",
+        "Git status:",
+    ]
+    status = list(git.get("status") or [])
+    if not status:
+        lines.append("-")
+    for item in status:
+        lines.append(f"- {item}")
+
+    audit_summary = (result.get("memory_audit") or {}).get("summary") or {}
+    lines.extend(["", "Memory audit:"])
+    if not audit_summary:
+        lines.append("-")
+    for key, count in audit_summary.items():
+        lines.append(f"- {key}: {count}")
+
+    lines.extend(["", "Recent memory:"])
+    recent_memory = list(result.get("recent_memory") or [])
+    if not recent_memory:
+        lines.append("-")
+    for item in recent_memory[:5]:
+        label = item.get("path") or "(repo)"
+        topic = item.get("topic") or "-"
+        lines.append(f"- #{item['id']} {label} [{topic}]")
+        if item.get("stale") is True:
+            lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
+        lines.append(f"  note: {item['note']}")
+
+    lines.extend(["", "Recent feedback:"])
+    recent_feedback = list(result.get("recent_feedback") or [])
+    if not recent_feedback:
+        lines.append("-")
+    for item in recent_feedback[:5]:
+        lines.append(f"- #{item['id']} {item['rating']} {item['path']}")
+        if item.get("reason"):
+            lines.append(f"  reason: {item['reason']}")
+
+    lines.extend(["", "Follow-up commands:"])
+    _append_commands(lines, result.get("followup_commands") or [])
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

@@ -16,6 +16,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_memory_audit`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_session_summary`
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
@@ -103,6 +104,7 @@ include:
 - `repo_memory_audit`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_session_summary`
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
