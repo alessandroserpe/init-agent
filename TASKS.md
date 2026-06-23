@@ -90,7 +90,8 @@ Follow-up ideas:
 - [x] Store the indexed file hash with each note and mark notes stale when the file changes.
 - [x] Add evidence levels so agents can distinguish full-file reads, excerpts, manifest checks and graph-only inferences.
 - [x] Add memory management tools for listing stale notes and deleting wrong or duplicate notes.
-- [ ] Add memory update/supersede commands after real usage shows the right replacement semantics.
+- [x] Add a memory update command after real usage showed the replacement semantics.
+- [ ] Consider explicit memory supersede links only if update/delete are not enough.
 - [ ] Add topic-level aggregate memories for repository areas such as server startup, frontend boot or routing.
 - [ ] Consider scope levels for notes: repo-wide, file-specific and symbol-specific.
 - [ ] Add memory clear/export/import commands if real usage shows notes accumulating too quickly.

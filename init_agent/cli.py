@@ -19,6 +19,7 @@ from .agent_tools import (
     render_repo_memory_delete_text,
     render_repo_memory_list_text,
     render_repo_memory_search_text,
+    render_repo_memory_update_text,
     render_repo_overview_text,
     render_repo_related_file_text,
     render_repo_symbol_callers_text,
@@ -31,6 +32,7 @@ from .agent_tools import (
     repo_memory_delete,
     repo_memory_list,
     repo_memory_search,
+    repo_memory_update,
     repo_overview,
     repo_related_file,
     repo_symbol_callers,
@@ -259,6 +261,28 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_delete_parser.add_argument("--id", type=int, required=True, help="Memory note id to delete.")
     repo_memory_delete_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_delete_parser.set_defaults(handler=cmd_tool_repo_memory_delete)
+
+    repo_memory_update_parser = tool_subparsers.add_parser("repo_memory_update", help="Update one local agent note by id and refresh its hash.")
+    repo_memory_update_parser.add_argument("--id", type=int, required=True, help="Memory note id to update.")
+    repo_memory_update_parser.add_argument("--note", help="Replacement short factual note. Do not include source snippets.")
+    repo_memory_update_parser.add_argument("--topic", help="Replacement topic.")
+    repo_memory_update_parser.add_argument("--query", help="Replacement task/query that led to the note.")
+    repo_memory_update_parser.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement memory source.")
+    repo_memory_update_parser.add_argument(
+        "--evidence",
+        choices=[
+            "read_full_file",
+            "read_excerpt",
+            "manifest_only",
+            "inferred_from_graph",
+            "user_decision",
+            "implementation_note",
+            "planning_note",
+        ],
+        help="Replacement evidence level.",
+    )
+    repo_memory_update_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_update_parser.set_defaults(handler=cmd_tool_repo_memory_update)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -1052,6 +1076,28 @@ def cmd_tool_repo_memory_delete(args: argparse.Namespace) -> int:
     else:
         print(render_repo_memory_delete_text(result))
     return 0 if result.get("deleted") else 1
+
+
+def cmd_tool_repo_memory_update(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_memory_update(
+            root,
+            args.id,
+            note=args.note,
+            topic=args.topic,
+            query=args.query,
+            source=args.source,
+            evidence=args.evidence,
+        )
+    except ValueError as exc:
+        print(f"Memory update failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_update_text(result))
+    return 0 if result.get("updated") else 1
 
 
 def _memory_tool_exit_code(result: dict[str, Any]) -> int:

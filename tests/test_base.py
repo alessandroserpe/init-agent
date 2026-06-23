@@ -787,7 +787,8 @@ class InitAgentBaseTests(unittest.TestCase):
             previous = Path.cwd()
             try:
                 os.chdir(root)
-                with redirect_stdout(StringIO()):
+                add_output = StringIO()
+                with redirect_stdout(add_output):
                     self.assertEqual(
                         main(
                             [
@@ -804,6 +805,7 @@ class InitAgentBaseTests(unittest.TestCase):
                         ),
                         0,
                     )
+                added = json.loads(add_output.getvalue())
                 (root / "src" / "auth" / "session.py").write_text(
                     "SESSION_TIMEOUT = 300\n\n"
                     "def validateSession():\n"
@@ -826,6 +828,39 @@ class InitAgentBaseTests(unittest.TestCase):
                     self.assertEqual(main(["tool", "repo_memory_list", "--stale", "--json"]), 0)
                 stale_notes = json.loads(stale_output.getvalue())
                 self.assertEqual(stale_notes["notes"][0]["path"], "src/auth/session.py")
+
+                update_output = StringIO()
+                with redirect_stdout(update_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_update",
+                                "--id",
+                                str(added["memory"]["id"]),
+                                "--evidence",
+                                "read_full_file",
+                                "--note",
+                                "Session validation changed and was re-read after refresh.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                updated = json.loads(update_output.getvalue())
+                self.assertTrue(updated["updated"])
+                self.assertFalse(updated["memory"]["stale"])
+                self.assertEqual(updated["memory"]["evidence"], "read_full_file")
+
+                refreshed_notes_output = StringIO()
+                with redirect_stdout(refreshed_notes_output):
+                    self.assertEqual(
+                        main(["tool", "repo_file_notes", "--path", "src/auth/session.py", "--json"]),
+                        0,
+                    )
+                refreshed_notes = json.loads(refreshed_notes_output.getvalue())
+                self.assertFalse(refreshed_notes["notes"][0]["stale"])
+                self.assertEqual(refreshed_notes["notes"][0]["note"], "Session validation changed and was re-read after refresh.")
             finally:
                 os.chdir(previous)
 
@@ -879,6 +914,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_memory_delete",
                     "repo_memory_list",
                     "repo_memory_search",
+                    "repo_memory_update",
                     "repo_related_file",
                     "repo_symbol_callers",
                 },
@@ -1140,6 +1176,27 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(repo_memory["path"], "")
             self.assertIsNone(repo_memory["stale"])
             self.assertEqual(repo_listed["result"]["structuredContent"]["notes"][0]["scope"], "repo")
+            repo_updated = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 43,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_memory_update",
+                        "arguments": {
+                            "id": repo_memory["id"],
+                            "note": "Use a local-only CLI with SQLite storage; refreshed after repo decision review.",
+                            "evidence": "planning_note",
+                        },
+                    },
+                }
+            )
+            self.assertIsNotNone(repo_updated)
+            updated_memory = repo_updated["result"]["structuredContent"]["memory"]
+            self.assertTrue(repo_updated["result"]["structuredContent"]["updated"])
+            self.assertEqual(updated_memory["scope"], "repo")
+            self.assertEqual(updated_memory["evidence"], "planning_note")
+            self.assertIn("refreshed", updated_memory["note"])
 
             deleted = server.handle(
                 {

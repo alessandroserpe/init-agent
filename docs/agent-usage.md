@@ -51,6 +51,7 @@ init-agent tool repo_memory_add --path src/auth/session.py --topic "login sessio
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_list --stale --json
+init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 ```
 
 These commands return stable JSON contracts with candidate files, symbols,
@@ -76,7 +77,8 @@ init-agent-mcp --root /path/to/repository
 The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
 `repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
 `repo_feedback_add`, `repo_feedback_explain`, `repo_memory_add`,
-`repo_memory_list`, `repo_memory_search`, `repo_memory_delete` and
+`repo_memory_list`, `repo_memory_search`, `repo_memory_update`,
+`repo_memory_delete` and
 `repo_file_notes`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.

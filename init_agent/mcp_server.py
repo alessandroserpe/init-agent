@@ -22,6 +22,7 @@ from .agent_tools import (
     repo_memory_delete,
     repo_memory_list,
     repo_memory_search,
+    repo_memory_update,
     repo_overview,
     repo_related_file,
     repo_symbol_callers,
@@ -105,6 +106,7 @@ class InitAgentMcpServer:
             "repo_memory_delete": _handle_repo_memory_delete,
             "repo_memory_list": _handle_repo_memory_list,
             "repo_memory_search": _handle_repo_memory_search,
+            "repo_memory_update": _handle_repo_memory_update,
             "repo_related_file": _handle_repo_related_file,
             "repo_symbol_callers": _handle_repo_symbol_callers,
         }
@@ -214,6 +216,18 @@ def _handle_repo_memory_delete(root: Path, arguments: dict[str, Any]) -> dict[st
     if note_id <= 0:
         raise ValueError("repo_memory_delete requires positive id")
     return repo_memory_delete(root, note_id)
+
+
+def _handle_repo_memory_update(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    note_id = int(arguments.get("id") or 0)
+    if note_id <= 0:
+        raise ValueError("repo_memory_update requires positive id")
+    note = str(arguments.get("note")).strip() if "note" in arguments else None
+    topic = str(arguments.get("topic")).strip() if "topic" in arguments else None
+    query = str(arguments.get("query")).strip() if "query" in arguments else None
+    source = str(arguments.get("source")).strip() if "source" in arguments else None
+    evidence = str(arguments.get("evidence")).strip() if "evidence" in arguments else None
+    return repo_memory_update(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence)
 
 
 def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -415,6 +429,35 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer", "minimum": 1, "description": "Memory note id to delete."},
+                },
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_update",
+            "description": "Update one local agent file note by id and refresh its file hash when applicable.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Memory note id to update."},
+                    "note": {"type": "string", "description": "Replacement short factual note; do not include source code snippets."},
+                    "topic": {"type": "string", "description": "Replacement topic."},
+                    "query": {"type": "string", "description": "Replacement task/query that led to the note."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "description": "Replacement memory source."},
+                    "evidence": {
+                        "type": "string",
+                        "enum": [
+                            "read_full_file",
+                            "read_excerpt",
+                            "manifest_only",
+                            "inferred_from_graph",
+                            "user_decision",
+                            "implementation_note",
+                            "planning_note",
+                        ],
+                        "description": "Replacement evidence level.",
+                    },
                 },
                 "required": ["id"],
                 "additionalProperties": False,

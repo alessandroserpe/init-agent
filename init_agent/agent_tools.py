@@ -9,7 +9,7 @@ from typing import Any
 from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback
 from .graph_store import GraphStore
-from .memory import add_note, delete_note, list_notes, search_notes
+from .memory import add_note, delete_note, list_notes, search_notes, update_note
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -363,6 +363,36 @@ def repo_memory_delete(root: Path, note_id: int) -> dict[str, Any]:
         "contract": TOOL_CONTRACT_VERSION,
         **deleted,
         "warnings": warnings,
+    }
+
+
+def repo_memory_update(
+    root: Path,
+    note_id: int,
+    note: str | None = None,
+    topic: str | None = None,
+    query: str | None = None,
+    source: str | None = None,
+    evidence: str | None = None,
+) -> dict[str, Any]:
+    """Update one local memory note and refresh its file hash when applicable."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    updated = (
+        update_note(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence)
+        if readiness["ready"]
+        else {"updated": False, "id": note_id, "memory": None}
+    )
+    return {
+        "tool": "repo_memory_update",
+        "contract": TOOL_CONTRACT_VERSION,
+        **updated,
+        "warnings": warnings,
+        "safety": [
+            "update memory only after re-checking the relevant file or project decision",
+            "store short factual notes only; do not include source code snippets",
+        ],
     }
 
 
@@ -748,6 +778,29 @@ def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
     if result.get("note"):
         lines.append(f"Scope: {result['note'].get('scope', 'file')}")
         lines.append(f"Path: {result['note']['path'] or '(repo)'}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_memory_update_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_memory_update",
+        "",
+        f"Memory id: {result['id']}",
+        f"Updated: {'yes' if result['updated'] else 'no'}",
+    ]
+    if result.get("memory"):
+        memory = result["memory"]
+        lines.append(f"Scope: {memory.get('scope', 'file')}")
+        lines.append(f"Path: {memory['path'] or '(repo)'}")
+        if memory.get("topic"):
+            lines.append(f"Topic: {memory['topic']}")
+        if memory.get("evidence"):
+            lines.append(f"Evidence: {memory['evidence']}")
+        if memory.get("stale"):
+            lines.append(f"Stale: {memory.get('stale_reason') or 'yes'}")
+        elif memory.get("stale") is None:
+            lines.append(f"Stale: unknown ({memory.get('stale_reason') or 'no file hash recorded'})")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

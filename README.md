@@ -183,6 +183,7 @@ context.
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent tool repo_memory_add --scope repo --note "..." --json` | Record an optional repo-wide project note. |
+| `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent tool repo_memory_list --stale --json` | Audit local notes, including stale notes. |
 | `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
 | `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
@@ -225,6 +226,7 @@ init-agent tool repo_memory_add --path src/auth/session.py --topic "login sessio
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_list --stale --json
+init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 ```
 
 This is local working memory, not model training and not a replacement for

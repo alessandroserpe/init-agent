@@ -26,6 +26,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_symbol_callers --symbol <name> --json` | Return an agent-facing symbol caller contract. |
 | `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
+| `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -318,6 +319,19 @@ Deletes one local file note by id:
 init-agent tool repo_memory_delete --id 12 --json
 ```
 
+## `init-agent tool repo_memory_update`
+
+Updates one local memory note by id and refreshes its stored file hash when
+the note is file-scoped:
+
+```bash
+init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
+init-agent tool repo_memory_update --id 13 --topic "runtime entrypoints" --json
+```
+
+The command does not change the memory scope or path. Use it after re-reading a
+file, correcting a stale note or tightening a repo-wide project decision.
+
 ## `init-agent mcp`
 
 Runs a minimal MCP stdio server exposing the same repo tool contracts:
@@ -344,6 +358,7 @@ The server exposes:
 - `repo_memory_list`
 - `repo_memory_search`
 - `repo_memory_delete`
+- `repo_memory_update`
 - `repo_file_notes`
 
 The server does not modify project source files and is lazy against the

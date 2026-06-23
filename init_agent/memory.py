@@ -151,6 +151,80 @@ def delete_note(root: Path, note_id: int) -> dict[str, Any]:
     return {"deleted": True, "id": note_id, "note": _public_note(note)}
 
 
+def update_note(
+    root: Path,
+    note_id: int,
+    note: str | None = None,
+    topic: str | None = None,
+    query: str | None = None,
+    source: str | None = None,
+    evidence: str | None = None,
+) -> dict[str, Any]:
+    if note_id <= 0:
+        raise ValueError("note id must be positive")
+    ensure_agent_dir(root)
+    with GraphStore(root) as store:
+        store.initialize()
+        row = store.connection.execute(
+            """
+            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            FROM agent_notes
+            WHERE id = ?
+            """,
+            (note_id,),
+        ).fetchone()
+        if row is None:
+            return {"updated": False, "id": note_id, "memory": None}
+
+        existing = _row_to_note(row)
+        normalized_source = (source.lower().strip() if source else existing["source"])
+        if normalized_source not in SOURCES:
+            raise ValueError(f"source must be one of: {', '.join(sorted(SOURCES))}")
+        normalized_evidence = (evidence.lower().strip() if evidence else existing["evidence"])
+        if normalized_evidence not in EVIDENCE_TYPES:
+            raise ValueError(f"evidence must be one of: {', '.join(sorted(EVIDENCE_TYPES))}")
+        clean_note = note.strip() if note is not None else existing["note"]
+        if not clean_note:
+            raise ValueError("note is required")
+        clean_topic = topic.strip() if topic is not None else existing["topic"]
+        clean_query = query.strip() if query is not None else existing["query"]
+        scope = existing["scope"]
+        path = existing["path"]
+        token_text = " ".join([scope, path, clean_topic, clean_query, normalized_evidence, clean_note])
+        tokens = tokenize_query(token_text)
+        file_sha256 = _file_sha256(store, path) if scope == "file" else None
+        record = {
+            "id": note_id,
+            "path": path,
+            "scope": scope,
+            "topic": clean_topic,
+            "query": clean_query,
+            "note": clean_note,
+            "note_tokens_json": json.dumps(tokens, sort_keys=True),
+            "file_sha256": file_sha256,
+            "evidence": normalized_evidence,
+            "source": normalized_source,
+            "created_at": utc_now(),
+        }
+        store.connection.execute(
+            """
+            UPDATE agent_notes
+            SET topic = :topic,
+                query = :query,
+                note = :note,
+                note_tokens_json = :note_tokens_json,
+                file_sha256 = :file_sha256,
+                evidence = :evidence,
+                source = :source,
+                created_at = :created_at
+            WHERE id = :id
+            """,
+            record,
+        )
+        store.connection.commit()
+    return {"updated": True, "id": note_id, "memory": _record_to_note(record)}
+
+
 def search_notes(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
     bounded_limit = max(1, min(limit, 50))
     query_tokens = tokenize_query(query)
