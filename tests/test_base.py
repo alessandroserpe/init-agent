@@ -638,6 +638,14 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(topics["memory"]["topics"][0]["note_count"], 1)
                 self.assertEqual(topics["memory"]["topics"][0]["paths"], ["src/auth/session.py"])
 
+                audit_output = StringIO()
+                with redirect_stdout(audit_output):
+                    self.assertEqual(main(["tool", "repo_memory_audit", "--json"]), 0)
+                audit = json.loads(audit_output.getvalue())
+                self.assertEqual(audit["tool"], "repo_memory_audit")
+                self.assertEqual(audit["audit"]["note_count"], 1)
+                self.assertEqual(audit["audit"]["summary"]["stale"], 0)
+
                 notes_output = StringIO()
                 with redirect_stdout(notes_output):
                     self.assertEqual(
@@ -736,6 +744,59 @@ class InitAgentBaseTests(unittest.TestCase):
                     )
                 searched = json.loads(search_output.getvalue())
                 self.assertEqual(searched["memory"]["matches"][0]["scope"], "repo")
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_memory_audit_reports_quality_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                for note in ("One.", "Two."):
+                    with redirect_stdout(StringIO()):
+                        self.assertEqual(
+                            main(
+                                [
+                                    "tool",
+                                    "repo_memory_add",
+                                    "--path",
+                                    "src/auth/session.py",
+                                    "--topic",
+                                    "login session",
+                                    "--note",
+                                    note,
+                                    "--json",
+                                ]
+                            ),
+                            0,
+                        )
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--scope",
+                                "repo",
+                                "--note",
+                                "tiny",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                audit_output = StringIO()
+                with redirect_stdout(audit_output):
+                    self.assertEqual(main(["tool", "repo_memory_audit", "--json"]), 0)
+                audit = json.loads(audit_output.getvalue())
+                self.assertEqual(audit["audit"]["summary"]["short_note"], 3)
+                self.assertEqual(audit["audit"]["summary"]["missing_topic"], 1)
+                self.assertEqual(audit["audit"]["summary"]["duplicate_file_topic"], 1)
+                duplicate = audit["audit"]["issues"]["duplicate_file_topic"][0]
+                self.assertEqual(duplicate["path"], "src/auth/session.py")
+                self.assertEqual(duplicate["note_count"], 2)
             finally:
                 os.chdir(previous)
 
@@ -923,6 +984,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_file_notes",
                     "repo_overview",
                     "repo_memory_add",
+                    "repo_memory_audit",
                     "repo_memory_delete",
                     "repo_memory_list",
                     "repo_memory_search",
@@ -1151,11 +1213,20 @@ class InitAgentBaseTests(unittest.TestCase):
                     "params": {"name": "repo_memory_topics", "arguments": {"topic": "login session"}},
                 }
             )
+            audit = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 45,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_audit", "arguments": {}},
+                }
+            )
             self.assertIsNotNone(added)
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
             self.assertIsNotNone(listed)
             self.assertIsNotNone(topics)
+            self.assertIsNotNone(audit)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
             self.assertEqual(added["result"]["structuredContent"]["memory"]["scope"], "file")
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
@@ -1166,6 +1237,7 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertFalse(notes["result"]["structuredContent"]["notes"][0]["stale"])
             self.assertEqual(listed["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
             self.assertEqual(topics["result"]["structuredContent"]["memory"]["topics"][0]["topic"], "login session")
+            self.assertGreaterEqual(audit["result"]["structuredContent"]["audit"]["note_count"], 1)
 
             repo_added = server.handle(
                 {

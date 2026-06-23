@@ -9,7 +9,7 @@ from typing import Any
 from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback
 from .graph_store import GraphStore
-from .memory import add_note, delete_note, list_notes, search_notes, topic_summaries, update_note
+from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
@@ -371,6 +371,24 @@ def repo_memory_topics(
         "tool": "repo_memory_topics",
         "contract": TOOL_CONTRACT_VERSION,
         "memory": memory,
+        "warnings": warnings,
+    }
+
+
+def repo_memory_audit(root: Path, limit: int = 100) -> dict[str, Any]:
+    """Return quality signals for local memory notes."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    audit = audit_notes(root, limit=limit) if readiness["ready"] else {
+        "note_count": 0,
+        "summary": {},
+        "issues": {},
+    }
+    return {
+        "tool": "repo_memory_audit",
+        "contract": TOOL_CONTRACT_VERSION,
+        "audit": audit,
         "warnings": warnings,
     }
 
@@ -813,6 +831,38 @@ def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
         for note in item.get("notes", [])[:3]:
             note_label = note.get("path") or "(repo)"
             lines.append(f"  - #{note['id']} {note_label}: {note['note']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
+    audit = result["audit"]
+    lines = [
+        "Init Agent Tool: repo_memory_audit",
+        "",
+        f"Notes checked: {audit.get('note_count', 0)}",
+        "Summary:",
+    ]
+    summary = audit.get("summary") or {}
+    if not summary:
+        lines.append("-")
+    for key, count in summary.items():
+        lines.append(f"- {key}: {count}")
+    issues = audit.get("issues") or {}
+    for key in ("stale", "unknown_evidence", "missing_topic", "short_note"):
+        items = list(issues.get(key) or [])[:5]
+        if not items:
+            continue
+        lines.extend(["", key.replace("_", " ").title() + ":"])
+        for item in items:
+            label = item.get("path") or "(repo)"
+            lines.append(f"- #{item['id']} {label} [{item.get('topic') or '-'}]")
+    duplicates = list(issues.get("duplicate_file_topic") or [])[:5]
+    if duplicates:
+        lines.extend(["", "Duplicate File/Topic Groups:"])
+        for item in duplicates:
+            label = item.get("path") or "(repo)"
+            lines.append(f"- {label} [{item.get('topic') or '-'}]: {item['note_count']} notes ids={item['ids']}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

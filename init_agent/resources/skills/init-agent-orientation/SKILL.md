@@ -109,9 +109,10 @@ for project-wide decisions and conventions that are not tied to one file,
 especially when a project starts from zero before the first map. Keep repo
 memories small; they are for orientation, not project management. If a memory
 result is marked stale, re-read the file before relying on the note. Use
-`repo_memory_topics` for a topic-level area map, `repo_memory_list --stale` to
-audit stale notes, `repo_memory_update` to refresh corrected notes after
-verification, and `repo_memory_delete` to remove wrong or duplicate notes.
+`repo_memory_audit` to find stale, vague or duplicate notes, `repo_memory_topics`
+for a topic-level area map, `repo_memory_list --stale` to audit stale notes,
+`repo_memory_update` to refresh corrected notes after verification, and
+`repo_memory_delete` to remove wrong or duplicate notes.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

@@ -16,6 +16,7 @@ from .agent_tools import (
     render_repo_file_notes_text,
     render_repo_graph_search_text,
     render_repo_memory_add_text,
+    render_repo_memory_audit_text,
     render_repo_memory_delete_text,
     render_repo_memory_list_text,
     render_repo_memory_search_text,
@@ -30,6 +31,7 @@ from .agent_tools import (
     repo_file_notes,
     repo_graph_search,
     repo_memory_add,
+    repo_memory_audit,
     repo_memory_delete,
     repo_memory_list,
     repo_memory_search,
@@ -259,6 +261,11 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_topics_parser.add_argument("--notes-per-topic", type=int, default=5, help="Maximum notes to include per topic.")
     repo_memory_topics_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_topics_parser.set_defaults(handler=cmd_tool_repo_memory_topics)
+
+    repo_memory_audit_parser = tool_subparsers.add_parser("repo_memory_audit", help="Audit local memory note quality.")
+    repo_memory_audit_parser.add_argument("--limit", type=int, default=100, help="Maximum notes to audit.")
+    repo_memory_audit_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_memory_audit_parser.set_defaults(handler=cmd_tool_repo_memory_audit)
 
     repo_file_notes_parser = tool_subparsers.add_parser("repo_file_notes", help="List local agent notes for one file.")
     repo_file_notes_parser.add_argument("--path", required=True, help="Project-relative file path.")
@@ -1070,6 +1077,16 @@ def cmd_tool_repo_memory_topics(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_memory_topics_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_tool_repo_memory_audit(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_memory_audit(root, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_memory_audit_text(result))
     return _memory_tool_exit_code(result)
 
 

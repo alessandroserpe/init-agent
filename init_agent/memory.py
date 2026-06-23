@@ -285,6 +285,57 @@ def topic_summaries(
     }
 
 
+def audit_notes(root: Path, limit: int = 100) -> dict[str, Any]:
+    bounded_limit = max(1, min(limit, 500))
+    notes = list_notes(root, limit=bounded_limit)
+    issues: dict[str, list[dict[str, Any]]] = {
+        "stale": [],
+        "unknown_evidence": [],
+        "missing_topic": [],
+        "short_note": [],
+        "duplicate_file_topic": [],
+    }
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for note in notes:
+        public = _public_note(note)
+        if note.get("stale") is True:
+            issues["stale"].append(public)
+        if str(note.get("evidence") or "") in {"", "unknown"}:
+            issues["unknown_evidence"].append(public)
+        if not str(note.get("topic") or "").strip():
+            issues["missing_topic"].append(public)
+        useful_tokens = tokenize_query(str(note.get("note") or ""))
+        if len(useful_tokens) < 5:
+            issues["short_note"].append(public)
+        group_key = (
+            str(note.get("scope") or "file"),
+            str(note.get("path") or ""),
+            str(note.get("topic") or ""),
+        )
+        grouped.setdefault(group_key, []).append(note)
+
+    for (scope, path, topic), items in grouped.items():
+        if len(items) <= 1:
+            continue
+        items.sort(key=lambda item: -int(item["id"]))
+        issues["duplicate_file_topic"].append(
+            {
+                "scope": scope,
+                "path": path,
+                "topic": topic,
+                "note_count": len(items),
+                "ids": [int(item["id"]) for item in items],
+                "latest_note": _public_note(items[0]),
+            }
+        )
+    summary = {key: len(value) for key, value in issues.items()}
+    return {
+        "note_count": len(notes),
+        "summary": summary,
+        "issues": issues,
+    }
+
+
 def _row_to_note(row: Any) -> dict[str, Any]:
     try:
         tokens = json.loads(row["note_tokens_json"])

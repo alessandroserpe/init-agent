@@ -19,6 +19,7 @@ from .agent_tools import (
     repo_file_notes,
     repo_graph_search,
     repo_memory_add,
+    repo_memory_audit,
     repo_memory_delete,
     repo_memory_list,
     repo_memory_search,
@@ -104,6 +105,7 @@ class InitAgentMcpServer:
             "repo_file_notes": _handle_repo_file_notes,
             "repo_overview": _handle_repo_overview,
             "repo_memory_add": _handle_repo_memory_add,
+            "repo_memory_audit": _handle_repo_memory_audit,
             "repo_memory_delete": _handle_repo_memory_delete,
             "repo_memory_list": _handle_repo_memory_list,
             "repo_memory_search": _handle_repo_memory_search,
@@ -211,6 +213,11 @@ def _handle_repo_memory_list(root: Path, arguments: dict[str, Any]) -> dict[str,
     stale_only = bool(arguments.get("stale_only") or False)
     limit = int(arguments.get("limit") or 20)
     return repo_memory_list(root, path=path, topic=topic, scope=scope, stale_only=stale_only, limit=limit)
+
+
+def _handle_repo_memory_audit(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    limit = int(arguments.get("limit") or 100)
+    return repo_memory_audit(root, limit=limit)
 
 
 def _handle_repo_memory_delete(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -413,6 +420,17 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "scope": {"type": "string", "enum": ["file", "repo"], "description": "Optional memory scope filter."},
                     "stale_only": {"type": "boolean", "default": False, "description": "Return only stale or unknown-staleness notes."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_memory_audit",
+            "description": "Return quality signals for local memory notes, including stale, missing-topic, unknown-evidence and duplicate groups.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
                 },
                 "additionalProperties": False,
             },
