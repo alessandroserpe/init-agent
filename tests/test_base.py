@@ -612,6 +612,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 added = json.loads(add_output.getvalue())
                 self.assertEqual(added["tool"], "repo_memory_add")
                 self.assertTrue(added["recorded"])
+                self.assertEqual(added["memory"]["scope"], "file")
                 self.assertFalse(added["memory"]["stale"])
                 self.assertEqual(added["memory"]["evidence"], "read_full_file")
 
@@ -646,6 +647,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 listed = json.loads(list_output.getvalue())
                 self.assertEqual(listed["tool"], "repo_memory_list")
                 self.assertEqual(listed["notes"][0]["path"], "src/auth/session.py")
+                self.assertEqual(listed["notes"][0]["scope"], "file")
 
                 delete_output = StringIO()
                 with redirect_stdout(delete_output):
@@ -665,6 +667,116 @@ class InitAgentBaseTests(unittest.TestCase):
                     )
                 empty_notes = json.loads(empty_output.getvalue())
                 self.assertEqual(empty_notes["notes"], [])
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_memory_supports_repo_scope_without_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                add_output = StringIO()
+                with redirect_stdout(add_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--scope",
+                                "repo",
+                                "--topic",
+                                "architecture",
+                                "--query",
+                                "start project from zero",
+                                "--note",
+                                "Use a local-only CLI with SQLite storage and no runtime dependencies.",
+                                "--evidence",
+                                "user_decision",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                added = json.loads(add_output.getvalue())
+                self.assertTrue(added["recorded"])
+                self.assertEqual(added["memory"]["scope"], "repo")
+                self.assertEqual(added["memory"]["path"], "")
+                self.assertIsNone(added["memory"]["stale"])
+                self.assertEqual(added["memory"]["stale_reason"], "not applicable for repo-scoped memory")
+
+                list_output = StringIO()
+                with redirect_stdout(list_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_list", "--scope", "repo", "--json"]),
+                        0,
+                    )
+                listed = json.loads(list_output.getvalue())
+                self.assertEqual(listed["notes"][0]["scope"], "repo")
+                self.assertEqual(listed["notes"][0]["evidence"], "user_decision")
+
+                search_output = StringIO()
+                with redirect_stdout(search_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_search", "--query", "local sqlite architecture", "--json"]),
+                        0,
+                    )
+                searched = json.loads(search_output.getvalue())
+                self.assertEqual(searched["memory"]["matches"][0]["scope"], "repo")
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_memory_repo_scope_works_before_index_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                add_output = StringIO()
+                with redirect_stdout(add_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--scope",
+                                "repo",
+                                "--topic",
+                                "architecture",
+                                "--query",
+                                "new empty project",
+                                "--note",
+                                "Start with a local-only PHP prototype and keep dependencies explicit.",
+                                "--evidence",
+                                "user_decision",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                added = json.loads(add_output.getvalue())
+                self.assertTrue((root / ".agent" / "graph.sqlite").is_file())
+                self.assertTrue(added["recorded"])
+                self.assertIn("without file index", " ".join(added["warnings"]))
+                self.assertEqual(added["memory"]["scope"], "repo")
+                self.assertEqual(added["memory"]["path"], "")
+                self.assertIsNone(added["memory"]["stale"])
+
+                search_output = StringIO()
+                with redirect_stdout(search_output):
+                    self.assertEqual(
+                        main(["tool", "repo_memory_search", "--query", "local-only php dependencies", "--json"]),
+                        0,
+                    )
+                searched = json.loads(search_output.getvalue())
+                self.assertEqual(searched["memory"]["matches"][0]["scope"], "repo")
+
+                stale_output = StringIO()
+                with redirect_stdout(stale_output):
+                    self.assertEqual(main(["tool", "repo_memory_list", "--stale", "--json"]), 0)
+                stale = json.loads(stale_output.getvalue())
+                self.assertEqual(stale["notes"], [])
             finally:
                 os.chdir(previous)
 
@@ -743,6 +855,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 columns = {row["name"] for row in store.connection.execute("PRAGMA table_info(agent_notes)").fetchall()}
             self.assertIn("file_sha256", columns)
             self.assertIn("evidence", columns)
+            self.assertIn("scope", columns)
 
     def test_mcp_initialize_and_tools_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -986,6 +1099,7 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsNotNone(notes)
             self.assertIsNotNone(listed)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
+            self.assertEqual(added["result"]["structuredContent"]["memory"]["scope"], "file")
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
             self.assertEqual(added["result"]["structuredContent"]["memory"]["evidence"], "read_full_file")
             self.assertEqual(searched["result"]["structuredContent"]["memory"]["matches"][0]["path"], "src/auth/session.py")
@@ -993,6 +1107,39 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(notes["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
             self.assertFalse(notes["result"]["structuredContent"]["notes"][0]["stale"])
             self.assertEqual(listed["result"]["structuredContent"]["notes"][0]["path"], "src/auth/session.py")
+
+            repo_added = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 41,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_memory_add",
+                        "arguments": {
+                            "scope": "repo",
+                            "topic": "architecture",
+                            "query": "start project from zero",
+                            "note": "Use a local-only CLI with SQLite storage and no runtime dependencies.",
+                            "evidence": "user_decision",
+                        },
+                    },
+                }
+            )
+            repo_listed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 42,
+                    "method": "tools/call",
+                    "params": {"name": "repo_memory_list", "arguments": {"scope": "repo"}},
+                }
+            )
+            self.assertIsNotNone(repo_added)
+            self.assertIsNotNone(repo_listed)
+            repo_memory = repo_added["result"]["structuredContent"]["memory"]
+            self.assertEqual(repo_memory["scope"], "repo")
+            self.assertEqual(repo_memory["path"], "")
+            self.assertIsNone(repo_memory["stale"])
+            self.assertEqual(repo_listed["result"]["structuredContent"]["notes"][0]["scope"], "repo")
 
             deleted = server.handle(
                 {

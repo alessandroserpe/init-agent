@@ -8,10 +8,12 @@ from typing import Any
 
 from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback
+from .graph_store import GraphStore
 from .memory import add_note, delete_note, list_notes, search_notes
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
+from .utils import db_path, ensure_agent_dir
 
 
 TOOL_CONTRACT_VERSION = "init-agent.tool.v1"
@@ -252,21 +254,23 @@ def repo_feedback_explain(root: Path, query: str, include_all: bool = False) -> 
 
 def repo_memory_add(
     root: Path,
-    path: str,
+    path: str | None,
     note: str,
     topic: str = "",
     query: str = "",
     source: str = "agent",
     evidence: str = "read_excerpt",
+    scope: str = "file",
 ) -> dict[str, Any]:
     """Record a local file note after an agent understands a file."""
 
-    readiness = _readiness(root)
+    readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    normalized_path = Path(path).as_posix().lstrip("./")
+    normalized_path = Path(path).as_posix().lstrip("./") if path else ""
     result: dict[str, Any] = {
         "tool": "repo_memory_add",
         "contract": TOOL_CONTRACT_VERSION,
+        "scope": scope,
         "path": normalized_path,
         "topic": topic,
         "query": query,
@@ -282,9 +286,10 @@ def repo_memory_add(
     }
     if not readiness["ready"]:
         return result
-    record = add_note(root, normalized_path, note, topic=topic, query=query, source=source, evidence=evidence)
+    record = add_note(root, normalized_path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope)
     result.update(
         {
+            "scope": record["scope"],
             "path": record["path"],
             "topic": record["topic"],
             "query": record["query"],
@@ -300,7 +305,7 @@ def repo_memory_add(
 def repo_memory_search(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
     """Search local file notes for a task or topic."""
 
-    readiness = _readiness(root)
+    readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     memory = search_notes(root, query, path=path, limit=limit) if readiness["ready"] else {
         "query": query,
@@ -321,16 +326,17 @@ def repo_memory_list(
     root: Path,
     path: str | None = None,
     topic: str | None = None,
+    scope: str | None = None,
     stale_only: bool = False,
     limit: int = 20,
 ) -> dict[str, Any]:
     """List local file notes, optionally filtered by file, topic or stale status."""
 
-    readiness = _readiness(root)
+    readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     normalized_path = Path(path).as_posix().lstrip("./") if path else None
     notes = (
-        list_notes(root, path=normalized_path, topic=topic, stale_only=stale_only, limit=limit)
+        list_notes(root, path=normalized_path, topic=topic, scope=scope, stale_only=stale_only, limit=limit)
         if readiness["ready"]
         else []
     )
@@ -339,6 +345,7 @@ def repo_memory_list(
         "contract": TOOL_CONTRACT_VERSION,
         "path": normalized_path,
         "topic": topic or None,
+        "scope": scope or None,
         "stale_only": stale_only,
         "notes": notes,
         "warnings": warnings,
@@ -348,7 +355,7 @@ def repo_memory_list(
 def repo_memory_delete(root: Path, note_id: int) -> dict[str, Any]:
     """Delete one local file note by id."""
 
-    readiness = _readiness(root)
+    readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     deleted = delete_note(root, note_id) if readiness["ready"] else {"deleted": False, "id": note_id, "note": None}
     return {
@@ -362,7 +369,7 @@ def repo_memory_delete(root: Path, note_id: int) -> dict[str, Any]:
 def repo_file_notes(root: Path, path: str, limit: int = 20) -> dict[str, Any]:
     """Return local notes attached to one project file."""
 
-    readiness = _readiness(root)
+    readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     normalized_path = Path(path).as_posix().lstrip("./")
     notes = list_notes(root, path=normalized_path, limit=limit) if readiness["ready"] else []
@@ -387,6 +394,24 @@ def _readiness(root: Path) -> dict[str, Any]:
     if files <= 0:
         return {"ready": False, "warnings": ["init-agent index is empty. Run: init-agent run --overview --markdown"]}
     return {"ready": True, "warnings": []}
+
+
+def _memory_readiness(root: Path) -> dict[str, Any]:
+    database = db_path(root)
+    warnings: list[str] = []
+    index_existed = database.is_file()
+    try:
+        ensure_agent_dir(root)
+        with GraphStore(root) as store:
+            store.initialize()
+            files = store.connection.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    except (OSError, sqlite3.Error) as exc:
+        return {"ready": False, "warnings": [f"init-agent memory store could not be read: {exc}"]}
+    if not index_existed:
+        warnings.append("init-agent index not found; created local memory store without file index")
+    if files <= 0:
+        warnings.append("init-agent index has no files; file-scoped memories may be stale until map runs")
+    return {"ready": True, "warnings": warnings}
 
 
 def _lazy_preparation(warnings: list[str]) -> dict[str, Any]:
@@ -615,6 +640,7 @@ def render_repo_memory_add_text(result: dict[str, Any]) -> str:
     lines = [
         "Init Agent Tool: repo_memory_add",
         "",
+        f"Scope: {result['scope']}",
         f"Path: {result['path']}",
         f"Topic: {result['topic'] or '-'}",
         f"Query: {result['query'] or '-'}",
@@ -639,7 +665,10 @@ def render_repo_memory_search_text(result: dict[str, Any]) -> str:
     if not memory["matches"]:
         lines.append("-")
     for item in memory["matches"]:
-        lines.append(f"- {item['path']} score {item['score']:.2f}")
+        label = item["path"] or "(repo)"
+        lines.append(f"- {label} score {item['score']:.2f}")
+        if item.get("scope"):
+            lines.append(f"  scope: {item['scope']}")
         if item.get("topic"):
             lines.append(f"  topic: {item['topic']}")
         if item.get("evidence"):
@@ -664,6 +693,8 @@ def render_repo_file_notes_text(result: dict[str, Any]) -> str:
         lines.append("-")
     for item in result["notes"]:
         lines.append(f"- #{item['id']} {item['created_at']}")
+        if item.get("scope"):
+            lines.append(f"  scope: {item['scope']}")
         if item.get("topic"):
             lines.append(f"  topic: {item['topic']}")
         if item.get("evidence"):
@@ -683,13 +714,17 @@ def render_repo_memory_list_text(result: dict[str, Any]) -> str:
         "",
         f"Path: {result.get('path') or '-'}",
         f"Topic: {result.get('topic') or '-'}",
+        f"Scope: {result.get('scope') or '-'}",
         f"Stale only: {'yes' if result.get('stale_only') else 'no'}",
         "Notes:",
     ]
     if not result["notes"]:
         lines.append("-")
     for item in result["notes"]:
-        lines.append(f"- #{item['id']} {item['path']} ({item['created_at']})")
+        label = item["path"] or "(repo)"
+        lines.append(f"- #{item['id']} {label} ({item['created_at']})")
+        if item.get("scope"):
+            lines.append(f"  scope: {item['scope']}")
         if item.get("topic"):
             lines.append(f"  topic: {item['topic']}")
         if item.get("evidence"):
@@ -711,7 +746,8 @@ def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
         f"Deleted: {'yes' if result['deleted'] else 'no'}",
     ]
     if result.get("note"):
-        lines.append(f"Path: {result['note']['path']}")
+        lines.append(f"Scope: {result['note'].get('scope', 'file')}")
+        lines.append(f"Path: {result['note']['path'] or '(repo)'}")
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

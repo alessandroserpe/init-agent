@@ -22,9 +22,10 @@ It does not call an LLM and does not modify project source files. Most MCP tool
 calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
 index and return warnings if the index is missing or empty. Feedback tools can
 write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
-files. Memory tools can store short local file notes, also in
-`.agent/graph.sqlite`, and report notes as stale when the indexed file hash
-changed after the note was recorded. Use
+files. Memory tools can store short local notes, also in `.agent/graph.sqlite`.
+File-scoped notes report stale status when the indexed file hash changed after
+the note was recorded; repo-scoped notes are useful for project-wide decisions
+and report stale status as not applicable. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
@@ -90,7 +91,9 @@ include:
 - `repo_feedback_add`
 - `repo_feedback_explain`
 - `repo_memory_add`
+- `repo_memory_list`
 - `repo_memory_search`
+- `repo_memory_delete`
 - `repo_file_notes`
 
 ## Codex Configuration

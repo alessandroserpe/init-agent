@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import __version__
 from .agent_tools import (
@@ -209,7 +210,8 @@ def build_parser() -> argparse.ArgumentParser:
     repo_feedback_explain_parser.set_defaults(handler=cmd_tool_repo_feedback_explain)
 
     repo_memory_add_parser = tool_subparsers.add_parser("repo_memory_add", help="Record a local agent note for a file.")
-    repo_memory_add_parser.add_argument("--path", required=True, help="Project-relative file path.")
+    repo_memory_add_parser.add_argument("--path", help="Project-relative file path. Required for file-scoped memory.")
+    repo_memory_add_parser.add_argument("--scope", default="file", choices=["file", "repo"], help="Memory scope.")
     repo_memory_add_parser.add_argument("--note", required=True, help="Short factual note. Do not include source snippets.")
     repo_memory_add_parser.add_argument("--topic", default="", help="Optional topic for the note.")
     repo_memory_add_parser.add_argument("--query", default="", help="Optional task/query that led to the note.")
@@ -217,7 +219,15 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_add_parser.add_argument(
         "--evidence",
         default="read_excerpt",
-        choices=["read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"],
+        choices=[
+            "read_full_file",
+            "read_excerpt",
+            "manifest_only",
+            "inferred_from_graph",
+            "user_decision",
+            "implementation_note",
+            "planning_note",
+        ],
         help="How the note was verified.",
     )
     repo_memory_add_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -226,6 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_list_parser = tool_subparsers.add_parser("repo_memory_list", help="List local agent file notes.")
     repo_memory_list_parser.add_argument("--path", help="Restrict to one project-relative file path.")
     repo_memory_list_parser.add_argument("--topic", help="Restrict to an exact topic.")
+    repo_memory_list_parser.add_argument("--scope", choices=["file", "repo"], help="Restrict to a memory scope.")
     repo_memory_list_parser.add_argument("--stale", action="store_true", help="Show only stale or unknown-staleness notes.")
     repo_memory_list_parser.add_argument("--limit", type=int, default=20, help="Maximum notes to return.")
     repo_memory_list_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -987,6 +998,7 @@ def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
             query=args.query,
             source=args.source,
             evidence=args.evidence,
+            scope=args.scope,
         )
     except ValueError as exc:
         print(f"Memory failed: {exc}", file=sys.stderr)
@@ -1000,12 +1012,12 @@ def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
 
 def cmd_tool_repo_memory_list(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_memory_list(root, path=args.path, topic=args.topic, stale_only=args.stale, limit=args.limit)
+    result = repo_memory_list(root, path=args.path, topic=args.topic, scope=args.scope, stale_only=args.stale, limit=args.limit)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_memory_list_text(result))
-    return 0 if not result.get("warnings") else 1
+    return _memory_tool_exit_code(result)
 
 
 def cmd_tool_repo_memory_search(args: argparse.Namespace) -> int:
@@ -1015,7 +1027,7 @@ def cmd_tool_repo_memory_search(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_memory_search_text(result))
-    return 0 if not result.get("warnings") else 1
+    return _memory_tool_exit_code(result)
 
 
 def cmd_tool_repo_file_notes(args: argparse.Namespace) -> int:
@@ -1025,7 +1037,7 @@ def cmd_tool_repo_file_notes(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_file_notes_text(result))
-    return 0 if not result.get("warnings") else 1
+    return _memory_tool_exit_code(result)
 
 
 def cmd_tool_repo_memory_delete(args: argparse.Namespace) -> int:
@@ -1040,6 +1052,11 @@ def cmd_tool_repo_memory_delete(args: argparse.Namespace) -> int:
     else:
         print(render_repo_memory_delete_text(result))
     return 0 if result.get("deleted") else 1
+
+
+def _memory_tool_exit_code(result: dict[str, Any]) -> int:
+    warnings = [str(warning) for warning in result.get("warnings", [])]
+    return 1 if any("memory store could not be read" in warning for warning in warnings) else 0
 
 
 def cmd_feedback_add(args: argparse.Namespace) -> int:

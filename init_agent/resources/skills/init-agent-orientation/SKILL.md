@@ -103,10 +103,14 @@ When an inspected file contains useful operational knowledge, record a short
 local note with `repo_memory_add` or search previous notes with
 `repo_memory_search`. Notes should explain what was learned about the file,
 not copy source code. Include an evidence level when possible, such as
-`read_full_file`, `read_excerpt`, `manifest_only` or `inferred_from_graph`.
-If a memory result is marked stale, re-read the file before relying on the
-note. Use `repo_memory_list --stale` to audit stale notes and
-`repo_memory_delete` to remove wrong or duplicate notes.
+`read_full_file`, `read_excerpt`, `manifest_only`, `inferred_from_graph`,
+`user_decision`, `implementation_note` or `planning_note`. Use `scope=repo`
+for project-wide decisions and conventions that are not tied to one file,
+especially when a project starts from zero before the first map. Keep repo
+memories small; they are for orientation, not project management. If a memory
+result is marked stale, re-read the file before relying on the note. Use
+`repo_memory_list --stale` to audit stale notes and `repo_memory_delete` to
+remove wrong or duplicate notes.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

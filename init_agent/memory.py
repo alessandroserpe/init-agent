@@ -8,36 +8,52 @@ from typing import Any
 
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import utc_now
+from .utils import ensure_agent_dir, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
-EVIDENCE_TYPES = {"read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"}
+SCOPES = {"file", "repo"}
+EVIDENCE_TYPES = {
+    "read_full_file",
+    "read_excerpt",
+    "manifest_only",
+    "inferred_from_graph",
+    "user_decision",
+    "implementation_note",
+    "planning_note",
+}
 
 
 def add_note(
     root: Path,
-    path: str,
+    path: str | None,
     note: str,
     topic: str = "",
     query: str = "",
     source: str = "agent",
     evidence: str = "read_excerpt",
+    scope: str = "file",
 ) -> dict[str, Any]:
     normalized_source = source.lower().strip()
     if normalized_source not in SOURCES:
         raise ValueError(f"source must be one of: {', '.join(sorted(SOURCES))}")
+    normalized_scope = scope.lower().strip() or "file"
+    if normalized_scope not in SCOPES:
+        raise ValueError(f"scope must be one of: {', '.join(sorted(SCOPES))}")
     normalized_evidence = evidence.lower().strip() or "read_excerpt"
     if normalized_evidence not in EVIDENCE_TYPES:
         raise ValueError(f"evidence must be one of: {', '.join(sorted(EVIDENCE_TYPES))}")
     normalized_path = _normalize_path(path)
+    if normalized_scope == "file" and not normalized_path:
+        raise ValueError("path is required for file-scoped memory")
     clean_note = note.strip()
     if not clean_note:
         raise ValueError("note is required")
-    token_text = " ".join([normalized_path, topic, query, normalized_evidence, clean_note])
+    token_text = " ".join([normalized_scope, normalized_path, topic, query, normalized_evidence, clean_note])
     tokens = tokenize_query(token_text)
     record = {
         "path": normalized_path,
+        "scope": normalized_scope,
         "topic": topic.strip(),
         "query": query.strip(),
         "note": clean_note,
@@ -47,13 +63,14 @@ def add_note(
         "source": normalized_source,
         "created_at": utc_now(),
     }
+    ensure_agent_dir(root)
     with GraphStore(root) as store:
         store.initialize()
-        record["file_sha256"] = _file_sha256(store, normalized_path)
+        record["file_sha256"] = _file_sha256(store, normalized_path) if normalized_scope == "file" else None
         cursor = store.connection.execute(
             """
-            INSERT INTO agent_notes(path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at)
-            VALUES(:path, :topic, :query, :note, :note_tokens_json, :file_sha256, :evidence, :source, :created_at)
+            INSERT INTO agent_notes(path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at)
+            VALUES(:path, :scope, :topic, :query, :note, :note_tokens_json, :file_sha256, :evidence, :source, :created_at)
             """,
             record,
         )
@@ -66,6 +83,7 @@ def list_notes(
     root: Path,
     path: str | None = None,
     topic: str | None = None,
+    scope: str | None = None,
     stale_only: bool = False,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
@@ -78,14 +96,21 @@ def list_notes(
     if topic:
         clauses.append("topic = ?")
         params.append(topic.strip())
+    normalized_scope = scope.lower().strip() if scope else None
+    if normalized_scope:
+        if normalized_scope not in SCOPES:
+            raise ValueError(f"scope must be one of: {', '.join(sorted(SCOPES))}")
+        clauses.append("COALESCE(NULLIF(scope, ''), 'file') = ?")
+        params.append(normalized_scope)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     row_limit = 500 if stale_only else bounded_limit
     params.append(row_limit)
+    ensure_agent_dir(root)
     with GraphStore(root) as store:
         store.initialize()
         rows = store.connection.execute(
             f"""
-            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             {where}
             ORDER BY id DESC
@@ -96,18 +121,22 @@ def list_notes(
         current_hashes = store.file_hashes()
     notes = [_with_staleness(_row_to_note(row), current_hashes) for row in rows]
     if stale_only:
-        notes = [note for note in notes if note.get("stale") is not False]
+        notes = [
+            note for note in notes
+            if note.get("scope") != "repo" and note.get("stale") is not False
+        ]
     return notes[:bounded_limit]
 
 
 def delete_note(root: Path, note_id: int) -> dict[str, Any]:
     if note_id <= 0:
         raise ValueError("note id must be positive")
+    ensure_agent_dir(root)
     with GraphStore(root) as store:
         store.initialize()
         row = store.connection.execute(
             """
-            SELECT id, path, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             WHERE id = ?
             """,
@@ -151,6 +180,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
     return {
         "id": int(row["id"]),
         "path": row["path"],
+        "scope": row["scope"] or "file",
         "topic": row["topic"] or "",
         "query": row["query"] or "",
         "note": row["note"],
@@ -168,14 +198,15 @@ def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": int(record["id"]),
         "path": record["path"],
+        "scope": record["scope"],
         "topic": record["topic"],
         "query": record["query"],
         "note": record["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
         "file_sha256": file_sha256,
         "current_file_sha256": file_sha256,
-        "stale": False if file_sha256 else True,
-        "stale_reason": "" if file_sha256 else "file is not indexed",
+        "stale": None if record["scope"] == "repo" else (False if file_sha256 else True),
+        "stale_reason": "not applicable for repo-scoped memory" if record["scope"] == "repo" else ("" if file_sha256 else "file is not indexed"),
         "evidence": record["evidence"],
         "source": record["source"],
         "created_at": record["created_at"],
@@ -186,6 +217,7 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": note["id"],
         "path": note["path"],
+        "scope": note.get("scope", "file"),
         "topic": note["topic"],
         "query": note["query"],
         "note": note["note"],
@@ -205,6 +237,13 @@ def _file_sha256(store: GraphStore, path: str) -> str | None:
 
 
 def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str]) -> dict[str, Any]:
+    if note.get("scope") == "repo":
+        return {
+            **note,
+            "current_file_sha256": "",
+            "stale": None,
+            "stale_reason": "not applicable for repo-scoped memory",
+        }
     path = str(note["path"])
     stored_hash = str(note.get("file_sha256") or "")
     current_hash = str(current_hashes.get(path) or "")

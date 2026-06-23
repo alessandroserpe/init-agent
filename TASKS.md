@@ -98,13 +98,13 @@ Follow-up ideas:
 
 ## Phase 7c: Project Memory For Empty Repositories
 
-- [ ] Add repo-wide memories for projects that start from zero before meaningful files exist.
-- [ ] Support memory scope values such as `repo`, `file` and later possibly `symbol`.
-- [ ] Make `path` optional for repo-wide memories while keeping file memories tied to project-relative paths.
-- [ ] Add evidence values for project decisions, such as `user_decision`, `implementation_note` and `planning_note`.
-- [ ] Treat repo-wide memory staleness as not applicable instead of file-hash based.
-- [ ] Let agents record short architecture decisions, conventions, created-file intent and test commands during project creation.
-- [ ] Keep repo-wide memory intentionally small so it supports coherence without becoming a project-management system.
+- [x] Add repo-wide memories for projects that start from zero before meaningful files exist.
+- [x] Support memory scope values such as `repo`, `file` and later possibly `symbol`.
+- [x] Make `path` optional for repo-wide memories while keeping file memories tied to project-relative paths.
+- [x] Add evidence values for project decisions, such as `user_decision`, `implementation_note` and `planning_note`.
+- [x] Treat repo-wide memory staleness as not applicable instead of file-hash based.
+- [x] Let agents record short architecture decisions, conventions, created-file intent and test commands during project creation.
+- [x] Keep repo-wide memory intentionally small so it supports coherence without becoming a project-management system.
 
 ## Phase 8: Public Release Readiness
 

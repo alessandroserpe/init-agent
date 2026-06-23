@@ -48,6 +48,7 @@ init-agent tool repo_symbol_callers --symbol validateSession --json
 init-agent tool repo_feedback_add --query "debug login session redirect" --path src/auth/session.py --rating useful --reason "verified session flow" --json
 init-agent tool repo_feedback_explain --query "debug login session redirect" --json
 init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_list --stale --json
 ```
@@ -55,6 +56,10 @@ init-agent tool repo_memory_list --stale --json
 These commands return stable JSON contracts with candidate files, symbols,
 file neighborhoods, callers, commits, follow-up commands, optional local
 feedback, local file notes and safety warnings.
+
+Repo-scoped memories can also be recorded before a project has meaningful files
+or an index. Use them sparingly for decisions, conventions and created-file
+intent that should keep future agent work coherent.
 
 For MCP-capable agents, run the stdio server from the repository root:
 

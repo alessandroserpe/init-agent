@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS orientation_feedback (
 CREATE TABLE IF NOT EXISTS agent_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
+    scope TEXT,
     topic TEXT,
     query TEXT,
     note TEXT NOT NULL,
@@ -133,6 +134,7 @@ class GraphStore:
     def _migrate_schema(self) -> None:
         self._ensure_column("agent_notes", "file_sha256", "TEXT")
         self._ensure_column("agent_notes", "evidence", "TEXT")
+        self._ensure_column("agent_notes", "scope", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()

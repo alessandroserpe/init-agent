@@ -192,19 +192,21 @@ def _handle_repo_memory_add(root: Path, arguments: dict[str, Any]) -> dict[str, 
     query = str(arguments.get("query") or "").strip()
     source = str(arguments.get("source") or "agent").strip()
     evidence = str(arguments.get("evidence") or "read_excerpt").strip()
-    if not path:
-        raise ValueError("repo_memory_add requires path")
+    scope = str(arguments.get("scope") or "file").strip()
+    if scope != "repo" and not path:
+        raise ValueError("repo_memory_add requires path for file scope")
     if not note:
         raise ValueError("repo_memory_add requires note")
-    return repo_memory_add(root, path, note, topic=topic, query=query, source=source, evidence=evidence)
+    return repo_memory_add(root, path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope)
 
 
 def _handle_repo_memory_list(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     path = str(arguments.get("path") or "").strip() or None
     topic = str(arguments.get("topic") or "").strip() or None
+    scope = str(arguments.get("scope") or "").strip() or None
     stale_only = bool(arguments.get("stale_only") or False)
     limit = int(arguments.get("limit") or 20)
-    return repo_memory_list(root, path=path, topic=topic, stale_only=stale_only, limit=limit)
+    return repo_memory_list(root, path=path, topic=topic, scope=scope, stale_only=stale_only, limit=limit)
 
 
 def _handle_repo_memory_delete(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -353,18 +355,27 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Project-relative file path."},
+                    "scope": {"type": "string", "enum": ["file", "repo"], "default": "file", "description": "Use repo for project-wide notes that are not tied to one file."},
                     "note": {"type": "string", "description": "Short factual note; do not include source code snippets."},
                     "topic": {"type": "string", "description": "Optional topic such as badge messages or runtime entrypoints."},
                     "query": {"type": "string", "description": "Optional user task/query that led to the note."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
                     "evidence": {
                         "type": "string",
-                        "enum": ["read_full_file", "read_excerpt", "manifest_only", "inferred_from_graph"],
+                        "enum": [
+                            "read_full_file",
+                            "read_excerpt",
+                            "manifest_only",
+                            "inferred_from_graph",
+                            "user_decision",
+                            "implementation_note",
+                            "planning_note",
+                        ],
                         "default": "read_excerpt",
                         "description": "How the note was verified.",
                     },
                 },
-                "required": ["path", "note"],
+                "required": ["note"],
                 "additionalProperties": False,
             },
         },
@@ -376,6 +387,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "properties": {
                     "path": {"type": "string", "description": "Optional project-relative file path filter."},
                     "topic": {"type": "string", "description": "Optional exact topic filter."},
+                    "scope": {"type": "string", "enum": ["file", "repo"], "description": "Optional memory scope filter."},
                     "stale_only": {"type": "boolean", "default": False, "description": "Return only stale or unknown-staleness notes."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 },
