@@ -60,6 +60,11 @@ These commands return stable JSON contracts with candidate files, symbols,
 file neighborhoods, callers, commits, follow-up commands, optional local
 feedback, local file notes and safety warnings.
 
+For feedback specifically, use the loop documented in
+[feedback.md](feedback.md): run orientation, verify files, record useful/noisy/
+missing feedback only for verified outcomes, then inspect
+`repo_feedback_explain` before trusting future ranking changes.
+
 Repo-scoped memories can also be recorded before a project has meaningful files
 or an index. Use them sparingly for decisions, conventions and created-file
 intent that should keep future agent work coherent.

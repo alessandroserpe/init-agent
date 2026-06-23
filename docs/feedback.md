@@ -42,6 +42,45 @@ directly. Feedback is optional; it is useful when an agent has verified files
 and wants future similar queries to understand what was useful, noisy or
 missing.
 
+## Agent Workflow
+
+Use feedback as an end-of-task refinement step, not as a replacement for
+reading files.
+
+1. Run orientation:
+
+```bash
+init-agent run "find app entrypoints" --markdown
+```
+
+2. Verify by reading the real files suggested by the context pack.
+
+3. Record feedback only for verified outcomes:
+
+```bash
+init-agent tool repo_feedback_add --query "find app entrypoints" --path pyproject.toml --rating crucial --reason "verified console script declarations" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path frontend/src/types/index.ts --rating noisy --reason "verified type declarations only, not runtime entrypoint" --json
+init-agent tool repo_feedback_add --query "find app entrypoints" --path frontend/src/main.tsx --rating missing --reason "verified frontend runtime entrypoint absent from initial suggestions" --json
+```
+
+4. Inspect the effect before trusting future ranking changes:
+
+```bash
+init-agent tool repo_feedback_explain --query "find app entrypoints" --json
+```
+
+5. On the next similar task, run orientation again and verify the new ranking by
+reading files.
+
+Useful guidelines:
+
+- Use `crucial` for files that should be first reads for that query shape.
+- Use `useful` for supporting files.
+- Use `noisy` for files that matched terms but did not help.
+- Use `missing` for important files absent from the initial pack.
+- Do not record feedback for every opened file.
+- Do not record feedback unless you verified the file's role.
+
 ## Ranking Effect
 
 Feedback affects `context` and `run` only when query tokens are similar enough.

@@ -138,7 +138,7 @@ Priority order:
 - [x] Add `init-agent install-skill codex` to install/update the bundled Codex skill from the installed package.
 - [x] Document verified Codex installation separately from generic Markdown workflows for other agents.
 - [x] Split the long README into a product-first entry page plus focused `docs/` references.
-- [ ] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
+- [x] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Investigate Claude Code's supported instruction format before adding a dedicated `install-skill claude-code` command.
 - [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
 - [ ] Evaluate whether PyPI publishing is worth doing after external install testing.
