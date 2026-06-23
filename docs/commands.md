@@ -284,6 +284,9 @@ applicable. Repo-scoped notes can be recorded before the first map in an empty
 project; use them for compact decisions and conventions, not long project
 management logs.
 
+See [memory-workflows.md](memory-workflows.md) for decision-log and area-map
+patterns using repo-scoped memories and topics.
+
 ## `init-agent tool repo_memory_list`
 
 Lists local file notes, optionally filtered by file, topic or stale status:
@@ -317,6 +320,8 @@ init-agent tool repo_memory_topics --topic "server startup" --notes-per-topic 3 
 This is useful when an agent wants an area map before opening files. It groups
 notes by topic, reports note/file/stale counts and includes recent notes for
 each topic.
+
+For a practical workflow, see [memory-workflows.md](memory-workflows.md).
 
 ## `init-agent tool repo_memory_audit`
 

@@ -35,6 +35,9 @@ re-reading a stale note to refresh it without creating duplicates. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
+For decision-log and area-map patterns, see
+[memory-workflows.md](memory-workflows.md).
+
 ## Install
 
 Install with `pipx`:

@@ -64,6 +64,17 @@ Repo-scoped memories can also be recorded before a project has meaningful files
 or an index. Use them sparingly for decisions, conventions and created-file
 intent that should keep future agent work coherent.
 
+For longer-running work, use topics as a lightweight area map and repo-scoped
+notes as a compact decision log. Keep both short and factual:
+
+```bash
+init-agent tool repo_memory_add --scope repo --topic "architecture decisions" --evidence user_decision --note "Keep the indexing layer local-only and dependency-light." --json
+init-agent tool repo_memory_topics --topic "architecture decisions" --json
+```
+
+See [memory-workflows.md](memory-workflows.md) for practical decision-log,
+area-map and audit patterns.
+
 For MCP-capable agents, run the stdio server from the repository root:
 
 ```bash

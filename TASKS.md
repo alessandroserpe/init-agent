@@ -102,7 +102,7 @@ Follow-up ideas:
 Priority order:
 
 - [x] Add `repo_memory_audit` to report stale notes, unknown evidence, missing topics, likely duplicates and overly short notes.
-- [ ] Document decision-log and area-map workflows using repo-scoped memories and `repo_memory_topics`.
+- [x] Document decision-log and area-map workflows using repo-scoped memories and `repo_memory_topics`.
 - [ ] Add lightweight session summary support only after enough real sessions show the right shape.
 - [ ] Consider task memory linked to files/topics only if notes plus decision-log are not enough.
 - [ ] Avoid turning init-agent into a generic project manager; keep features repository-oriented and metadata-first.

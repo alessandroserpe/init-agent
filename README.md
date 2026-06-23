@@ -201,6 +201,8 @@ context.
 See [docs/commands.md](docs/commands.md) for the full command reference.
 
 See [docs/mcp.md](docs/mcp.md) for MCP setup and Codex configuration examples.
+See [docs/memory-workflows.md](docs/memory-workflows.md) for decision-log and
+area-map memory patterns.
 
 ## Feedback
 
@@ -241,6 +243,8 @@ checks, graph-only inferences, user decisions, implementation notes and
 planning notes. Repo-wide memories are not tied to a file hash and report stale
 status as not applicable. They can be recorded before the first `init-agent map`
 when a project starts from an empty directory; keep them small and factual.
+For practical decision-log and area-map patterns, see
+[docs/memory-workflows.md](docs/memory-workflows.md).
 
 ## Validation
 
@@ -312,5 +316,6 @@ More documentation:
 - [Command reference](docs/commands.md)
 - [Scoring](docs/scoring.md)
 - [Feedback](docs/feedback.md)
+- [Memory workflows](docs/memory-workflows.md)
 - [Validation experiments](docs/experiments.md)
 - [Security and privacy](docs/security.md)
