@@ -140,7 +140,7 @@ Priority order:
 - [x] Split the long README into a product-first entry page plus focused `docs/` references.
 - [x] Document the feedback loop as an agent workflow: run, verify, record feedback, explain feedback.
 - [ ] Investigate Claude Code's supported instruction format before adding a dedicated `install-skill claude-code` command.
-- [ ] Add a lightweight issue template for bug reports and noisy-ranking reports.
+- [x] Add a lightweight issue template for bug reports and noisy-ranking reports.
 - [ ] Evaluate whether PyPI publishing is worth doing after external install testing.
 
 ## Phase 10: Next Architecture Priorities
@@ -150,7 +150,7 @@ Priority order:
 - [x] Add `repo_overview`, `repo_related_file` and `repo_symbol_callers` CLI tool contracts before MCP.
 - [x] Expose the repo tool contracts through a minimal MCP stdio server.
 - [x] Add verified Codex MCP configuration examples for `config.toml`.
-- [ ] Test Codex MCP loading in a fresh session and document any client-specific caveats.
+- [x] Test Codex MCP loading in a fresh session and document any client-specific caveats.
 - [ ] Link chat and agent sessions to repository context packs, including verified files and useful/noisy feedback.
 - [ ] Add dependency-aware refresh so related files can be marked stale or re-ranked when an upstream include/import changes.
 - [ ] Design language and framework plugin support so new extractors can be added without bloating the core.

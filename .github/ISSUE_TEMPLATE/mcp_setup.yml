@@ -1,0 +1,49 @@
+name: MCP setup issue
+description: Report Codex or MCP registration/startup problems.
+title: "[MCP]: "
+labels: ["mcp"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for `init-agent mcp`, `init-agent-mcp`, or Codex MCP registration issues. Do not paste secrets or private source code.
+  - type: input
+    id: version
+    attributes:
+      label: init-agent version
+      description: Run `init-agent --version`.
+      placeholder: "init-agent 0.30.1"
+    validations:
+      required: true
+  - type: input
+    id: codex_version
+    attributes:
+      label: Codex version
+      description: If using Codex, include the version shown by Codex.
+      placeholder: "Codex v0.x"
+  - type: textarea
+    id: registration
+    attributes:
+      label: MCP registration
+      description: Run `codex mcp get init_agent` if available.
+      render: text
+  - type: textarea
+    id: symptom
+    attributes:
+      label: Symptom
+      description: What happens on startup or when calling a tool?
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: smoke_test
+    attributes:
+      label: Smoke test
+      description: If possible, include the result of the smoke test from `docs/mcp.md`.
+      render: text
+  - type: textarea
+    id: root
+    attributes:
+      label: Repository root behavior
+      description: Does `repo_overview` report the expected project root? Mention if `--root` was pinned.
+      render: text

@@ -247,6 +247,51 @@ args = []
 enabled_tools = ["repo_overview", "repo_entrypoints", "repo_graph_search"]
 ```
 
+## Fresh Codex Session Checklist
+
+After installing or upgrading init-agent, use a fresh Codex session to verify
+the MCP registration:
+
+```bash
+cd /path/to/repository
+codex
+```
+
+Inside Codex, run:
+
+```text
+/mcp
+```
+
+Expected result:
+
+- `init_agent` is listed as enabled.
+- The repo tools are available, for example `repo_overview`,
+  `repo_graph_search`, `repo_related_file`, `repo_memory_search` and
+  `repo_memory_audit`.
+- Calling `repo_overview` reports the same repository root you started Codex
+  from, unless you intentionally pinned `--root`.
+
+From the shell, you can inspect the registration with:
+
+```bash
+codex mcp get init_agent
+codex mcp list
+```
+
+Useful caveats:
+
+- Restart Codex after installing, upgrading or replacing an MCP server.
+- Prefer the unpinned default registration for normal use. It lets the server
+  follow the current Codex session working directory.
+- Use `--root /absolute/path` only when you intentionally want a server pinned
+  to one repository.
+- If tool results mention files from another repository, remove and reinstall
+  the server without `--root`, or replace it with the correct root.
+- If startup times out, verify `codex mcp get init_agent`, confirm the command
+  points to the current `init-agent-mcp`, then reinstall with
+  `init-agent mcp install-codex --replace`.
+
 ## Notes
 
 - `init-agent-mcp` is a stdio server. It is not meant to be used interactively.

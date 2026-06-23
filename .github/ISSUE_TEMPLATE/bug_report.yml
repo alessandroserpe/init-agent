@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible init-agent problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please do not paste private source code or `.agent/graph.sqlite`.
+  - type: input
+    id: version
+    attributes:
+      label: init-agent version
+      description: Run `init-agent --version`.
+      placeholder: "init-agent 0.30.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install method
+      options:
+        - pipx from GitHub
+        - pip install -e .
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Command that failed or behaved unexpectedly.
+      render: shell
+      placeholder: "init-agent run \"debug login\" --markdown"
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Actual result
+      description: Include the error or surprising output. Redact private paths if needed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Run `init-agent doctor` from the repository root if possible.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: OS, Python version, repository language, or other relevant details.

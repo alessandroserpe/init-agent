@@ -1,0 +1,59 @@
+name: Noisy ranking report
+description: Report candidate files that were missing, noisy or poorly ranked.
+title: "[Ranking]: "
+labels: ["ranking"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when init-agent suggests poor first reads. Please do not paste private source code.
+  - type: input
+    id: version
+    attributes:
+      label: init-agent version
+      description: Run `init-agent --version`.
+      placeholder: "init-agent 0.30.1"
+    validations:
+      required: true
+  - type: textarea
+    id: query
+    attributes:
+      label: Query or task
+      description: The exact query passed to init-agent.
+      render: text
+      placeholder: "fix login session bug"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      render: shell
+      placeholder: "init-agent run \"fix login session bug\" --markdown"
+    validations:
+      required: true
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested files
+      description: Paste the suggested file list and reasons if safe.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected files
+      description: Which files should have been higher, lower, or included?
+      render: text
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Feedback diagnostics
+      description: If relevant, run `init-agent feedback explain "<query>" --all --json`.
+      render: json
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Repository language/framework, approximate size, and anything else useful.
