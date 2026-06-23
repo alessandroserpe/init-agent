@@ -114,6 +114,20 @@ for a topic-level area map, `repo_memory_list --stale` to audit stale notes,
 `repo_memory_update` to refresh corrected notes after verification, and
 `repo_memory_delete` to remove wrong or duplicate notes.
 
+Before finishing a non-trivial task, do a short memory/feedback check:
+
+- If a suggested file was verified and central to the task, consider `useful`
+  or `crucial` feedback.
+- If a suggested file matched the query but was irrelevant, consider `noisy`
+  feedback.
+- If an important file was missing from the initial suggestions, consider
+  `missing` feedback.
+- If you learned a stable fact about a file or project decision, consider a
+  short memory note with evidence.
+- If nothing stable was learned, do not write memory or feedback.
+
+Never write feedback or memory just because a file appeared in a ranking.
+
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:
 

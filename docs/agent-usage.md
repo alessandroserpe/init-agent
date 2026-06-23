@@ -75,6 +75,15 @@ init-agent tool repo_memory_topics --topic "architecture decisions" --json
 See [memory-workflows.md](memory-workflows.md) for practical decision-log,
 area-map and audit patterns.
 
+At the end of a non-trivial task, agents should briefly ask whether local
+feedback or memory would help future work. Record nothing by default. Record
+only verified, stable facts:
+
+- mark verified central files as `useful` or `crucial`;
+- mark irrelevant suggestions as `noisy`;
+- mark verified important omissions as `missing`;
+- add short memory notes only for facts worth reusing.
+
 For MCP-capable agents, run the stdio server from the repository root:
 
 ```bash

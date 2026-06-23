@@ -25,6 +25,14 @@ The intended loop is:
 4. Store only stable facts learned during verification.
 5. Audit stale, vague or duplicate notes before trusting them later.
 
+Agents should perform a short end-of-task check before writing anything:
+
+- Was a suggested file verified as central? Consider useful/crucial feedback.
+- Was a suggested file irrelevant after inspection? Consider noisy feedback.
+- Was an important file missing from the initial suggestions? Consider missing feedback.
+- Was a stable fact learned that would save future context? Consider a memory note.
+- If the answer is no, write nothing.
+
 Useful commands:
 
 ```bash
