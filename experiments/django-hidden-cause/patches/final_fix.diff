@@ -1,0 +1,25 @@
+diff --git a/django/utils/html.py b/django/utils/html.py
+index a1b4a52..63db147 100644
+--- a/django/utils/html.py
++++ b/django/utils/html.py
+@@ -296,7 +296,7 @@ class Urlizer:
+     leading punctuation (opening parens) and it'll still do the right thing.
+     """
+ 
+-    trailing_punctuation_chars = ".,:;"
++    trailing_punctuation_chars = ".,:;!"
+     wrapping_punctuation = [("(", ")"), ("[", "]")]
+ 
+     simple_url_re = _lazy_re_compile(r"^https?://\[?\w", re.IGNORECASE)
+diff --git a/tests/template_tests/test_response.py b/tests/template_tests/test_response.py
+index e7e601a..5a4b779 100644
+--- a/tests/template_tests/test_response.py
++++ b/tests/template_tests/test_response.py
+@@ -414,6 +414,7 @@ class CacheMiddlewareTest(SimpleTestCase):
+ 
+         self.assertNotEqual(response.content, response2.content)
+ 
++@override_settings(URLIZE_ASSUME_HTTPS=True)
+ class GeneratedLinkRenderingRegressionTest(SimpleTestCase):
+     def test_sentence_punctuation_stays_outside_generated_link(self):
+         response = SimpleTemplateResponse(

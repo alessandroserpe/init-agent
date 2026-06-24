@@ -32,6 +32,26 @@ On a private PHP codebase with 274 indexed readable files:
 
 Token estimates use a simple `ceil(characters / 4)` heuristic.
 
+## Real-World Comparison
+
+An observed hidden-cause Django experiment compared two fresh agents on the same
+task: one using normal repository exploration, one required to start with
+`init-agent`.
+
+Both agents passed the targeted test. On a 7,018-file Django checkout, the
+init-agent-assisted run used fewer exploratory commands and less estimated
+wall-clock time:
+
+| Metric | Baseline | With init-agent |
+|---|---:|---:|
+| Approx wall-clock | ~8 min | ~1.5 min |
+| Files read | 7 | 6 |
+| Logged commands | 22 | 11 plus init-agent |
+
+This is an observed run, not a scientific benchmark. See
+[experiments/django-hidden-cause](experiments/django-hidden-cause/) for the
+task, prompts, logs and results.
+
 ## Install
 
 Recommended install from GitHub:

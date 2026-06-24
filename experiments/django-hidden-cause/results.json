@@ -1,0 +1,31 @@
+{
+  "experiment": "django_hidden_cause_template_response_link_regression",
+  "repo_files": 7018,
+  "prompt_names_exact_area": false,
+  "failing_test_distance": "high-level template response test; cause in django/utils/html.py",
+  "test_command": "PYTHONPATH=$PWD /tmp/django-init-agent-venv/bin/python tests/runtests.py template_tests.test_response.GeneratedLinkRenderingRegressionTest --parallel 1 --verbosity 1",
+  "runs": {
+    "baseline_no_init_agent": {
+      "outcome": "PASS",
+      "targeted_tests": "1 OK",
+      "approx_wall_clock": "~8 min",
+      "files_read_count": 7,
+      "correct_source_file_read_position": 3,
+      "files_modified": ["django/utils/html.py", "tests/template_tests/test_response.py"],
+      "logged_commands_count": 22,
+      "init_agent_commands_count": 0,
+      "wrong_turns": ["broad noisy rg", "HTTPS warning after source fix"]
+    },
+    "with_init_agent": {
+      "outcome": "PASS",
+      "targeted_tests": "1 OK",
+      "approx_wall_clock": "~1.5 min",
+      "files_read_count": 6,
+      "correct_source_file_read_position": 3,
+      "files_modified": ["django/utils/html.py", "tests/template_tests/test_response.py"],
+      "logged_commands_count": 11,
+      "init_agent_commands_count": 5,
+      "wrong_turns": ["noisy Generated match", "HTTPS warning after source fix"]
+    }
+  }
+}
