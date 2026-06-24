@@ -128,6 +128,34 @@ Before finishing a non-trivial task, do a short memory/feedback check:
 
 Never write feedback or memory just because a file appeared in a ranking.
 
+## End Of Session
+
+Before the final response for a non-trivial task, run an end-of-session handoff
+check when any of these are true:
+
+- code or documentation was changed
+- files were investigated across multiple areas
+- memory or feedback was added or updated
+- the user asks to wrap up, close, hand off, summarize what remains, take stock or do a final status check
+- the session is long enough that stale memory or Git status could matter
+
+Prefer the MCP tool when available:
+
+```text
+repo_session_close
+```
+
+Otherwise use the CLI:
+
+```bash
+init-agent session close
+```
+
+Use the result to inform the final answer: mention modified files, stale memory,
+memory quality issues, verification still needed and follow-up commands when
+they matter. Do not run session close for tiny one-shot answers or when the user
+explicitly asks only for a quick fact.
+
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:
 

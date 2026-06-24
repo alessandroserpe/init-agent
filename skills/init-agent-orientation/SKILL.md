@@ -92,7 +92,69 @@ help future similar tasks:
 ```bash
 init-agent feedback add "<user task>" path/to/file --rating useful --source agent --reason "verified relevant flow"
 init-agent feedback add "<user task>" path/to/noisy-file --rating noisy --source agent --reason "matched words but not useful"
+init-agent feedback add "<user task>" path/to/missing-file --rating missing --source agent --reason "verified important file absent from initial pack"
 ```
+
+When init-agent MCP tools are available, prefer `repo_feedback_add` for the
+same workflow after verification. Feedback is optional; use it only when it
+would help future similar tasks.
+
+When an inspected file contains useful operational knowledge, record a short
+local note with `repo_memory_add` or search previous notes with
+`repo_memory_search`. Notes should explain what was learned about the file,
+not copy source code. Include an evidence level when possible, such as
+`read_full_file`, `read_excerpt`, `manifest_only`, `inferred_from_graph`,
+`user_decision`, `implementation_note` or `planning_note`. Use `scope=repo`
+for project-wide decisions and conventions that are not tied to one file,
+especially when a project starts from zero before the first map. Keep repo
+memories small; they are for orientation, not project management. If a memory
+result is marked stale, re-read the file before relying on the note. Use
+`repo_memory_audit` to find stale, vague or duplicate notes, `repo_memory_topics`
+for a topic-level area map, `repo_memory_list --stale` to audit stale notes,
+`repo_memory_update` to refresh corrected notes after verification, and
+`repo_memory_delete` to remove wrong or duplicate notes.
+
+Before finishing a non-trivial task, do a short memory/feedback check:
+
+- If a suggested file was verified and central to the task, consider `useful`
+  or `crucial` feedback.
+- If a suggested file matched the query but was irrelevant, consider `noisy`
+  feedback.
+- If an important file was missing from the initial suggestions, consider
+  `missing` feedback.
+- If you learned a stable fact about a file or project decision, consider a
+  short memory note with evidence.
+- If nothing stable was learned, do not write memory or feedback.
+
+Never write feedback or memory just because a file appeared in a ranking.
+
+## End Of Session
+
+Before the final response for a non-trivial task, run an end-of-session handoff
+check when any of these are true:
+
+- code or documentation was changed
+- files were investigated across multiple areas
+- memory or feedback was added or updated
+- the user asks to wrap up, close, hand off, summarize what remains, take stock or do a final status check
+- the session is long enough that stale memory or Git status could matter
+
+Prefer the MCP tool when available:
+
+```text
+repo_session_close
+```
+
+Otherwise use the CLI:
+
+```bash
+init-agent session close
+```
+
+Use the result to inform the final answer: mention modified files, stale memory,
+memory quality issues, verification still needed and follow-up commands when
+they matter. Do not run session close for tiny one-shot answers or when the user
+explicitly asks only for a quick fact.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:
