@@ -81,7 +81,13 @@ class InitAgentBaseTests(unittest.TestCase):
         commands = (root / "docs" / "commands.md").read_text(encoding="utf-8")
         parsing = (root / "docs" / "parsing.md").read_text(encoding="utf-8")
         readme = (root / "README.md").read_text(encoding="utf-8")
+        mcp = (root / "docs" / "mcp.md").read_text(encoding="utf-8")
+        skill = (root / "init_agent" / "resources" / "skills" / "init-agent-orientation" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("repo_session_close", commands)
+        self.assertIn("repo_task_add", commands)
+        self.assertIn("repo_task_note", readme)
+        self.assertIn("repo_task_close", mcp)
+        self.assertIn("repo_task_list", skill)
         self.assertIn("pipx inject init-agent tree-sitter tree-sitter-php", commands)
         self.assertIn("tree-sitter", parsing)
         self.assertIn("falls back to the built-in PHP parser", parsing)
@@ -829,6 +835,115 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_task_lifecycle_and_session_close(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                add_output = StringIO()
+                with redirect_stdout(add_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_task_add",
+                                "--title",
+                                "Fix login redirect",
+                                "--topic",
+                                "auth",
+                                "--summary",
+                                "Track the login redirect investigation.",
+                                "--file",
+                                "src/auth/session.py",
+                                "--status",
+                                "in_progress",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                added = json.loads(add_output.getvalue())
+                self.assertEqual(added["tool"], "repo_task_add")
+                self.assertTrue(added["recorded"])
+                task_id = added["task"]["id"]
+                self.assertEqual(added["task"]["files"], ["src/auth/session.py"])
+
+                close_before_output = StringIO()
+                with redirect_stdout(close_before_output):
+                    self.assertEqual(main(["tool", "repo_session_close", "--json"]), 0)
+                close_before = json.loads(close_before_output.getvalue())
+                self.assertFalse(close_before["close_ready"])
+                self.assertEqual(close_before["recent_tasks"][0]["id"], task_id)
+                review_task = [item for item in close_before["checklist"] if item["id"] == "review_open_tasks"][0]
+                self.assertEqual(review_task["status"], "needed")
+
+                note_output = StringIO()
+                with redirect_stdout(note_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_task_note",
+                                "--id",
+                                str(task_id),
+                                "--note",
+                                "Verified session validation and recorded the remaining redirect check.",
+                                "--file",
+                                "src/auth/login.py",
+                                "--test",
+                                "python -m unittest discover -s tests",
+                                "--remaining",
+                                "Check redirect behavior manually.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                noted = json.loads(note_output.getvalue())
+                self.assertTrue(noted["recorded"])
+                self.assertIn("src/auth/login.py", noted["task"]["files"])
+                self.assertEqual(noted["task"]["notes"][0]["task_id"], task_id)
+
+                list_output = StringIO()
+                with redirect_stdout(list_output):
+                    self.assertEqual(main(["tool", "repo_task_list", "--topic", "auth", "--json"]), 0)
+                listed = json.loads(list_output.getvalue())
+                self.assertEqual(listed["tasks"][0]["id"], task_id)
+                self.assertEqual(listed["tasks"][0]["remaining"], ["Check redirect behavior manually."])
+
+                close_output = StringIO()
+                with redirect_stdout(close_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_task_close",
+                                "--id",
+                                str(task_id),
+                                "--summary",
+                                "Login redirect task completed.",
+                                "--test",
+                                "python -m unittest discover -s tests",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                closed = json.loads(close_output.getvalue())
+                self.assertTrue(closed["closed"])
+                self.assertEqual(closed["task"]["status"], "done")
+
+                close_after_output = StringIO()
+                with redirect_stdout(close_after_output):
+                    self.assertEqual(main(["tool", "repo_session_close", "--json"]), 0)
+                close_after = json.loads(close_after_output.getvalue())
+                review_after = [item for item in close_after["checklist"] if item["id"] == "review_open_tasks"][0]
+                self.assertEqual(review_after["status"], "clean")
+            finally:
+                os.chdir(previous)
+
     def test_tool_repo_memory_audit_allows_multiple_repo_decisions_per_topic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1064,6 +1179,11 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_memory_update",
                     "repo_related_file",
                     "repo_symbol_callers",
+                    "repo_task_add",
+                    "repo_task_close",
+                    "repo_task_list",
+                    "repo_task_note",
+                    "repo_task_update",
                 },
             )
 
@@ -1386,6 +1506,79 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(updated_memory["scope"], "repo")
             self.assertEqual(updated_memory["evidence"], "planning_note")
             self.assertIn("refreshed", updated_memory["note"])
+
+            task_added = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 48,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_task_add",
+                        "arguments": {
+                            "title": "Track login redirect",
+                            "topic": "auth",
+                            "summary": "Keep task context across agent sessions.",
+                            "files": ["src/auth/session.py"],
+                            "status": "in_progress",
+                        },
+                    },
+                }
+            )
+            self.assertIsNotNone(task_added)
+            task_data = task_added["result"]["structuredContent"]
+            self.assertEqual(task_data["tool"], "repo_task_add")
+            self.assertTrue(task_data["recorded"])
+            task_id = task_data["task"]["id"]
+
+            task_noted = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 49,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_task_note",
+                        "arguments": {
+                            "id": task_id,
+                            "note": "Verified the session file and left a redirect smoke check open.",
+                            "files": ["src/auth/login.py"],
+                            "tests": ["python -m unittest discover -s tests"],
+                            "remaining": ["Run redirect smoke check."],
+                        },
+                    },
+                }
+            )
+            self.assertIsNotNone(task_noted)
+            self.assertTrue(task_noted["result"]["structuredContent"]["recorded"])
+
+            tasks_listed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 50,
+                    "method": "tools/call",
+                    "params": {"name": "repo_task_list", "arguments": {"topic": "auth"}},
+                }
+            )
+            self.assertIsNotNone(tasks_listed)
+            self.assertEqual(tasks_listed["result"]["structuredContent"]["tasks"][0]["id"], task_id)
+
+            task_closed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 51,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_task_close",
+                        "arguments": {
+                            "id": task_id,
+                            "summary": "Task completed.",
+                            "tests": ["python -m unittest discover -s tests"],
+                        },
+                    },
+                }
+            )
+            self.assertIsNotNone(task_closed)
+            self.assertTrue(task_closed["result"]["structuredContent"]["closed"])
+            self.assertEqual(task_closed["result"]["structuredContent"]["task"]["status"], "done")
 
             deleted = server.handle(
                 {

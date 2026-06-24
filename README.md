@@ -200,6 +200,9 @@ context.
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent tool repo_memory_list --stale --json` | Audit local notes, including stale notes. |
+| `init-agent tool repo_task_add --title "..." --json` | Track an open local task/session item linked to files and checks. |
+| `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a local task. |
+| `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
 | `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
 | `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
 | `init-agent mcp uninstall-codex` | Remove init-agent MCP from Codex through `codex mcp remove`. |
@@ -260,6 +263,18 @@ status as not applicable. They can be recorded before the first `init-agent map`
 when a project starts from an empty directory; keep them small and factual.
 For practical decision-log and area-map patterns, see
 [docs/memory-workflows.md](docs/memory-workflows.md).
+
+For longer work, agents can also track a local task/session item:
+
+```bash
+init-agent tool repo_task_add --title "Fix login redirect" --topic auth --file src/auth/session.py --status in_progress --json
+init-agent tool repo_task_note --id 1 --note "Verified session handling; redirect smoke check remains." --file src/auth/login.py --test "python -m unittest discover -s tests" --remaining "Run manual redirect smoke check." --json
+init-agent tool repo_task_close --id 1 --summary "Login redirect task completed." --json
+```
+
+Tasks are local operational memory. They are useful for handoff and session
+continuity, but they are not a replacement for GitHub Issues or project
+management tools.
 
 ## Validation
 

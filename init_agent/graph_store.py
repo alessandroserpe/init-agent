@@ -106,6 +106,37 @@ CREATE TABLE IF NOT EXISTS agent_notes (
     source TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS agent_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    topic TEXT,
+    summary TEXT,
+    files_json TEXT NOT NULL,
+    memory_ids_json TEXT NOT NULL,
+    feedback_ids_json TEXT NOT NULL,
+    tests_json TEXT NOT NULL,
+    remaining_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_task_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    files_json TEXT NOT NULL,
+    memory_ids_json TEXT NOT NULL,
+    feedback_ids_json TEXT NOT NULL,
+    tests_json TEXT NOT NULL,
+    remaining_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE
+);
 """
 
 

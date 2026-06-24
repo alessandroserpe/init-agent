@@ -21,6 +21,11 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_task_add`
+- `repo_task_list`
+- `repo_task_note`
+- `repo_task_update`
+- `repo_task_close`
 - `repo_file_notes`
 
 It does not call an LLM and does not modify project source files. Most MCP tool
@@ -32,8 +37,11 @@ File-scoped notes report stale status when the indexed file hash changed after
 the note was recorded; repo-scoped notes are useful for project-wide decisions
 and report stale status as not applicable. Use `repo_memory_audit` to find
 stale, vague or duplicate notes. Use `repo_memory_topics` to get a
-compact area-level memory map before opening files. Use `repo_memory_update` after
-re-reading a stale note to refresh it without creating duplicates. Use
+compact area-level memory map before opening files. Use `repo_memory_update`
+after re-reading a stale note to refresh it without creating duplicates. Use
+task tools to keep an operational thread for longer work: open task title,
+linked files, verification performed and remaining follow-up. Open tasks are
+included in `repo_session_summary` and `repo_session_close`. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
@@ -110,6 +118,11 @@ include:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_task_add`
+- `repo_task_list`
+- `repo_task_note`
+- `repo_task_update`
+- `repo_task_close`
 - `repo_file_notes`
 
 ## Codex Configuration

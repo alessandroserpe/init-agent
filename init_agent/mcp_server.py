@@ -30,6 +30,11 @@ from .agent_tools import (
     repo_session_close,
     repo_session_summary,
     repo_symbol_callers,
+    repo_task_add,
+    repo_task_close,
+    repo_task_list,
+    repo_task_note,
+    repo_task_update,
 )
 
 
@@ -117,6 +122,11 @@ class InitAgentMcpServer:
             "repo_session_close": _handle_repo_session_close,
             "repo_session_summary": _handle_repo_session_summary,
             "repo_symbol_callers": _handle_repo_symbol_callers,
+            "repo_task_add": _handle_repo_task_add,
+            "repo_task_close": _handle_repo_task_close,
+            "repo_task_list": _handle_repo_task_list,
+            "repo_task_note": _handle_repo_task_note,
+            "repo_task_update": _handle_repo_task_update,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -275,6 +285,102 @@ def _handle_repo_session_summary(root: Path, arguments: dict[str, Any]) -> dict[
 def _handle_repo_session_close(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     limit = int(arguments.get("limit") or 10)
     return repo_session_close(root, limit=limit)
+
+
+def _handle_repo_task_add(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    title = str(arguments.get("title") or "").strip()
+    if not title:
+        raise ValueError("repo_task_add requires title")
+    return repo_task_add(
+        root,
+        title,
+        topic=str(arguments.get("topic") or "").strip(),
+        summary=str(arguments.get("summary") or "").strip(),
+        files=_string_list(arguments.get("files")),
+        status=str(arguments.get("status") or "open").strip(),
+        source=str(arguments.get("source") or "agent").strip(),
+    )
+
+
+def _handle_repo_task_list(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    status = str(arguments.get("status") or "").strip() or None
+    topic = str(arguments.get("topic") or "").strip() or None
+    include_done = bool(arguments.get("include_done") or False)
+    limit = int(arguments.get("limit") or 20)
+    return repo_task_list(root, status=status, topic=topic, include_done=include_done, limit=limit)
+
+
+def _handle_repo_task_note(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    task_id = int(arguments.get("id") or 0)
+    note = str(arguments.get("note") or "").strip()
+    if task_id <= 0:
+        raise ValueError("repo_task_note requires positive id")
+    if not note:
+        raise ValueError("repo_task_note requires note")
+    return repo_task_note(
+        root,
+        task_id,
+        note,
+        files=_string_list(arguments.get("files")),
+        memory_ids=_int_list(arguments.get("memory_ids")),
+        feedback_ids=_int_list(arguments.get("feedback_ids")),
+        tests=_string_list(arguments.get("tests")),
+        remaining=_string_list(arguments.get("remaining")),
+        source=str(arguments.get("source") or "agent").strip(),
+    )
+
+
+def _handle_repo_task_update(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    task_id = int(arguments.get("id") or 0)
+    if task_id <= 0:
+        raise ValueError("repo_task_update requires positive id")
+    return repo_task_update(
+        root,
+        task_id,
+        status=str(arguments["status"]).strip() if "status" in arguments else None,
+        topic=str(arguments["topic"]).strip() if "topic" in arguments else None,
+        summary=str(arguments["summary"]).strip() if "summary" in arguments else None,
+        files=_string_list(arguments.get("files")),
+        memory_ids=_int_list(arguments.get("memory_ids")),
+        feedback_ids=_int_list(arguments.get("feedback_ids")),
+        tests=_string_list(arguments.get("tests")),
+        remaining=_string_list(arguments.get("remaining")),
+        source=str(arguments["source"]).strip() if "source" in arguments else None,
+    )
+
+
+def _handle_repo_task_close(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    task_id = int(arguments.get("id") or 0)
+    if task_id <= 0:
+        raise ValueError("repo_task_close requires positive id")
+    return repo_task_close(
+        root,
+        task_id,
+        summary=str(arguments["summary"]).strip() if "summary" in arguments else None,
+        tests=_string_list(arguments.get("tests")),
+        remaining=_string_list(arguments.get("remaining")),
+        source=str(arguments.get("source") or "agent").strip(),
+    )
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    for item in value:
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            result.append(parsed)
+    return result
 
 
 def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:
@@ -534,6 +640,93 @@ def _tool_definitions() -> list[dict[str, Any]]:
                         ],
                         "description": "Replacement evidence level.",
                     },
+                },
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_task_add",
+            "description": "Create a local task/session memory item that links ongoing work to files, tests, memories and remaining follow-up.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short task title."},
+                    "status": {"type": "string", "enum": ["open", "in_progress", "blocked", "done"], "default": "open"},
+                    "topic": {"type": "string", "description": "Optional functional area or topic."},
+                    "summary": {"type": "string", "description": "Short task summary."},
+                    "files": {"type": "array", "items": {"type": "string"}, "description": "Related project-relative files."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["title"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_task_list",
+            "description": "List local task/session memory items, open by default unless include_done is true.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["open", "in_progress", "blocked", "done"], "description": "Optional status filter."},
+                    "topic": {"type": "string", "description": "Optional exact topic filter."},
+                    "include_done": {"type": "boolean", "default": False},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_task_note",
+            "description": "Append a progress note to a local task/session item and optionally link files, tests, memories, feedback and remaining work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Task id."},
+                    "note": {"type": "string", "description": "Short operational note; do not include source snippets."},
+                    "files": {"type": "array", "items": {"type": "string"}, "description": "Related project-relative files."},
+                    "memory_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related memory ids."},
+                    "feedback_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related feedback ids."},
+                    "tests": {"type": "array", "items": {"type": "string"}, "description": "Verification performed."},
+                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Remaining follow-up."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["id", "note"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_task_update",
+            "description": "Update local task/session metadata such as status, summary, linked files, tests and remaining work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Task id."},
+                    "status": {"type": "string", "enum": ["open", "in_progress", "blocked", "done"]},
+                    "topic": {"type": "string", "description": "Replacement topic."},
+                    "summary": {"type": "string", "description": "Replacement summary."},
+                    "files": {"type": "array", "items": {"type": "string"}, "description": "Related project-relative files."},
+                    "memory_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related memory ids."},
+                    "feedback_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related feedback ids."},
+                    "tests": {"type": "array", "items": {"type": "string"}, "description": "Verification performed."},
+                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Remaining follow-up."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"]},
+                },
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_task_close",
+            "description": "Mark a local task/session memory item done and optionally record closing summary, verification and remaining follow-up.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Task id."},
+                    "summary": {"type": "string", "description": "Closing summary."},
+                    "tests": {"type": "array", "items": {"type": "string"}, "description": "Verification performed."},
+                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Known follow-up despite closing."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
                 },
                 "required": ["id"],
                 "additionalProperties": False,

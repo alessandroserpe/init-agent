@@ -27,6 +27,10 @@ from .agent_tools import (
     render_repo_session_close_text,
     render_repo_session_summary_text,
     render_repo_symbol_callers_text,
+    render_repo_task_add_text,
+    render_repo_task_list_text,
+    render_repo_task_note_text,
+    render_repo_task_update_text,
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
@@ -44,6 +48,11 @@ from .agent_tools import (
     repo_session_close,
     repo_session_summary,
     repo_symbol_callers,
+    repo_task_add,
+    repo_task_close,
+    repo_task_list,
+    repo_task_note,
+    repo_task_update,
 )
 from .context_builder import build_context_pack
 from .doctor import run_doctor
@@ -150,6 +159,61 @@ def build_parser() -> argparse.ArgumentParser:
     session_close_parser.add_argument("--limit", type=int, default=10, help="Maximum recent notes, feedback and git status entries to return.")
     session_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     session_close_parser.set_defaults(handler=cmd_session_close)
+
+    task_parser = subparsers.add_parser("task", help="Track local agent task/session memory.")
+    task_subparsers = task_parser.add_subparsers(dest="task_command")
+    task_add = task_subparsers.add_parser("add", help="Create a local task/session memory item.")
+    task_add.add_argument("title", help="Short task title.")
+    task_add.add_argument("--topic", default="", help="Optional functional area or topic.")
+    task_add.add_argument("--summary", default="", help="Short task summary.")
+    task_add.add_argument("--file", action="append", default=[], help="Project-relative file path. Can be repeated.")
+    task_add.add_argument("--status", default="open", choices=["open", "in_progress", "blocked", "done"], help="Initial task status.")
+    task_add.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
+    task_add.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_add.set_defaults(handler=cmd_task_add)
+
+    task_list = task_subparsers.add_parser("list", help="List local task/session memory items.")
+    task_list.add_argument("--status", choices=["open", "in_progress", "blocked", "done"], help="Optional status filter.")
+    task_list.add_argument("--topic", help="Optional exact topic filter.")
+    task_list.add_argument("--include-done", action="store_true", help="Include completed tasks.")
+    task_list.add_argument("--limit", type=int, default=20, help="Maximum tasks to return.")
+    task_list.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_list.set_defaults(handler=cmd_task_list)
+
+    task_note = task_subparsers.add_parser("note", help="Append a progress note to a local task.")
+    task_note.add_argument("id", type=int, help="Task id.")
+    task_note.add_argument("--note", required=True, help="Short progress note.")
+    task_note.add_argument("--file", action="append", default=[], help="Related project-relative file. Can be repeated.")
+    task_note.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
+    task_note.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
+    task_note.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    task_note.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    task_note.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task note source.")
+    task_note.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_note.set_defaults(handler=cmd_task_note)
+
+    task_update = task_subparsers.add_parser("update", help="Update local task/session metadata.")
+    task_update.add_argument("id", type=int, help="Task id.")
+    task_update.add_argument("--status", choices=["open", "in_progress", "blocked", "done"], help="Replacement status.")
+    task_update.add_argument("--topic", help="Replacement topic.")
+    task_update.add_argument("--summary", help="Replacement summary.")
+    task_update.add_argument("--file", action="append", default=[], help="Related project-relative file. Can be repeated.")
+    task_update.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
+    task_update.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
+    task_update.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    task_update.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    task_update.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement source.")
+    task_update.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_update.set_defaults(handler=cmd_task_update)
+
+    task_close = task_subparsers.add_parser("close", help="Mark a local task/session memory item done.")
+    task_close.add_argument("id", type=int, help="Task id.")
+    task_close.add_argument("--summary", help="Closing summary.")
+    task_close.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    task_close.add_argument("--remaining", action="append", default=[], help="Known follow-up despite closing. Can be repeated.")
+    task_close.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
+    task_close.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_close.set_defaults(handler=cmd_task_close)
 
     query_parser = subparsers.add_parser("query", help="Search paths, symbols, roles and commit messages.")
     query_parser.add_argument("text", nargs="+", help="Search text.")
@@ -320,6 +384,59 @@ def build_parser() -> argparse.ArgumentParser:
     )
     repo_memory_update_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_update_parser.set_defaults(handler=cmd_tool_repo_memory_update)
+
+    repo_task_add_parser = tool_subparsers.add_parser("repo_task_add", help="Create a local task/session memory item.")
+    repo_task_add_parser.add_argument("--title", required=True, help="Short task title.")
+    repo_task_add_parser.add_argument("--topic", default="", help="Optional functional area or topic.")
+    repo_task_add_parser.add_argument("--summary", default="", help="Short task summary.")
+    repo_task_add_parser.add_argument("--file", action="append", default=[], help="Related project-relative file. Can be repeated.")
+    repo_task_add_parser.add_argument("--status", default="open", choices=["open", "in_progress", "blocked", "done"], help="Initial task status.")
+    repo_task_add_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
+    repo_task_add_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_task_add_parser.set_defaults(handler=cmd_tool_repo_task_add)
+
+    repo_task_list_parser = tool_subparsers.add_parser("repo_task_list", help="List local task/session memory items.")
+    repo_task_list_parser.add_argument("--status", choices=["open", "in_progress", "blocked", "done"], help="Optional status filter.")
+    repo_task_list_parser.add_argument("--topic", help="Optional exact topic filter.")
+    repo_task_list_parser.add_argument("--include-done", action="store_true", help="Include completed tasks.")
+    repo_task_list_parser.add_argument("--limit", type=int, default=20, help="Maximum tasks to return.")
+    repo_task_list_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_task_list_parser.set_defaults(handler=cmd_tool_repo_task_list)
+
+    repo_task_note_parser = tool_subparsers.add_parser("repo_task_note", help="Append a progress note to a local task.")
+    repo_task_note_parser.add_argument("--id", type=int, required=True, help="Task id.")
+    repo_task_note_parser.add_argument("--note", required=True, help="Short progress note.")
+    repo_task_note_parser.add_argument("--file", action="append", default=[], help="Related project-relative file. Can be repeated.")
+    repo_task_note_parser.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
+    repo_task_note_parser.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
+    repo_task_note_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    repo_task_note_parser.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    repo_task_note_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task note source.")
+    repo_task_note_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_task_note_parser.set_defaults(handler=cmd_tool_repo_task_note)
+
+    repo_task_update_parser = tool_subparsers.add_parser("repo_task_update", help="Update local task/session metadata.")
+    repo_task_update_parser.add_argument("--id", type=int, required=True, help="Task id.")
+    repo_task_update_parser.add_argument("--status", choices=["open", "in_progress", "blocked", "done"], help="Replacement status.")
+    repo_task_update_parser.add_argument("--topic", help="Replacement topic.")
+    repo_task_update_parser.add_argument("--summary", help="Replacement summary.")
+    repo_task_update_parser.add_argument("--file", action="append", default=[], help="Related project-relative file. Can be repeated.")
+    repo_task_update_parser.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
+    repo_task_update_parser.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
+    repo_task_update_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    repo_task_update_parser.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    repo_task_update_parser.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement source.")
+    repo_task_update_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_task_update_parser.set_defaults(handler=cmd_tool_repo_task_update)
+
+    repo_task_close_parser = tool_subparsers.add_parser("repo_task_close", help="Mark a local task/session memory item done.")
+    repo_task_close_parser.add_argument("--id", type=int, required=True, help="Task id.")
+    repo_task_close_parser.add_argument("--summary", help="Closing summary.")
+    repo_task_close_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    repo_task_close_parser.add_argument("--remaining", action="append", default=[], help="Known follow-up despite closing. Can be repeated.")
+    repo_task_close_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
+    repo_task_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_task_close_parser.set_defaults(handler=cmd_tool_repo_task_close)
 
     feedback_parser = subparsers.add_parser("feedback", help="Manage local orientation feedback.")
     feedback_subparsers = feedback_parser.add_subparsers(dest="feedback_command")
@@ -750,6 +867,102 @@ def cmd_session_close(args: argparse.Namespace) -> int:
     else:
         print(render_repo_session_close_text(result))
     return _memory_tool_exit_code(result)
+
+
+def cmd_task_add(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_add(
+            root,
+            args.title,
+            topic=args.topic,
+            summary=args.summary,
+            files=args.file,
+            status=args.status,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task add failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_add_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_task_list(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_task_list(root, status=args.status, topic=args.topic, include_done=args.include_done, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_list_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_task_note(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_note(
+            root,
+            args.id,
+            args.note,
+            files=args.file,
+            memory_ids=args.memory_id,
+            feedback_ids=args.feedback_id,
+            tests=args.test,
+            remaining=args.remaining,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task note failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_note_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_task_update(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_update(
+            root,
+            args.id,
+            status=args.status,
+            topic=args.topic,
+            summary=args.summary,
+            files=args.file,
+            memory_ids=args.memory_id,
+            feedback_ids=args.feedback_id,
+            tests=args.test,
+            remaining=args.remaining,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task update failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_update_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_task_close(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_close(root, args.id, summary=args.summary, tests=args.test, remaining=args.remaining, source=args.source)
+    except ValueError as exc:
+        print(f"Task close failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_update_text(result))
+    return 0 if result.get("closed") else 1
 
 
 def cmd_query(args: argparse.Namespace) -> int:
@@ -1185,6 +1398,102 @@ def cmd_tool_repo_memory_update(args: argparse.Namespace) -> int:
     else:
         print(render_repo_memory_update_text(result))
     return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_task_add(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_add(
+            root,
+            args.title,
+            topic=args.topic,
+            summary=args.summary,
+            files=args.file,
+            status=args.status,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task add failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_add_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_tool_repo_task_list(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_task_list(root, status=args.status, topic=args.topic, include_done=args.include_done, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_list_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_tool_repo_task_note(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_note(
+            root,
+            args.id,
+            args.note,
+            files=args.file,
+            memory_ids=args.memory_id,
+            feedback_ids=args.feedback_id,
+            tests=args.test,
+            remaining=args.remaining,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task note failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_note_text(result))
+    return 0 if result.get("recorded") else 1
+
+
+def cmd_tool_repo_task_update(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_update(
+            root,
+            args.id,
+            status=args.status,
+            topic=args.topic,
+            summary=args.summary,
+            files=args.file,
+            memory_ids=args.memory_id,
+            feedback_ids=args.feedback_id,
+            tests=args.test,
+            remaining=args.remaining,
+            source=args.source,
+        )
+    except ValueError as exc:
+        print(f"Task update failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_update_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_task_close(args: argparse.Namespace) -> int:
+    root = project_root()
+    try:
+        result = repo_task_close(root, args.id, summary=args.summary, tests=args.test, remaining=args.remaining, source=args.source)
+    except ValueError as exc:
+        print(f"Task close failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_task_update_text(result))
+    return 0 if result.get("closed") else 1
 
 
 def _memory_tool_exit_code(result: dict[str, Any]) -> int:

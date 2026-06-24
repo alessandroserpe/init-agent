@@ -14,6 +14,7 @@ from .memory import add_note, audit_notes, delete_note, list_notes, search_notes
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
+from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .utils import db_path, ensure_agent_dir
 
 
@@ -454,6 +455,170 @@ def repo_file_notes(root: Path, path: str, limit: int = 20) -> dict[str, Any]:
     }
 
 
+def repo_task_add(
+    root: Path,
+    title: str,
+    topic: str = "",
+    summary: str = "",
+    files: list[str] | None = None,
+    status: str = "open",
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Create a local task/session memory item for ongoing agent work."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    result: dict[str, Any] = {
+        "tool": "repo_task_add",
+        "contract": TOOL_CONTRACT_VERSION,
+        "recorded": False,
+        "task": None,
+        "warnings": warnings,
+        "safety": [
+            "tasks are local operational memory, not a replacement for issue trackers",
+            "store concise task context only; do not include source code snippets",
+        ],
+    }
+    if not readiness["ready"]:
+        return result
+    task = add_task(root, title, topic=topic, summary=summary, files=files or [], status=status, source=source)
+    result.update({"recorded": True, "task": task})
+    return result
+
+
+def repo_task_list(
+    root: Path,
+    status: str | None = None,
+    topic: str | None = None,
+    include_done: bool = False,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """List local task/session memory items."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    tasks = list_tasks(root, status=status, topic=topic, include_done=include_done, limit=limit) if readiness["ready"] else []
+    return {
+        "tool": "repo_task_list",
+        "contract": TOOL_CONTRACT_VERSION,
+        "status": status or None,
+        "topic": topic or None,
+        "include_done": include_done,
+        "tasks": tasks,
+        "warnings": warnings,
+    }
+
+
+def repo_task_update(
+    root: Path,
+    task_id: int,
+    status: str | None = None,
+    topic: str | None = None,
+    summary: str | None = None,
+    files: list[str] | None = None,
+    memory_ids: list[int] | None = None,
+    feedback_ids: list[int] | None = None,
+    tests: list[str] | None = None,
+    remaining: list[str] | None = None,
+    source: str | None = None,
+) -> dict[str, Any]:
+    """Update local task/session metadata."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    updated = (
+        update_task(
+            root,
+            task_id,
+            status=status,
+            topic=topic,
+            summary=summary,
+            files=files,
+            memory_ids=memory_ids,
+            feedback_ids=feedback_ids,
+            tests=tests,
+            remaining=remaining,
+            source=source,
+        )
+        if readiness["ready"]
+        else {"updated": False, "id": task_id, "task": None}
+    )
+    return {
+        "tool": "repo_task_update",
+        "contract": TOOL_CONTRACT_VERSION,
+        **updated,
+        "warnings": warnings,
+    }
+
+
+def repo_task_note(
+    root: Path,
+    task_id: int,
+    note: str,
+    files: list[str] | None = None,
+    memory_ids: list[int] | None = None,
+    feedback_ids: list[int] | None = None,
+    tests: list[str] | None = None,
+    remaining: list[str] | None = None,
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Append a progress note to a local task/session memory item."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    recorded = (
+        add_task_note(
+            root,
+            task_id,
+            note,
+            files=files or [],
+            memory_ids=memory_ids or [],
+            feedback_ids=feedback_ids or [],
+            tests=tests or [],
+            remaining=remaining or [],
+            source=source,
+        )
+        if readiness["ready"]
+        else {"recorded": False, "id": task_id, "note": None, "task": None}
+    )
+    return {
+        "tool": "repo_task_note",
+        "contract": TOOL_CONTRACT_VERSION,
+        **recorded,
+        "warnings": warnings,
+        "safety": [
+            "record task notes after real investigation, verification or implementation progress",
+            "store concise operational facts only; do not include source code snippets",
+        ],
+    }
+
+
+def repo_task_close(
+    root: Path,
+    task_id: int,
+    summary: str | None = None,
+    tests: list[str] | None = None,
+    remaining: list[str] | None = None,
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Mark a local task/session memory item as done."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    closed = (
+        close_task(root, task_id, summary=summary, tests=tests or [], remaining=remaining or [], source=source)
+        if readiness["ready"]
+        else {"updated": False, "id": task_id, "task": None}
+    )
+    return {
+        "tool": "repo_task_close",
+        "contract": TOOL_CONTRACT_VERSION,
+        "closed": bool(closed.get("updated")),
+        **closed,
+        "warnings": warnings,
+    }
+
+
 def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
     """Return local metadata useful at the end of an agent session."""
 
@@ -475,6 +640,11 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
     recent_feedback = (
         [_compact_feedback(item) for item in list_feedback(root)[:bounded_limit]]
         if readiness["ready"]
+        else []
+    )
+    recent_tasks = (
+        [_compact_task(item) for item in list_tasks(root, include_done=False, limit=bounded_limit)]
+        if memory_readiness["ready"]
         else []
     )
     git = {
@@ -506,6 +676,7 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
         "git": git,
         "recent_memory": recent_memory,
         "recent_feedback": recent_feedback,
+        "recent_tasks": recent_tasks,
         "memory_audit": {
             "note_count": audit.get("note_count", 0),
             "summary": audit.get("summary", {}),
@@ -526,6 +697,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     git = summary.get("git") or {}
     audit_summary = (summary.get("memory_audit") or {}).get("summary") or {}
     status_count = len(git.get("status") or [])
+    task_count = len(summary.get("recent_tasks") or [])
     stale_count = int(audit_summary.get("stale") or 0)
     quality_issue_count = sum(
         int(audit_summary.get(key) or 0)
@@ -574,6 +746,19 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     )
     checklist.append(
         {
+            "id": "review_open_tasks",
+            "status": "needed" if task_count else "clean",
+            "title": "Review open local tasks",
+            "reason": (
+                f"{task_count} local task/session items remain open."
+                if task_count
+                else "No open local task/session items were found."
+            ),
+            "command": "init-agent tool repo_task_list --json",
+        }
+    )
+    checklist.append(
+        {
             "id": "record_durable_learning",
             "status": "optional",
             "title": "Record durable learning",
@@ -599,8 +784,9 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         "memory_audit": summary.get("memory_audit", {}),
         "recent_memory": summary.get("recent_memory", []),
         "recent_feedback": summary.get("recent_feedback", []),
+        "recent_tasks": summary.get("recent_tasks", []),
         "checklist": checklist,
-        "close_ready": status_count == 0 and stale_count == 0 and quality_issue_count == 0,
+        "close_ready": status_count == 0 and stale_count == 0 and quality_issue_count == 0 and task_count == 0,
         "followup_commands": summary.get("followup_commands", []),
         "warnings": summary.get("warnings", []),
         "safety": [
@@ -694,6 +880,25 @@ def _compact_feedback(item: dict[str, Any]) -> dict[str, Any]:
         "reason": item.get("reason", ""),
         "source": item.get("source", "agent"),
         "created_at": item.get("created_at", ""),
+    }
+
+
+def _compact_task(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": item["id"],
+        "title": item.get("title", ""),
+        "status": item.get("status", ""),
+        "topic": item.get("topic", ""),
+        "summary": item.get("summary", ""),
+        "files": list(item.get("files") or [])[:10],
+        "memory_ids": list(item.get("memory_ids") or [])[:20],
+        "feedback_ids": list(item.get("feedback_ids") or [])[:20],
+        "tests": list(item.get("tests") or [])[:10],
+        "remaining": list(item.get("remaining") or [])[:10],
+        "source": item.get("source", "agent"),
+        "created_at": item.get("created_at", ""),
+        "updated_at": item.get("updated_at", ""),
+        "closed_at": item.get("closed_at", ""),
     }
 
 
@@ -1116,6 +1321,80 @@ def render_repo_memory_update_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_task_add_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_task_add",
+        "",
+        f"Recorded: {'yes' if result.get('recorded') else 'no'}",
+    ]
+    if result.get("task"):
+        task = result["task"]
+        lines.append(f"Task id: {task['id']}")
+        lines.append(f"Title: {task['title']}")
+        lines.append(f"Status: {task['status']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_task_list_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_task_list",
+        "",
+        f"Status filter: {result.get('status') or '-'}",
+        f"Topic filter: {result.get('topic') or '-'}",
+        "Tasks:",
+    ]
+    tasks = list(result.get("tasks") or [])
+    if not tasks:
+        lines.append("-")
+    for task in tasks:
+        lines.append(f"- #{task['id']} [{task['status']}] {task['title']}")
+        if task.get("topic"):
+            lines.append(f"  topic: {task['topic']}")
+        if task.get("files"):
+            lines.append(f"  files: {', '.join(task['files'][:5])}")
+        if task.get("remaining"):
+            lines.append(f"  remaining: {'; '.join(task['remaining'][:3])}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_task_update_text(result: dict[str, Any]) -> str:
+    lines = [
+        f"Init Agent Tool: {result['tool']}",
+        "",
+        f"Task id: {result['id']}",
+        f"Updated: {'yes' if result.get('updated') else 'no'}",
+    ]
+    if result.get("task"):
+        task = result["task"]
+        lines.append(f"Title: {task['title']}")
+        lines.append(f"Status: {task['status']}")
+        if task.get("files"):
+            lines.append(f"Files: {', '.join(task['files'][:5])}")
+        if task.get("tests"):
+            lines.append(f"Tests: {'; '.join(task['tests'][:3])}")
+        if task.get("remaining"):
+            lines.append(f"Remaining: {'; '.join(task['remaining'][:3])}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_task_note_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_task_note",
+        "",
+        f"Task id: {result['id']}",
+        f"Recorded: {'yes' if result.get('recorded') else 'no'}",
+    ]
+    if result.get("note"):
+        lines.append(f"Note id: {result['note']['id']}")
+    if result.get("task"):
+        lines.append(f"Status: {result['task']['status']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
 def render_repo_session_summary_text(result: dict[str, Any]) -> str:
     project = result.get("project") or {}
     git = result.get("git") or {}
@@ -1162,6 +1441,17 @@ def render_repo_session_summary_text(result: dict[str, Any]) -> str:
         lines.append(f"- #{item['id']} {item['rating']} {item['path']}")
         if item.get("reason"):
             lines.append(f"  reason: {item['reason']}")
+
+    lines.extend(["", "Open tasks:"])
+    recent_tasks = list(result.get("recent_tasks") or [])
+    if not recent_tasks:
+        lines.append("-")
+    for item in recent_tasks[:5]:
+        lines.append(f"- #{item['id']} [{item['status']}] {item['title']}")
+        if item.get("topic"):
+            lines.append(f"  topic: {item['topic']}")
+        if item.get("remaining"):
+            lines.append(f"  remaining: {'; '.join(item['remaining'][:3])}")
 
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands") or [])
@@ -1216,6 +1506,15 @@ def render_repo_session_close_text(result: dict[str, Any]) -> str:
         if item.get("stale") is True:
             lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
         lines.append(f"  note: {item['note']}")
+
+    lines.extend(["", "Open tasks:"])
+    recent_tasks = list(result.get("recent_tasks") or [])
+    if not recent_tasks:
+        lines.append("-")
+    for item in recent_tasks[:5]:
+        lines.append(f"- #{item['id']} [{item['status']}] {item['title']}")
+        if item.get("remaining"):
+            lines.append(f"  remaining: {'; '.join(item['remaining'][:3])}")
 
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)

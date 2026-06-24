@@ -31,6 +31,9 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent session close` | Print an end-of-session checklist for handoff. |
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
+| `init-agent tool repo_task_add --title "..." --json` | Create a local task/session memory item. |
+| `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a task. |
+| `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -189,8 +192,8 @@ The response includes:
 - `followup_commands`
 - `warnings`
 
-This is not a full MCP server yet. It is the JSON contract that a future MCP
-tool can expose without asking an agent to parse terminal Markdown.
+The same contract is exposed through the MCP server, so agents can consume it
+without parsing terminal Markdown.
 
 ## `init-agent tool repo_overview`
 
@@ -348,7 +351,7 @@ init-agent tool repo_session_summary --limit 20 --json
 ```
 
 The summary includes project/root metadata, Git status, recent memory notes,
-recent feedback and memory audit counts. It does not record a session, modify
+recent feedback, open local tasks and memory audit counts. It does not modify
 source files or replace tests/direct file reads.
 
 ## `init-agent session close`
@@ -361,10 +364,10 @@ init-agent session close --json
 init-agent tool repo_session_close --json
 ```
 
-The checklist highlights Git status, stale memory, memory quality issues,
-durable learning that may be worth recording and verification that should be
-reported to the user. It does not write memories automatically, modify source
-files or create commits.
+The checklist highlights Git status, stale memory, memory quality issues, open
+local tasks, durable learning that may be worth recording and verification that
+should be reported to the user. It does not write memories automatically,
+modify source files or create commits.
 
 ## `init-agent tool repo_file_notes`
 
@@ -394,6 +397,34 @@ init-agent tool repo_memory_update --id 13 --topic "runtime entrypoints" --json
 
 The command does not change the memory scope or path. Use it after re-reading a
 file, correcting a stale note or tightening a repo-wide project decision.
+
+## Local Task/Session Memory
+
+Task tools track the operational thread of a work session. They are useful when
+an agent needs to remember what it was doing, which files were involved, which
+checks ran and what remains. They are local metadata in `.agent/graph.sqlite`;
+they do not replace GitHub Issues or external project management.
+
+```bash
+init-agent task add "Fix login redirect" --topic auth --file src/auth/session.py --status in_progress
+init-agent task note 1 --note "Verified session handling." --file src/auth/login.py --test "python -m unittest discover -s tests" --remaining "Run manual redirect smoke check."
+init-agent task list --topic auth
+init-agent task close 1 --summary "Login redirect task completed."
+```
+
+Agent-facing JSON tools expose the same workflow:
+
+```bash
+init-agent tool repo_task_add --title "Fix login redirect" --topic auth --file src/auth/session.py --status in_progress --json
+init-agent tool repo_task_note --id 1 --note "Verified session handling." --file src/auth/login.py --test "python -m unittest discover -s tests" --remaining "Run manual redirect smoke check." --json
+init-agent tool repo_task_list --json
+init-agent tool repo_task_update --id 1 --status blocked --remaining "Waiting for manual browser verification." --json
+init-agent tool repo_task_close --id 1 --summary "Login redirect task completed." --json
+```
+
+`repo_session_summary` and `repo_session_close` include open local tasks. If
+open tasks remain, `repo_session_close` reports them in the checklist so the
+agent can summarize or close the loop before handoff.
 
 ## `init-agent mcp`
 
@@ -426,6 +457,11 @@ The server exposes:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_task_add`
+- `repo_task_list`
+- `repo_task_note`
+- `repo_task_update`
+- `repo_task_close`
 - `repo_file_notes`
 
 The server does not modify project source files and is lazy against the

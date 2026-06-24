@@ -114,6 +114,23 @@ for a topic-level area map, `repo_memory_list --stale` to audit stale notes,
 `repo_memory_update` to refresh corrected notes after verification, and
 `repo_memory_delete` to remove wrong or duplicate notes.
 
+For longer work that spans multiple files, modifications, checks or handoff
+points, use local task/session memory to keep the operational thread explicit.
+Prefer MCP tools when available:
+
+```text
+repo_task_add
+repo_task_note
+repo_task_list
+repo_task_update
+repo_task_close
+```
+
+Use `repo_task_add` when starting a non-trivial task, `repo_task_note` after
+meaningful progress or verification, and `repo_task_close` only when the work is
+actually done. Link relevant files, tests, memory ids, feedback ids and
+remaining follow-up. Do not create local tasks for tiny one-shot questions.
+
 Before finishing a non-trivial task, do a short memory/feedback check:
 
 - If a suggested file was verified and central to the task, consider `useful`
@@ -124,6 +141,8 @@ Before finishing a non-trivial task, do a short memory/feedback check:
   `missing` feedback.
 - If you learned a stable fact about a file or project decision, consider a
   short memory note with evidence.
+- If the work spans multiple steps or needs handoff continuity, consider a
+  local task note or close the local task if complete.
 - If nothing stable was learned, do not write memory or feedback.
 
 Never write feedback or memory just because a file appeared in a ranking.
@@ -152,9 +171,9 @@ init-agent session close
 ```
 
 Use the result to inform the final answer: mention modified files, stale memory,
-memory quality issues, verification still needed and follow-up commands when
-they matter. Do not run session close for tiny one-shot answers or when the user
-explicitly asks only for a quick fact.
+open local tasks, memory quality issues, verification still needed and follow-up
+commands when they matter. Do not run session close for tiny one-shot answers or
+when the user explicitly asks only for a quick fact.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:
