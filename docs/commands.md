@@ -28,6 +28,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
 | `init-agent tool repo_memory_audit --json` | Audit local memory quality. |
 | `init-agent tool repo_session_summary --json` | Summarize local handoff metadata after an agent session. |
+| `init-agent session close` | Print an end-of-session checklist for handoff. |
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
@@ -349,6 +350,21 @@ init-agent tool repo_session_summary --limit 20 --json
 The summary includes project/root metadata, Git status, recent memory notes,
 recent feedback and memory audit counts. It does not record a session, modify
 source files or replace tests/direct file reads.
+
+## `init-agent session close`
+
+Prints an advisory end-of-session checklist for an agent handoff:
+
+```bash
+init-agent session close
+init-agent session close --json
+init-agent tool repo_session_close --json
+```
+
+The checklist highlights Git status, stale memory, memory quality issues,
+durable learning that may be worth recording and verification that should be
+reported to the user. It does not write memories automatically, modify source
+files or create commits.
 
 ## `init-agent tool repo_file_notes`
 

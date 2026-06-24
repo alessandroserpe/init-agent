@@ -24,6 +24,7 @@ from .agent_tools import (
     render_repo_memory_update_text,
     render_repo_overview_text,
     render_repo_related_file_text,
+    render_repo_session_close_text,
     render_repo_session_summary_text,
     render_repo_symbol_callers_text,
     repo_entrypoints,
@@ -40,6 +41,7 @@ from .agent_tools import (
     repo_memory_update,
     repo_overview,
     repo_related_file,
+    repo_session_close,
     repo_session_summary,
     repo_symbol_callers,
 )
@@ -141,6 +143,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_parser = subparsers.add_parser("status", help="Show project index status.")
     status_parser.set_defaults(handler=cmd_status)
+
+    session_parser = subparsers.add_parser("session", help="Inspect or close an agent work session.")
+    session_subparsers = session_parser.add_subparsers(dest="session_command")
+    session_close_parser = session_subparsers.add_parser("close", help="Print an end-of-session handoff checklist.")
+    session_close_parser.add_argument("--limit", type=int, default=10, help="Maximum recent notes, feedback and git status entries to return.")
+    session_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    session_close_parser.set_defaults(handler=cmd_session_close)
 
     query_parser = subparsers.add_parser("query", help="Search paths, symbols, roles and commit messages.")
     query_parser.add_argument("text", nargs="+", help="Search text.")
@@ -273,6 +282,11 @@ def build_parser() -> argparse.ArgumentParser:
     repo_session_summary_parser.add_argument("--limit", type=int, default=10, help="Maximum recent notes, feedback and git status entries to return.")
     repo_session_summary_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_session_summary_parser.set_defaults(handler=cmd_tool_repo_session_summary)
+
+    repo_session_close_parser = tool_subparsers.add_parser("repo_session_close", help="Return an end-of-session handoff checklist.")
+    repo_session_close_parser.add_argument("--limit", type=int, default=10, help="Maximum recent notes, feedback and git status entries to return.")
+    repo_session_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_session_close_parser.set_defaults(handler=cmd_tool_repo_session_close)
 
     repo_file_notes_parser = tool_subparsers.add_parser("repo_file_notes", help="List local agent notes for one file.")
     repo_file_notes_parser.add_argument("--path", required=True, help="Project-relative file path.")
@@ -728,6 +742,16 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_session_close(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_session_close(root, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_session_close_text(result))
+    return _memory_tool_exit_code(result)
+
+
 def cmd_query(args: argparse.Namespace) -> int:
     root = project_root()
     if not _ensure_initialized(root):
@@ -1104,6 +1128,16 @@ def cmd_tool_repo_session_summary(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_session_summary_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_tool_repo_session_close(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_session_close(root, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_session_close_text(result))
     return _memory_tool_exit_code(result)
 
 

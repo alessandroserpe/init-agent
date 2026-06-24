@@ -196,6 +196,7 @@ context.
 | `init-agent tool repo_memory_add --scope repo --note "..." --json` | Record an optional repo-wide project note. |
 | `init-agent tool repo_memory_audit --json` | Audit local memory quality. |
 | `init-agent tool repo_session_summary --json` | Summarize local handoff metadata after an agent session. |
+| `init-agent session close` | Print an end-of-session checklist for handoff. |
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent tool repo_memory_list --stale --json` | Audit local notes, including stale notes. |

@@ -519,6 +519,98 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
     }
 
 
+def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
+    """Return an end-of-session checklist and handoff summary for agents."""
+
+    summary = repo_session_summary(root, limit=limit)
+    git = summary.get("git") or {}
+    audit_summary = (summary.get("memory_audit") or {}).get("summary") or {}
+    status_count = len(git.get("status") or [])
+    stale_count = int(audit_summary.get("stale") or 0)
+    quality_issue_count = sum(
+        int(audit_summary.get(key) or 0)
+        for key in ("unknown_evidence", "missing_topic", "short_note", "duplicate_file_topic")
+    )
+
+    checklist: list[dict[str, Any]] = []
+    checklist.append(
+        {
+            "id": "review_git_status",
+            "status": "needed" if status_count else "clean",
+            "title": "Review Git status",
+            "reason": (
+                f"{status_count} Git status entries need review before handoff."
+                if status_count
+                else "Working tree is clean according to indexed session metadata."
+            ),
+            "command": "git status --short",
+        }
+    )
+    checklist.append(
+        {
+            "id": "refresh_stale_memory",
+            "status": "needed" if stale_count else "clean",
+            "title": "Refresh stale memory",
+            "reason": (
+                f"{stale_count} memory notes are stale and should be refreshed or ignored."
+                if stale_count
+                else "No stale memory notes were found."
+            ),
+            "command": "init-agent tool repo_memory_list --stale --json",
+        }
+    )
+    checklist.append(
+        {
+            "id": "audit_memory_quality",
+            "status": "needed" if quality_issue_count else "clean",
+            "title": "Audit memory quality",
+            "reason": (
+                f"{quality_issue_count} non-stale memory quality issues were reported."
+                if quality_issue_count
+                else "No memory quality issues were reported."
+            ),
+            "command": "init-agent tool repo_memory_audit --json",
+        }
+    )
+    checklist.append(
+        {
+            "id": "record_durable_learning",
+            "status": "optional",
+            "title": "Record durable learning",
+            "reason": "If this session verified stable file behavior, add or update concise memory and feedback notes.",
+            "command": "init-agent tool repo_memory_add --path <path> --topic <topic> --evidence read_excerpt --note <note> --json",
+        }
+    )
+    checklist.append(
+        {
+            "id": "report_verification",
+            "status": "manual",
+            "title": "Report verification",
+            "reason": "Summarize tests, smoke checks or commands run outside init-agent before ending the user-facing session.",
+            "command": "",
+        }
+    )
+
+    return {
+        "tool": "repo_session_close",
+        "contract": TOOL_CONTRACT_VERSION,
+        "project": summary.get("project", {}),
+        "git": git,
+        "memory_audit": summary.get("memory_audit", {}),
+        "recent_memory": summary.get("recent_memory", []),
+        "recent_feedback": summary.get("recent_feedback", []),
+        "checklist": checklist,
+        "close_ready": status_count == 0 and stale_count == 0 and quality_issue_count == 0,
+        "followup_commands": summary.get("followup_commands", []),
+        "warnings": summary.get("warnings", []),
+        "safety": [
+            "session close is advisory; it does not modify source files or create commits",
+            "verify files and tests directly before relying on the handoff",
+            "do not commit .agent or generated local index files",
+        ],
+    }
+
+
 def _readiness(root: Path) -> dict[str, Any]:
     db_path = root / ".agent" / "graph.sqlite"
     if not db_path.is_file():
@@ -1073,6 +1165,58 @@ def render_repo_session_summary_text(result: dict[str, Any]) -> str:
 
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands") or [])
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
+def render_repo_session_close_text(result: dict[str, Any]) -> str:
+    project = result.get("project") or {}
+    git = result.get("git") or {}
+    lines = [
+        "Init Agent Session Close",
+        "",
+        f"Project: {project.get('name') or '-'}",
+        f"Root: {project.get('root') or '-'}",
+        f"Git: {'yes' if git.get('available') else 'no'}",
+        f"Branch: {git.get('branch') or '-'}",
+        f"Close ready: {'yes' if result.get('close_ready') else 'no'}",
+        "",
+        "Checklist:",
+    ]
+    for item in result.get("checklist") or []:
+        command = item.get("command") or ""
+        lines.append(f"- [{item.get('status', '-')}] {item.get('title', '-')}")
+        if item.get("reason"):
+            lines.append(f"  reason: {item['reason']}")
+        if command:
+            lines.append(f"  command: {command}")
+
+    audit_summary = (result.get("memory_audit") or {}).get("summary") or {}
+    lines.extend(["", "Memory audit:"])
+    if not audit_summary:
+        lines.append("-")
+    for key, count in audit_summary.items():
+        lines.append(f"- {key}: {count}")
+
+    status = list(git.get("status") or [])
+    lines.extend(["", "Git status:"])
+    if not status:
+        lines.append("-")
+    for item in status:
+        lines.append(f"- {item}")
+
+    lines.extend(["", "Recent memory:"])
+    recent_memory = list(result.get("recent_memory") or [])
+    if not recent_memory:
+        lines.append("-")
+    for item in recent_memory[:5]:
+        label = item.get("path") or "(repo)"
+        topic = item.get("topic") or "-"
+        lines.append(f"- #{item['id']} {label} [{topic}]")
+        if item.get("stale") is True:
+            lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
+        lines.append(f"  note: {item['note']}")
+
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)
 

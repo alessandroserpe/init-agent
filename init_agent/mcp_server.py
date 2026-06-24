@@ -27,6 +27,7 @@ from .agent_tools import (
     repo_memory_update,
     repo_overview,
     repo_related_file,
+    repo_session_close,
     repo_session_summary,
     repo_symbol_callers,
 )
@@ -113,6 +114,7 @@ class InitAgentMcpServer:
             "repo_memory_topics": _handle_repo_memory_topics,
             "repo_memory_update": _handle_repo_memory_update,
             "repo_related_file": _handle_repo_related_file,
+            "repo_session_close": _handle_repo_session_close,
             "repo_session_summary": _handle_repo_session_summary,
             "repo_symbol_callers": _handle_repo_symbol_callers,
         }
@@ -268,6 +270,11 @@ def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, 
 def _handle_repo_session_summary(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     limit = int(arguments.get("limit") or 10)
     return repo_session_summary(root, limit=limit)
+
+
+def _handle_repo_session_close(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    limit = int(arguments.get("limit") or 10)
+    return repo_session_close(root, limit=limit)
 
 
 def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:
@@ -445,6 +452,17 @@ def _tool_definitions() -> list[dict[str, Any]]:
         {
             "name": "repo_session_summary",
             "description": "Return a compact local handoff summary with git status, recent memory, recent feedback and memory audit counts.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_session_close",
+            "description": "Return an end-of-session checklist for agent handoff, including git review, stale memory and verification prompts.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

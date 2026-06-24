@@ -587,6 +587,14 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(summary["project"]["name"], root.name)
                 self.assertTrue(summary["recent_feedback"])
                 self.assertEqual(summary["recent_feedback"][0]["path"], "src/auth/session.py")
+
+                close_output = StringIO()
+                with redirect_stdout(close_output):
+                    self.assertEqual(main(["session", "close", "--json"]), 0)
+                closed = json.loads(close_output.getvalue())
+                self.assertEqual(closed["tool"], "repo_session_close")
+                self.assertEqual(closed["contract"], "init-agent.tool.v1")
+                self.assertTrue(any(item["id"] == "review_git_status" for item in closed["checklist"]))
             finally:
                 os.chdir(previous)
 
@@ -1039,6 +1047,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_memory_delete",
                     "repo_memory_list",
                     "repo_memory_search",
+                    "repo_session_close",
                     "repo_session_summary",
                     "repo_memory_topics",
                     "repo_memory_update",
@@ -1281,6 +1290,14 @@ class InitAgentBaseTests(unittest.TestCase):
                     "params": {"name": "repo_session_summary", "arguments": {}},
                 }
             )
+            closed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 47,
+                    "method": "tools/call",
+                    "params": {"name": "repo_session_close", "arguments": {}},
+                }
+            )
             self.assertIsNotNone(added)
             self.assertIsNotNone(searched)
             self.assertIsNotNone(notes)
@@ -1288,6 +1305,7 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsNotNone(topics)
             self.assertIsNotNone(audit)
             self.assertIsNotNone(summary)
+            self.assertIsNotNone(closed)
             self.assertTrue(added["result"]["structuredContent"]["recorded"])
             self.assertEqual(added["result"]["structuredContent"]["memory"]["scope"], "file")
             self.assertFalse(added["result"]["structuredContent"]["memory"]["stale"])
@@ -1301,6 +1319,8 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertGreaterEqual(audit["result"]["structuredContent"]["audit"]["note_count"], 1)
             self.assertEqual(summary["result"]["structuredContent"]["tool"], "repo_session_summary")
             self.assertTrue(summary["result"]["structuredContent"]["recent_memory"])
+            self.assertEqual(closed["result"]["structuredContent"]["tool"], "repo_session_close")
+            self.assertTrue(closed["result"]["structuredContent"]["checklist"])
 
             repo_added = server.handle(
                 {
