@@ -76,6 +76,17 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("tools/list", content)
         self.assertIn("repo_graph_search", content)
 
+    def test_docs_cover_session_close_and_optional_tree_sitter(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        commands = (root / "docs" / "commands.md").read_text(encoding="utf-8")
+        parsing = (root / "docs" / "parsing.md").read_text(encoding="utf-8")
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        self.assertIn("repo_session_close", commands)
+        self.assertIn("pipx inject init-agent tree-sitter tree-sitter-php", commands)
+        self.assertIn("tree-sitter", parsing)
+        self.assertIn("falls back to the built-in PHP parser", parsing)
+        self.assertIn("docs/parsing.md", readme)
+
     def test_mcp_install_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp) / ".codex"

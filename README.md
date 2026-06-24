@@ -216,6 +216,8 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
 See [docs/mcp.md](docs/mcp.md) for MCP setup and Codex configuration examples.
 See [docs/memory-workflows.md](docs/memory-workflows.md) for decision-log and
 area-map memory patterns.
+See [docs/parsing.md](docs/parsing.md) for Python AST parsing and optional PHP
+tree-sitter setup.
 
 ## Feedback
 
@@ -330,6 +332,7 @@ More documentation:
 
 - [Agent usage](docs/agent-usage.md)
 - [Command reference](docs/commands.md)
+- [Parsing and optional tree-sitter](docs/parsing.md)
 - [Scoring](docs/scoring.md)
 - [Feedback](docs/feedback.md)
 - [Memory workflows](docs/memory-workflows.md)

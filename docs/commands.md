@@ -421,6 +421,7 @@ The server exposes:
 - `repo_memory_audit`
 - `repo_memory_list`
 - `repo_memory_search`
+- `repo_session_close`
 - `repo_session_summary`
 - `repo_memory_topics`
 - `repo_memory_delete`
@@ -436,6 +437,19 @@ It does not call an LLM and does not send source code over the network.
 
 See [mcp.md](mcp.md) for Codex MCP setup, the `codex mcp add` flow and smoke
 testing.
+
+## Parsing And Optional Tree-sitter
+
+Python files are parsed with the standard-library `ast` module. PHP uses the
+built-in parser by default and can optionally use tree-sitter:
+
+```bash
+pipx inject init-agent tree-sitter tree-sitter-php
+init-agent map
+```
+
+If tree-sitter is unavailable or fails on a file, init-agent falls back to the
+built-in parser. See [parsing.md](parsing.md) for details.
 
 ## `init-agent overview`
 
