@@ -10,7 +10,9 @@ blindly, it builds a local SQLite map of files, symbols, lightweight relations
 and Git history, then suggests where the agent should start reading.
 
 It does not call an LLM. It does not modify your source code. It uses Python
-3.11+ and has no required external dependencies.
+3.11+ and has no required external dependencies. Python files are parsed with
+the standard-library `ast` module; PHP can optionally use tree-sitter for a
+more precise graph.
 
 ## Why
 
@@ -43,6 +45,15 @@ Then run:
 ```bash
 init-agent --version
 ```
+
+Optional PHP parsing upgrade:
+
+```bash
+pipx inject init-agent tree-sitter tree-sitter-php
+```
+
+With the optional extra installed, PHP mapping uses tree-sitter when available
+and automatically falls back to the built-in parser when it is not.
 
 If you do not have `pipx` installed:
 
@@ -274,7 +285,9 @@ See [docs/security.md](docs/security.md) for details.
 
 ## Current Limits
 
-- Symbol extraction is regex-based and intentionally shallow.
+- Symbol extraction is intentionally shallow. Python uses `ast`; PHP uses an
+  optional tree-sitter parser when installed, otherwise it falls back to the
+  built-in regex parser.
 - Import/include resolution is best-effort.
 - Context ranking is heuristic and may surface relevant-looking but non-essential files.
 - Entrypoint discovery is heuristic and may miss custom boot files or include support files.
@@ -292,7 +305,8 @@ See [docs/security.md](docs/security.md) for details.
 - Dependency-aware incremental updates.
 - Graph visualization.
 - Language and framework plugin support.
-- Optional tree-sitter support for more precise parsing.
+- Broader optional tree-sitter support for languages where the standard library
+  does not provide a reliable parser.
 
 ## Development
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -170,6 +171,60 @@ FLASK_ROUTE_RE = re.compile(
     r"""^\s*@(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:route|get|post|put|patch|delete)\s*\(\s*['"](?P<path>/[^'"]*)['"]"""
 )
 DJANGO_PATH_RE = re.compile(r"""^\s*(?:path|re_path)\s*\(\s*['"](?P<path>[^'"]*)['"]\s*,\s*(?P<handler>[A-Za-z_][A-Za-z0-9_.]*)""")
+PY_CALL_EXCLUDES = {
+    "__import__",
+    "abs",
+    "all",
+    "any",
+    "bool",
+    "bytes",
+    "callable",
+    "chr",
+    "classmethod",
+    "dict",
+    "dir",
+    "enumerate",
+    "filter",
+    "float",
+    "format",
+    "getattr",
+    "hasattr",
+    "hash",
+    "help",
+    "id",
+    "input",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "map",
+    "max",
+    "min",
+    "next",
+    "object",
+    "open",
+    "ord",
+    "print",
+    "property",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "tuple",
+    "type",
+    "vars",
+    "zip",
+}
 
 
 def extract_symbols_and_relations(
@@ -316,6 +371,81 @@ def _clean_heading(text: str) -> str:
 
 
 def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    try:
+        return _extract_python_ast(content)
+    except SyntaxError:
+        return _extract_python_regex(content)
+
+
+def _extract_python_ast(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    tree = ast.parse(content)
+    lines = content.splitlines()
+    symbols: list[ExtractedSymbol] = []
+    relations: list[ExtractedRelation] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.class_depth = 0
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            symbols.append(ExtractedSymbol(node.name, "class", node.lineno, _python_line(lines, node.lineno)))
+            self.class_depth += 1
+            self.generic_visit(node)
+            self.class_depth -= 1
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_function(node)
+
+        def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            kind = "method" if self.class_depth else "function"
+            symbols.append(ExtractedSymbol(node.name, kind, node.lineno, _python_line(lines, node.lineno)))
+            for route, route_line, route_signature in _python_flask_routes_from_decorators(node.decorator_list, lines):
+                symbols.append(ExtractedSymbol(route, "route", route_line, route_signature))
+                relations.append(ExtractedRelation("route_to_handler", "symbol_name", node.name, route_line, 0.8))
+            self.generic_visit(node)
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            self._record_constant_targets(node.targets, node.lineno)
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            self._record_constant_targets([node.target], node.lineno)
+            self.generic_visit(node)
+
+        def _record_constant_targets(self, targets: list[ast.expr], line_no: int) -> None:
+            for target in targets:
+                if isinstance(target, ast.Name) and PY_CONSTANT_RE.match(f"{target.id} ="):
+                    symbols.append(ExtractedSymbol(target.id, "constant", line_no, _python_line(lines, line_no)))
+
+        def visit_Import(self, node: ast.Import) -> None:
+            for alias in node.names:
+                relations.append(ExtractedRelation("imports", "module", alias.name, node.lineno, 0.65))
+            self.generic_visit(node)
+
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            if node.module:
+                relations.append(ExtractedRelation("imports", "module", node.module, node.lineno, 0.75))
+            self.generic_visit(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if route := _python_django_route_from_call(node, lines):
+                route_path, handler, line_no, signature = route
+                symbols.append(ExtractedSymbol(route_path, "route", line_no, signature))
+                if handler:
+                    relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler, line_no, 0.65))
+            if call_name := _python_call_name(node.func):
+                if call_name not in PY_CALL_EXCLUDES:
+                    relations.append(ExtractedRelation("calls", "symbol_name", call_name, node.lineno, 0.45))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return symbols, relations
+
+
+def _extract_python_regex(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     class_indent: int | None = None
@@ -352,7 +482,97 @@ def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[Extracted
     return symbols, relations
 
 
+def _python_line(lines: list[str], line_no: int) -> str:
+    if 1 <= line_no <= len(lines):
+        return lines[line_no - 1].strip()
+    return ""
+
+
+def _python_call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Subscript):
+        return _python_call_name(node.value)
+    return ""
+
+
+def _python_flask_routes_from_decorators(decorators: list[ast.expr], lines: list[str]) -> list[tuple[str, int, str]]:
+    routes: list[tuple[str, int, str]] = []
+    for decorator in decorators:
+        if not isinstance(decorator, ast.Call):
+            continue
+        call_name = _python_dotted_name(decorator.func)
+        if call_name.split(".")[-1] not in {"route", "get", "post", "put", "patch", "delete"}:
+            continue
+        route = _first_string_arg(decorator)
+        if route and route.startswith("/"):
+            routes.append((_normalize_route_path(route), decorator.lineno, _python_line(lines, decorator.lineno)))
+    return routes
+
+
+def _python_django_route_from_call(node: ast.Call, lines: list[str]) -> tuple[str, str, int, str] | None:
+    call_name = _python_dotted_name(node.func)
+    if call_name.split(".")[-1] not in {"path", "re_path"}:
+        return None
+    route = _first_string_arg(node)
+    if route is None:
+        return None
+    handler = ""
+    if len(node.args) >= 2:
+        handler = _python_call_handler_name(node.args[1])
+    return _normalize_route_path("/" + route.strip("/")), handler, node.lineno, _python_line(lines, node.lineno)
+
+
+def _first_string_arg(node: ast.Call) -> str | None:
+    if not node.args:
+        return None
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
+
+
+def _python_call_handler_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _python_dotted_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _python_dotted_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
 def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    try:
+        ts_symbols, ts_relations = _extract_php_tree_sitter(content)
+    except Exception:
+        return _extract_php_regex(content)
+    regex_symbols, regex_relations = _extract_php_regex(content)
+    symbols = _dedupe_symbols(
+        [
+            *ts_symbols,
+            *(symbol for symbol in regex_symbols if symbol.kind in {"constant", "route"}),
+        ]
+    )
+    relations = _dedupe_relations(
+        [
+            *ts_relations,
+            *(relation for relation in regex_relations if relation.relation == "route_to_handler"),
+        ]
+    )
+    return symbols, relations
+
+
+def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     in_class = False
@@ -385,14 +605,155 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
     return symbols, relations
 
 
+def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    parser, language = _php_tree_sitter_parser()
+    parser.language = language
+    source = content.encode("utf-8", "ignore")
+    tree = parser.parse(source)
+    symbols: list[ExtractedSymbol] = []
+    relations: list[ExtractedRelation] = []
+
+    def walk(node: object) -> None:
+        node_type = getattr(node, "type", "")
+        line_no = getattr(node, "start_point")[0] + 1
+        if node_type == "class_declaration":
+            if name := _tree_sitter_name(source, node):
+                symbols.append(ExtractedSymbol(name, "class", line_no, _tree_sitter_line(content, line_no)))
+        elif node_type in {"interface_declaration", "trait_declaration", "enum_declaration"}:
+            if name := _tree_sitter_name(source, node):
+                symbols.append(ExtractedSymbol(name, node_type.removesuffix("_declaration"), line_no, _tree_sitter_line(content, line_no)))
+        elif node_type == "function_definition":
+            if name := _tree_sitter_name(source, node):
+                symbols.append(ExtractedSymbol(name, "function", line_no, _tree_sitter_line(content, line_no)))
+        elif node_type == "method_declaration":
+            if name := _tree_sitter_name(source, node):
+                symbols.append(ExtractedSymbol(name, "method", line_no, _tree_sitter_line(content, line_no)))
+        elif node_type in {"function_call_expression", "member_call_expression", "scoped_call_expression"}:
+            if name := _tree_sitter_call_name(source, node):
+                if name.lower() not in PHP_CALL_EXCLUDES and not _tree_sitter_php_route_call(source, node, name):
+                    relations.append(ExtractedRelation("calls", "symbol_name", name, line_no, 0.45))
+        elif node_type in {"include_expression", "include_once_expression", "require_expression", "require_once_expression"}:
+            if target := _tree_sitter_first_string(source, node):
+                relations.append(ExtractedRelation(node_type.removesuffix("_expression"), "file", target, line_no, 0.8))
+        for child in getattr(node, "named_children", []):
+            walk(child)
+
+    walk(tree.root_node)
+    return symbols, relations
+
+
+def _php_tree_sitter_parser() -> tuple[object, object]:
+    from tree_sitter import Language, Parser  # type: ignore[import-not-found]
+    import tree_sitter_php  # type: ignore[import-not-found]
+
+    language_fn = getattr(tree_sitter_php, "language_php", None) or getattr(tree_sitter_php, "language", None)
+    if language_fn is None:
+        raise ImportError("tree_sitter_php does not expose a PHP language")
+    return Parser(), Language(language_fn())
+
+
+def _tree_sitter_text(source: bytes, node: object) -> str:
+    return source[getattr(node, "start_byte") : getattr(node, "end_byte")].decode("utf-8", "ignore")
+
+
+def _tree_sitter_line(content: str, line_no: int) -> str:
+    lines = content.splitlines()
+    if 1 <= line_no <= len(lines):
+        return lines[line_no - 1].strip()
+    return ""
+
+
+def _tree_sitter_name(source: bytes, node: object) -> str:
+    name_node = getattr(node, "child_by_field_name")("name")
+    if name_node is None:
+        name_node = _tree_sitter_first_identifier(node)
+    if name_node is None:
+        return ""
+    return _tree_sitter_text(source, name_node).lstrip("\\")
+
+
+def _tree_sitter_call_name(source: bytes, node: object) -> str:
+    name_node = getattr(node, "child_by_field_name")("function") or getattr(node, "child_by_field_name")("name")
+    if name_node is None:
+        name_node = _tree_sitter_first_identifier(node)
+    if name_node is None:
+        return ""
+    name = _tree_sitter_text(source, name_node).lstrip("\\")
+    if "->" in name:
+        return name.rsplit("->", 1)[-1]
+    if "::" in name:
+        return name.rsplit("::", 1)[-1]
+    if "\\" in name:
+        return name.rsplit("\\", 1)[-1]
+    return name
+
+
+def _tree_sitter_php_route_call(source: bytes, node: object, name: str) -> bool:
+    if name.lower() not in {"get", "post", "put", "patch", "delete", "any", "match"}:
+        return False
+    route = _tree_sitter_first_string(source, node)
+    return route.startswith("/")
+
+
+def _tree_sitter_first_identifier(node: object) -> object | None:
+    queue = list(getattr(node, "named_children", []))
+    while queue:
+        current = queue.pop(0)
+        if getattr(current, "type", "") in {"identifier", "name", "variable_name"}:
+            return current
+        queue[0:0] = list(getattr(current, "named_children", []))
+    return None
+
+
+def _tree_sitter_first_string(source: bytes, node: object) -> str:
+    queue = list(getattr(node, "named_children", []))
+    while queue:
+        current = queue.pop(0)
+        if getattr(current, "type", "") in {"string", "string_value", "encapsed_string"}:
+            value = _tree_sitter_text(source, current).strip()
+            return value.strip("\"'")
+        queue[0:0] = list(getattr(current, "named_children", []))
+    return ""
+
+
+def _dedupe_symbols(symbols: list[ExtractedSymbol]) -> list[ExtractedSymbol]:
+    seen: set[tuple[str, str, int]] = set()
+    deduped: list[ExtractedSymbol] = []
+    for symbol in symbols:
+        key = (symbol.name, symbol.kind, symbol.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(symbol)
+    return deduped
+
+
+def _dedupe_relations(relations: list[ExtractedRelation]) -> list[ExtractedRelation]:
+    seen: set[tuple[str, str, str, int]] = set()
+    deduped: list[ExtractedRelation] = []
+    for relation in relations:
+        key = (relation.relation, relation.target_type, relation.target, relation.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(relation)
+    return deduped
+
+
 def _php_routes_in_line(line: str) -> list[tuple[str, str | None]]:
     routes: list[tuple[str, str | None]] = []
     for match in PHP_ROUTE_ARRAY_RE.finditer(line):
-        routes.append((_normalize_route_path(match.group("path")), match.group("handler").split("@")[-1].split("::")[-1]))
+        handler = match.group("handler")
+        if _looks_like_php_route_handler(handler):
+            routes.append((_normalize_route_path(match.group("path")), handler.split("@")[-1].split("::")[-1]))
     for match in PHP_ROUTE_CALL_RE.finditer(line):
         handler = _handler_name(match.group("handler"))
         routes.append((_normalize_route_path(match.group("path")), handler))
     return routes
+
+
+def _looks_like_php_route_handler(handler: str) -> bool:
+    return "@" in handler or "::" in handler or "\\" in handler or "Controller" in handler
 
 
 def _php_calls_in_line(line: str) -> list[str]:

@@ -10,7 +10,7 @@ from .symbol_extractor import extract_symbols_and_relations
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "4"
+INDEX_VERSION = "5"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:

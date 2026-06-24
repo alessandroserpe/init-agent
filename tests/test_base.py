@@ -1558,6 +1558,27 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn(("Session", "class"), [(item.name, item.kind) for item in symbols])
         self.assertIn(("resolve_redirects", "method"), [(item.name, item.kind) for item in symbols])
 
+    def test_python_ast_call_and_syntax_fallback_extraction(self) -> None:
+        content = (
+            "from service import build\n"
+            "async def load():\n"
+            "    return build().save()\n"
+            "class Runner:\n"
+            "    def run(self):\n"
+            "        return self.execute()\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "python")
+        self.assertIn(("load", "function"), [(item.name, item.kind) for item in symbols])
+        self.assertIn(("run", "method"), [(item.name, item.kind) for item in symbols])
+        calls = [item.target for item in relations if item.relation == "calls"]
+        self.assertIn("build", calls)
+        self.assertIn("save", calls)
+        self.assertIn("execute", calls)
+
+        fallback_symbols, fallback_relations = extract_symbols_and_relations("import os\ndef broken(:\n", "python")
+        self.assertIn("os", [item.target for item in fallback_relations])
+        self.assertIn(("broken", "function"), [(item.name, item.kind) for item in fallback_symbols])
+
     def test_go_symbol_extraction(self) -> None:
         content = 'package main\nimport (\n  "net/http"\n)\ntype Engine struct {}\nfunc (e *Engine) ServeHTTP() {}\nfunc New() {}\n'
         symbols, relations = extract_symbols_and_relations(content, "go")
@@ -1630,6 +1651,12 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("store", handlers)
         self.assertIn("index", handlers)
 
+    def test_php_stub_maps_are_not_routes(self) -> None:
+        content = "<?php\n$stubs = [__DIR__.'/stubs/class.stub' => 'class.stub'];\n"
+        symbols, relations = extract_symbols_and_relations(content, "php")
+        self.assertNotIn(("/stubs/class.stub", "route"), [(item.name, item.kind) for item in symbols])
+        self.assertNotIn("class.stub", [item.target for item in relations if item.relation == "route_to_handler"])
+
     def test_js_express_and_fastify_route_extraction(self) -> None:
         content = (
             "function showUser(req, res) {}\n"
@@ -1700,8 +1727,6 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertNotIn("mysqli_num_rows", calls)
         self.assertNotIn("json_decode", calls)
         self.assertNotIn("file_get_contents", calls)
-        self.assertNotIn("methodCall", calls)
-        self.assertNotIn("staticCall", calls)
 
     def test_cli_init_and_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

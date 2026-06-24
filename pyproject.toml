@@ -26,6 +26,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+treesitter = [
+  "tree-sitter>=0.25,<0.26",
+  "tree-sitter-php>=0.24,<0.25",
+]
+
 [project.scripts]
 init-agent = "init_agent.cli:main"
 init-agent-mcp = "init_agent.mcp_server:main"
