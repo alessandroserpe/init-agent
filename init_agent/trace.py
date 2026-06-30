@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections import deque
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +104,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
             "suggested_first_reads": [],
             "warnings": [f"index not found: {database}"],
         }
-    with sqlite3.connect(database) as conn:
+    with closing(sqlite3.connect(database)) as conn:
         conn.row_factory = sqlite3.Row
         files = {int(row["id"]): dict(row) for row in conn.execute("SELECT * FROM files")}
         if not files:
@@ -339,6 +340,9 @@ def _trace_from(
                     "distance": len(path) - 1,
                     "path": [str(files[item]["path"]) for item in path],
                     "edges": edges,
+                    "start_reason": _start_reason(files[start], tokens),
+                    "stop_reason": "target matched query or render/path signals",
+                    "why_this_path": _why_this_path(files, path, edges, reasons),
                     "reasons": reasons,
                 }
             )
@@ -348,7 +352,7 @@ def _trace_from(
             target = int(edge["target"])
             if target in path:
                 continue
-            queue.append((target, [*path, target], [*edges, str(edge["relation"])]))
+            queue.append((target, [*path, target], [*edges, _edge_details(files[current], files[target], edge)]))
     return results
 
 
@@ -359,6 +363,41 @@ def _bounded_neighbors(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return base + float(edge.get("confidence") or 0.0)
 
     return sorted(edges, key=weight, reverse=True)[:25]
+
+
+def _edge_details(source: dict[str, Any], target: dict[str, Any], edge: dict[str, Any]) -> dict[str, Any]:
+    relation = str(edge["relation"])
+    target_id = str(edge.get("target_id") or target.get("path") or "")
+    return {
+        "from": str(source["path"]),
+        "to": str(target["path"]),
+        "relation": relation,
+        "confidence": round(float(edge.get("confidence") or 0.0), 3),
+        "reason": f"followed {relation} relation to {target_id}",
+    }
+
+
+def _start_reason(file_item: dict[str, Any], tokens: set[str]) -> str:
+    path = str(file_item.get("path") or "")
+    lower_path = path.lower()
+    matches = [token for token in sorted(tokens) if token in lower_path]
+    if matches:
+        return f"query matched path tokens: {', '.join(matches[:4])}"
+    role = str(file_item.get("role") or "")
+    if role == "route":
+        return "route file selected as likely runtime start"
+    name = Path(path).name
+    return f"{name} selected as likely entrypoint/start file"
+
+
+def _why_this_path(files: dict[int, dict[str, Any]], path: list[int], edges: list[dict[str, Any]], reasons: list[str]) -> str:
+    if not path:
+        return ""
+    target = str(files[path[-1]]["path"])
+    if edges:
+        relation_chain = " -> ".join(str(edge.get("relation") or "") for edge in edges)
+        return f"{target} is reachable through {relation_chain}; {reasons[0] if reasons else 'it matched trace scoring'}"
+    return f"{target} is a start file; {reasons[0] if reasons else 'it matched trace scoring'}"
 
 
 def _file_score(root: Path, path: str, tokens: set[str], distance: int) -> tuple[float, list[str]]:

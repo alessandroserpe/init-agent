@@ -20,10 +20,14 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths through the local graph. |
-| `init-agent plan "<task>"` | Build a memory-, feedback-, tag- and stale-aware reading plan. |
+| `init-agent plan "<task>" --read 3` | Build a memory-, feedback-, tag- and stale-aware reading plan with a bounded first-read budget. |
+| `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
+| `init-agent plan stats` | Summarize reading-plan usefulness/noise metrics. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Return an agent-facing investigation-path trace contract. |
-| `init-agent tool repo_reading_plan --query "<task>" --json` | Return an agent-facing reading plan contract. |
+| `init-agent tool repo_reading_plan --query "<task>" --read 3 --json` | Return an agent-facing reading plan contract. |
+| `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record reading-plan outcomes after verification. |
+| `init-agent tool repo_reading_plan_stats --json` | Return aggregate reading-plan outcome metrics. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
@@ -34,6 +38,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_session_summary --json` | Summarize local handoff metadata after an agent session. |
 | `init-agent session close` | Print an end-of-session checklist for handoff. |
 | `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
+| `init-agent tool repo_flow_topics --json` | Summarize tag/topic/flow aggregates from local memory. |
 | `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
 | `init-agent tool repo_task_add --title "..." --json` | Create a local task/session memory item. |
 | `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a task. |
@@ -200,7 +205,10 @@ tags, local memory notes, feedback and stale state:
 
 ```bash
 init-agent plan "installare server mcp codex"
+init-agent plan "installare server mcp codex" --read 3
 init-agent plan "installare server mcp codex" --json
+init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path."
+init-agent plan stats
 ```
 
 Use it when a repository has local memory/feedback or when a task is broad
@@ -211,6 +219,19 @@ such as `read`, `verify_stale`, `use_memory_context`, `inspect_related` and
 `verify_stale` means the file should be re-read before relying on the note.
 The command is still an orientation tool and does not replace direct file reads
 before editing.
+
+`--read N` controls the first-read budget. Items inside the budget are marked
+`read_now`; other plausible candidates remain `read_if_needed`,
+`context_only` or `skip_unless_needed`. This lets an agent start with a small
+explicit file budget instead of opening every candidate when the ranking is
+noisy.
+
+`plan finish` records the agent's verified outcome for a saved plan. Use
+`--read-file` for files actually opened, `--verified` for files whose role was
+confirmed, `--useful` for central files, `--noisy` for irrelevant candidates
+and `--missing` for important files absent from the plan. Useful/noisy/missing
+entries are also stored as local feedback. The command may suggest memory
+notes, but it does not write memory automatically.
 
 ## `init-agent tool repo_graph_search`
 
@@ -263,13 +284,32 @@ The response includes:
 Returns the reading plan as a stable JSON contract:
 
 ```bash
-init-agent tool repo_reading_plan --query "installare server mcp codex" --json
+init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3 --json
+init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path." --json
+init-agent tool repo_reading_plan_stats --json
 ```
 
 The response includes query tokens, plan items, memory matches, repo-wide
 memory context, recommended actions and warnings. Each plan item includes an
 action, confidence, signal sources, tags, compact memory notes and feedback
-signals.
+signals. Saved plans include an `id` so agents can finish the loop after
+reading files. `repo_reading_plan_stats` reports aggregate plan counts, useful
+hits by rank, noisy hits by rank and missing counts; it is optional and meant
+for local self-audit, not for user-facing claims.
+
+## `init-agent tool repo_flow_topics`
+
+Returns compact tag/topic/flow aggregates from local memory:
+
+```bash
+init-agent tool repo_flow_topics --json
+init-agent tool repo_flow_topics --tag mcp --json
+```
+
+Use this when an agent wants an area-level view before reopening many files.
+The response groups local memory by tag, lists related topics and paths, and
+suggests where a missing flow-level memory might be useful. It is a memory
+navigation aid, not a code-understanding source of truth.
 
 ## `init-agent tool repo_overview`
 
@@ -443,9 +483,11 @@ init-agent tool repo_session_close --json
 ```
 
 The checklist highlights Git status, stale memory, memory quality issues, open
-local tasks, durable learning that may be worth recording and verification that
-should be reported to the user. It does not write memories automatically,
-modify source files or create commits.
+local tasks, unfinished reading plans, durable learning that may be worth
+recording and verification that should be reported to the user. It also
+surfaces recent plan outcomes and suggests feedback/memory opportunities when
+verified files were marked useful, noisy or missing. It does not write memories
+automatically, modify source files or create commits.
 
 ## `init-agent tool repo_file_notes`
 
@@ -521,6 +563,9 @@ The server exposes:
 
 - `repo_graph_search`
 - `repo_trace`
+- `repo_reading_plan`
+- `repo_reading_plan_finish`
+- `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -536,6 +581,7 @@ The server exposes:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_flow_topics`
 - `repo_task_add`
 - `repo_task_list`
 - `repo_task_note`

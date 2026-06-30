@@ -26,6 +26,9 @@ from .agent_tools import (
     repo_memory_topics,
     repo_memory_update,
     repo_overview,
+    repo_flow_topics,
+    repo_reading_plan_finish,
+    repo_reading_plan_stats,
     repo_reading_plan,
     repo_related_file,
     repo_session_close,
@@ -110,6 +113,8 @@ class InitAgentMcpServer:
             "repo_graph_search": _handle_repo_graph_search,
             "repo_trace": _handle_repo_trace,
             "repo_reading_plan": _handle_repo_reading_plan,
+            "repo_reading_plan_finish": _handle_repo_reading_plan_finish,
+            "repo_reading_plan_stats": _handle_repo_reading_plan_stats,
             "repo_entrypoints": _handle_repo_entrypoints,
             "repo_feedback_add": _handle_repo_feedback_add,
             "repo_feedback_explain": _handle_repo_feedback_explain,
@@ -121,6 +126,7 @@ class InitAgentMcpServer:
             "repo_memory_list": _handle_repo_memory_list,
             "repo_memory_search": _handle_repo_memory_search,
             "repo_memory_topics": _handle_repo_memory_topics,
+            "repo_flow_topics": _handle_repo_flow_topics,
             "repo_memory_update": _handle_repo_memory_update,
             "repo_related_file": _handle_repo_related_file,
             "repo_session_close": _handle_repo_session_close,
@@ -176,7 +182,29 @@ def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str
     if not query:
         raise ValueError("repo_reading_plan requires query")
     limit = int(arguments.get("limit") or 10)
-    return repo_reading_plan(root, query, limit=limit, prepare=False)
+    read_budget = int(arguments.get("read_budget") or arguments.get("read") or 3)
+    return repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False)
+
+
+def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    if plan_id <= 0:
+        raise ValueError("repo_reading_plan_finish requires positive id")
+    return repo_reading_plan_finish(
+        root,
+        plan_id,
+        read=_string_list(arguments.get("read")),
+        verified=_string_list(arguments.get("verified")),
+        useful=_string_list(arguments.get("useful")),
+        noisy=_string_list(arguments.get("noisy")),
+        missing=_string_list(arguments.get("missing")),
+        summary=str(arguments.get("summary") or ""),
+        source=str(arguments.get("source") or "agent"),
+    )
+
+
+def _handle_repo_reading_plan_stats(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    return repo_reading_plan_stats(root)
 
 
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -290,6 +318,12 @@ def _handle_repo_memory_topics(root: Path, arguments: dict[str, Any]) -> dict[st
     limit = int(arguments.get("limit") or 20)
     notes_per_topic = int(arguments.get("notes_per_topic") or 5)
     return repo_memory_topics(root, topic=topic, limit=limit, notes_per_topic=notes_per_topic)
+
+
+def _handle_repo_flow_topics(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    tag = str(arguments.get("tag") or "").strip() or None
+    limit = int(arguments.get("limit") or 20)
+    return repo_flow_topics(root, tag=tag, limit=limit)
 
 
 def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -471,10 +505,35 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "properties": {
                     "query": {"type": "string", "description": "Free-text task or question."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+                    "read_budget": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
                 },
                 "required": ["query"],
                 "additionalProperties": False,
             },
+        },
+        {
+            "name": "repo_reading_plan_finish",
+            "description": "Finalize a reading plan with read, verified, useful, noisy and missing file outcomes.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "read": {"type": "array", "items": {"type": "string"}, "description": "Files actually read."},
+                    "verified": {"type": "array", "items": {"type": "string"}, "description": "Files verified."},
+                    "useful": {"type": "array", "items": {"type": "string"}, "description": "Files verified useful."},
+                    "noisy": {"type": "array", "items": {"type": "string"}, "description": "Files verified noisy."},
+                    "missing": {"type": "array", "items": {"type": "string"}, "description": "Important files missing from the plan."},
+                    "summary": {"type": "string", "description": "Short closing summary."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_reading_plan_stats",
+            "description": "Return optional local metrics about persisted reading-plan usage.",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         },
         {
             "name": "repo_overview",
@@ -651,6 +710,18 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "topic": {"type": "string", "description": "Optional exact topic filter."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                     "notes_per_topic": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_flow_topics",
+            "description": "Aggregate memory tags and indexed file tags into flow-oriented groups.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tag": {"type": "string", "description": "Optional exact tag filter."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
                 },
                 "additionalProperties": False,
             },

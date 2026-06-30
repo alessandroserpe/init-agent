@@ -8,6 +8,8 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_graph_search`
 - `repo_trace`
 - `repo_reading_plan`
+- `repo_reading_plan_finish`
+- `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -23,6 +25,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_flow_topics`
 - `repo_task_add`
 - `repo_task_list`
 - `repo_task_note`
@@ -38,12 +41,15 @@ files. Memory tools can store short local notes, also in `.agent/graph.sqlite`.
 File-scoped notes report stale status when the indexed file hash changed after
 the note was recorded; repo-scoped notes are useful for project-wide decisions
 and report stale status as not applicable. Use `repo_memory_audit` to find
-stale, vague or duplicate notes. Use `repo_memory_topics` to get a
-compact area-level memory map before opening files. Use `repo_memory_update`
-after re-reading a stale note to refresh it without creating duplicates. Use
-task tools to keep an operational thread for longer work: open task title,
-linked files, verification performed and remaining follow-up. Open tasks are
-included in `repo_session_summary` and `repo_session_close`. Use
+stale, vague or duplicate notes. Use `repo_memory_topics` and
+`repo_flow_topics` to get compact area-level memory and tag maps before
+opening files. Use `repo_memory_update` after re-reading a stale note to
+refresh it without creating duplicates. Reading-plan tools let agents create a
+bounded `read_now` list and later record which candidates were useful, noisy or
+missing. Use task tools to keep an operational thread for longer work: open
+task title, linked files, verification performed and remaining follow-up. Open
+tasks and unfinished reading plans are included in `repo_session_summary` and
+`repo_session_close`. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
@@ -107,6 +113,8 @@ include:
 - `repo_graph_search`
 - `repo_trace`
 - `repo_reading_plan`
+- `repo_reading_plan_finish`
+- `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -122,6 +130,7 @@ include:
 - `repo_memory_topics`
 - `repo_memory_delete`
 - `repo_memory_update`
+- `repo_flow_topics`
 - `repo_task_add`
 - `repo_task_list`
 - `repo_task_note`

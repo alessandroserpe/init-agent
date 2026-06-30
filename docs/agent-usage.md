@@ -41,7 +41,9 @@ For structured agent integrations:
 
 ```bash
 init-agent tool repo_graph_search --query "debug login session redirect" --json
-init-agent tool repo_reading_plan --query "debug login session redirect" --json
+init-agent tool repo_reading_plan --query "debug login session redirect" --read 3 --json
+init-agent tool repo_reading_plan_finish --id 7 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
+init-agent tool repo_reading_plan_stats --json
 init-agent tool repo_overview --json
 init-agent tool repo_entrypoints --json
 init-agent tool repo_related_file --path src/auth/session.py --json
@@ -53,6 +55,7 @@ init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence u
 init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_audit --json
 init-agent tool repo_memory_topics --topic "login session" --json
+init-agent tool repo_flow_topics --tag login --json
 init-agent tool repo_memory_list --stale --json
 init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 ```
@@ -67,6 +70,14 @@ paths, file tags, memory notes, feedback and stale state into suggested actions
 such as `read`, `verify_stale`, `use_memory_context` and
 `skip_unless_needed`. It is still orientation only: stale memory means re-read
 the file, not trust the note.
+
+Use `--read N` to keep the first pass bounded. Items marked `read_now` are the
+initial file budget; `read_if_needed` and `context_only` are follow-ups. After
+reading files, call `repo_reading_plan_finish` with the plan id and the actual
+outcome: files read, verified, useful, noisy or missing. This creates a small
+feedback loop without asking the agent to remember every opened file in chat.
+Use `repo_reading_plan_stats` only when local metrics are useful; it is optional
+and should not be treated as proof of agent speed.
 
 Context packs also include a confidence diagnostic and suggested next agent
 actions. If confidence is low or medium, agents should follow those actions
@@ -108,6 +119,7 @@ notes as a compact decision log. Keep both short and factual:
 ```bash
 init-agent tool repo_memory_add --scope repo --topic "architecture decisions" --evidence user_decision --note "Keep the indexing layer local-only and dependency-light." --json
 init-agent tool repo_memory_topics --topic "architecture decisions" --json
+init-agent tool repo_flow_topics --tag startup --json
 ```
 
 See [memory-workflows.md](memory-workflows.md) for practical decision-log,
@@ -137,10 +149,12 @@ init-agent-mcp --root /path/to/repository
 The MCP server exposes the same tools: `repo_graph_search`, `repo_trace`,
 `repo_reading_plan`, `repo_overview`, `repo_entrypoints`,
 `repo_related_file`, `repo_symbol_callers`, `repo_feedback_add`,
-`repo_feedback_explain`, `repo_memory_add`,
+`repo_feedback_explain`, `repo_reading_plan_finish`,
+`repo_reading_plan_stats`, `repo_memory_add`,
 `repo_memory_audit`, `repo_memory_list`, `repo_memory_search`,
 `repo_session_summary`, `repo_session_close`, `repo_memory_topics`,
-`repo_memory_update`, `repo_memory_delete` and `repo_file_notes`.
+`repo_memory_update`, `repo_memory_delete`, `repo_flow_topics` and
+`repo_file_notes`.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

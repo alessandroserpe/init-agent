@@ -14,8 +14,9 @@ from .text_tokens import tokenize_query
 from .trace import trace_query
 
 
-def build_reading_plan(root: Path, query: str, limit: int = 10) -> dict[str, Any]:
+def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int = 3) -> dict[str, Any]:
     bounded_limit = max(1, min(limit, 30))
+    bounded_read_budget = max(1, min(read_budget, 10))
     query_tokens = tokenize_query(query)
     context = build_context_pack(root, query)
     trace = trace_query(root, query, limit=bounded_limit, max_depth=4)
@@ -101,10 +102,12 @@ def build_reading_plan(root: Path, query: str, limit: int = 10) -> dict[str, Any
     plan_items = plan_items[:bounded_limit]
     for index, item in enumerate(plan_items, start=1):
         item["rank"] = index
+    _assign_read_priorities(plan_items, bounded_read_budget)
 
     return {
         "query": query,
         "query_tokens": query_tokens,
+        "read_budget": bounded_read_budget,
         "plan_items": plan_items,
         "memory_matches": [_compact_memory(item) for item in memory_matches[:10]],
         "repo_memory_context": [_compact_memory(note) for note in repo_notes[:5]],
@@ -264,9 +267,29 @@ def _compact_feedback_signal(signal: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _assign_read_priorities(plan_items: list[dict[str, Any]], read_budget: int) -> None:
+    read_rank = 0
+    for item in plan_items:
+        if item.get("action") == "skip_unless_needed":
+            item["read_priority"] = "skip_unless_needed"
+            item["read_budget_rank"] = None
+            continue
+        if read_rank < read_budget and item.get("action") in {"read", "verify_stale", "inspect_related"}:
+            read_rank += 1
+            item["read_priority"] = "read_now"
+            item["read_budget_rank"] = read_rank
+            continue
+        if item.get("action") in {"read", "verify_stale", "inspect_related"}:
+            item["read_priority"] = "read_if_needed"
+            item["read_budget_rank"] = None
+            continue
+        item["read_priority"] = "context_only"
+        item["read_budget_rank"] = None
+
+
 def _recommended_actions(query: str, plan_items: list[dict[str, Any]]) -> list[dict[str, str]]:
     actions = []
-    for item in plan_items[:5]:
+    for item in [item for item in plan_items if item.get("read_priority") == "read_now"][:5]:
         path = item["path"]
         if item["action"] == "verify_stale":
             actions.append(

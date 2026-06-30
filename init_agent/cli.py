@@ -23,6 +23,9 @@ from .agent_tools import (
     render_repo_memory_topics_text,
     render_repo_memory_update_text,
     render_repo_overview_text,
+    render_repo_flow_topics_text,
+    render_repo_reading_plan_finish_text,
+    render_repo_reading_plan_stats_text,
     render_repo_reading_plan_text,
     render_repo_related_file_text,
     render_repo_session_close_text,
@@ -46,6 +49,9 @@ from .agent_tools import (
     repo_memory_topics,
     repo_memory_update,
     repo_overview,
+    repo_flow_topics,
+    repo_reading_plan_finish,
+    repo_reading_plan_stats,
     repo_reading_plan,
     repo_related_file,
     repo_session_close,
@@ -129,6 +135,15 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan", help="Build a memory- and feedback-aware reading plan.")
     plan_parser.add_argument("text", nargs="+", help="Free-text task or question.")
     plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
+    plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
+    plan_parser.add_argument("--id", type=int, help="Plan id for `plan finish`.")
+    plan_parser.add_argument("--read-file", action="append", default=[], help="For `plan finish`: file that was read.")
+    plan_parser.add_argument("--verified", action="append", default=[], help="For `plan finish`: file that was verified.")
+    plan_parser.add_argument("--useful", action="append", default=[], help="For `plan finish`: file verified useful.")
+    plan_parser.add_argument("--noisy", action="append", default=[], help="For `plan finish`: file verified noisy.")
+    plan_parser.add_argument("--missing", action="append", default=[], help="For `plan finish`: important missing file.")
+    plan_parser.add_argument("--summary", default="", help="For `plan finish`: closing summary.")
+    plan_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan source.")
     plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     plan_parser.set_defaults(handler=cmd_plan)
 
@@ -282,8 +297,25 @@ def build_parser() -> argparse.ArgumentParser:
     repo_reading_plan_parser = tool_subparsers.add_parser("repo_reading_plan", help="Return a memory- and feedback-aware reading plan.")
     repo_reading_plan_parser.add_argument("--query", required=True, help="Free-text task or question.")
     repo_reading_plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
+    repo_reading_plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
     repo_reading_plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_parser.set_defaults(handler=cmd_tool_repo_reading_plan)
+
+    repo_reading_plan_finish_parser = tool_subparsers.add_parser("repo_reading_plan_finish", help="Finalize a reading plan with verified file outcomes.")
+    repo_reading_plan_finish_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_reading_plan_finish_parser.add_argument("--read", action="append", default=[], help="File that was read. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--verified", action="append", default=[], help="File that was verified. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--useful", action="append", default=[], help="File verified useful. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--noisy", action="append", default=[], help="File verified noisy. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--missing", action="append", default=[], help="Important missing file. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--summary", default="", help="Short closing summary.")
+    repo_reading_plan_finish_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan finish source.")
+    repo_reading_plan_finish_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_finish_parser.set_defaults(handler=cmd_tool_repo_reading_plan_finish)
+
+    repo_reading_plan_stats_parser = tool_subparsers.add_parser("repo_reading_plan_stats", help="Show optional local reading-plan metrics.")
+    repo_reading_plan_stats_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_stats_parser.set_defaults(handler=cmd_tool_repo_reading_plan_stats)
 
     repo_related_file_parser = tool_subparsers.add_parser("repo_related_file", help="Inspect one indexed file neighborhood.")
     repo_related_file_parser.add_argument("--path", required=True, help="Project-relative file path.")
@@ -367,6 +399,12 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_topics_parser.add_argument("--notes-per-topic", type=int, default=5, help="Maximum notes to include per topic.")
     repo_memory_topics_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_topics_parser.set_defaults(handler=cmd_tool_repo_memory_topics)
+
+    repo_flow_topics_parser = tool_subparsers.add_parser("repo_flow_topics", help="Aggregate tags, topics and files into flow-oriented groups.")
+    repo_flow_topics_parser.add_argument("--tag", help="Restrict to one tag.")
+    repo_flow_topics_parser.add_argument("--limit", type=int, default=20, help="Maximum flows to return.")
+    repo_flow_topics_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_flow_topics_parser.set_defaults(handler=cmd_tool_repo_flow_topics)
 
     repo_memory_audit_parser = tool_subparsers.add_parser("repo_memory_audit", help="Audit local memory note quality.")
     repo_memory_audit_parser.add_argument("--limit", type=int, default=100, help="Maximum notes to audit.")
@@ -654,7 +692,34 @@ def cmd_trace(args: argparse.Namespace) -> int:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_reading_plan(root, _text_arg(args.text), limit=args.limit)
+    mode = args.text[0].lower() if args.text else ""
+    if mode == "finish":
+        if not args.id:
+            raise SystemExit("init-agent plan finish requires --id")
+        result = repo_reading_plan_finish(
+            root,
+            args.id,
+            read=args.read_file,
+            verified=args.verified,
+            useful=args.useful,
+            noisy=args.noisy,
+            missing=args.missing,
+            summary=args.summary,
+            source=args.source,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_reading_plan_finish_text(result))
+        return 0 if result.get("updated") else 1
+    if mode == "stats":
+        result = repo_reading_plan_stats(root)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_reading_plan_stats_text(result))
+        return 0
+    result = repo_reading_plan(root, _text_arg(args.text), limit=args.limit, read_budget=args.read, source=args.source)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -1269,12 +1334,42 @@ def cmd_tool_repo_trace(args: argparse.Namespace) -> int:
 
 def cmd_tool_repo_reading_plan(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_reading_plan(root, args.query, limit=args.limit)
+    result = repo_reading_plan(root, args.query, limit=args.limit, read_budget=args.read)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_reading_plan_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_reading_plan_finish(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_finish(
+        root,
+        args.id,
+        read=args.read,
+        verified=args.verified,
+        useful=args.useful,
+        noisy=args.noisy,
+        missing=args.missing,
+        summary=args.summary,
+        source=args.source,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_finish_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_reading_plan_stats(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_stats(root)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_stats_text(result))
+    return 0
 
 
 def cmd_tool_repo_related_file(args: argparse.Namespace) -> int:
@@ -1394,6 +1489,16 @@ def cmd_tool_repo_memory_topics(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_memory_topics_text(result))
+    return _memory_tool_exit_code(result)
+
+
+def cmd_tool_repo_flow_topics(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_flow_topics(root, tag=args.tag, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_flow_topics_text(result))
     return _memory_tool_exit_code(result)
 
 

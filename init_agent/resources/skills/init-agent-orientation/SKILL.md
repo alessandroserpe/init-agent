@@ -49,13 +49,14 @@ init-agent run "<user task>" --markdown
    a reading plan before opening many files:
 
 ```bash
-init-agent plan "<user task>"
+init-agent plan "<user task>" --read 3
 ```
 
 5. Use the overview, context pack or reading plan to choose the first files to inspect:
 
 - Suggested first reads
 - Reading plan actions such as `read`, `verify_stale` or `skip_unless_needed`
+- Reading plan read priorities such as `read_now`, `read_if_needed` or `context_only`
 - Fresh or stale memory attached to candidate files
 - Likely entry points
 - Package manifests and config
@@ -75,6 +76,16 @@ init-agent plan "<user task>"
 
 Use this ledger before finishing the task to decide whether to record feedback,
 memory or a task note. Do not wait for the user to ask.
+
+If you used a saved reading plan, close the loop after verification:
+
+```bash
+init-agent plan finish --id <plan-id> --read-file path/to/read-file --verified path/to/verified-file --useful path/to/useful-file --summary "short factual outcome"
+```
+
+For MCP-capable agents, use `repo_reading_plan_finish`. Mark only verified
+outcomes. Use `--noisy` for irrelevant candidates and `--missing` for important
+files absent from the plan.
 
 ## Targeted Follow-Up
 
@@ -105,7 +116,7 @@ If the task needs a combined view of graph, trace, memory, feedback, tags and
 stale state, use plan:
 
 ```bash
-init-agent plan "<user task>"
+init-agent plan "<user task>" --read 3
 ```
 
 If the task is large or the user asks about context savings:
@@ -246,6 +257,8 @@ Before finishing a non-trivial task, do a short memory/feedback check:
   a short memory note with evidence.
 - If the work spans multiple steps or needs handoff continuity, consider a
   local task note or close the local task if complete.
+- If a reading plan was used, finish it with the files actually read,
+  verified, useful, noisy or missing.
 - If nothing stable was learned, do not write memory or feedback.
 
 Never write feedback or memory just because a file appeared in a ranking.
@@ -275,9 +288,10 @@ init-agent session close
 ```
 
 Use the result to inform the final answer: mention modified files, stale memory,
-open local tasks, memory quality issues, verification still needed and follow-up
-commands when they matter. Do not run session close for tiny one-shot answers or
-when the user explicitly asks only for a quick fact.
+open local tasks, unfinished reading plans, memory quality issues, suggested
+feedback/memory opportunities, verification still needed and follow-up commands
+when they matter. Do not run session close for tiny one-shot answers or when the
+user explicitly asks only for a quick fact.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

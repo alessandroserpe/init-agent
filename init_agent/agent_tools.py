@@ -12,6 +12,7 @@ from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
 from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
+from .plan_feedback import finish_reading_plan, list_reading_plans, reading_plan_stats, save_reading_plan
 from .query import callers_for_symbol, related
 from .reading_plan import build_reading_plan
 from .run import run_query
@@ -230,10 +231,11 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
     }
 
 
-def repo_reading_plan(root: Path, query: str, limit: int = 10, prepare: bool = True) -> dict[str, Any]:
+def repo_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int = 3, prepare: bool = True, source: str = "agent") -> dict[str, Any]:
     """Return a reading plan composed from graph, trace, memory, feedback and tags."""
 
     bounded_limit = max(1, min(limit, 30))
+    bounded_read_budget = max(1, min(read_budget, 10))
     if prepare:
         run_result = run_query(root, f"reading plan {query}", overview=False)
         preparation = run_result.get("preparation", {})
@@ -251,17 +253,80 @@ def repo_reading_plan(root: Path, query: str, limit: int = 10, prepare: bool = T
         "recommended_actions": [],
         "warnings": [],
     }
+    if prepare or readiness["ready"]:
+        plan = build_reading_plan(root, query, limit=bounded_limit, read_budget=bounded_read_budget)
+        saved_plan = save_reading_plan(root, query, plan.get("plan_items", []), bounded_read_budget, source=source)
+    else:
+        saved_plan = None
     return {
         "tool": "repo_reading_plan",
         "contract": TOOL_CONTRACT_VERSION,
+        "id": saved_plan["id"] if saved_plan else None,
         "query": query,
         "preparation": preparation,
+        "read_budget": bounded_read_budget,
         "query_tokens": plan.get("query_tokens", []),
         "plan_items": plan.get("plan_items", []),
         "memory_matches": plan.get("memory_matches", []),
         "repo_memory_context": plan.get("repo_memory_context", []),
         "recommended_actions": plan.get("recommended_actions", []),
         "warnings": [*warnings, *plan.get("warnings", [])],
+    }
+
+
+def repo_reading_plan_finish(
+    root: Path,
+    plan_id: int,
+    read: list[str] | None = None,
+    verified: list[str] | None = None,
+    useful: list[str] | None = None,
+    noisy: list[str] | None = None,
+    missing: list[str] | None = None,
+    summary: str = "",
+    source: str = "agent",
+) -> dict[str, Any]:
+    """Record how a reading plan performed after files were verified."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    finished = (
+        finish_reading_plan(
+            root,
+            plan_id,
+            read=read or [],
+            verified=verified or [],
+            useful=useful or [],
+            noisy=noisy or [],
+            missing=missing or [],
+            summary=summary,
+            source=source,
+        )
+        if readiness["ready"]
+        else {"updated": False, "id": plan_id, "plan": None, "events": [], "feedback": [], "suggested_memory": []}
+    )
+    return {
+        "tool": "repo_reading_plan_finish",
+        "contract": TOOL_CONTRACT_VERSION,
+        **finished,
+        "warnings": warnings,
+        "safety": [
+            "finish a reading plan only after actually reading or verifying files",
+            "feedback is created only for explicit useful, noisy and missing paths",
+        ],
+    }
+
+
+def repo_reading_plan_stats(root: Path) -> dict[str, Any]:
+    """Return optional local metrics for persisted reading plans."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    stats = reading_plan_stats(root) if readiness["ready"] else {}
+    return {
+        "tool": "repo_reading_plan_stats",
+        "contract": TOOL_CONTRACT_VERSION,
+        "stats": stats,
+        "warnings": warnings,
     }
 
 
@@ -450,6 +515,20 @@ def repo_memory_topics(
         "tool": "repo_memory_topics",
         "contract": TOOL_CONTRACT_VERSION,
         "memory": memory,
+        "warnings": warnings,
+    }
+
+
+def repo_flow_topics(root: Path, tag: str | None = None, limit: int = 20) -> dict[str, Any]:
+    """Aggregate local memories and indexed file tags into flow-oriented groups."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    flows = _flow_topics(root, tag=tag, limit=limit) if readiness["ready"] else {"tag": tag or None, "flows": []}
+    return {
+        "tool": "repo_flow_topics",
+        "contract": TOOL_CONTRACT_VERSION,
+        "flows": flows,
         "warnings": warnings,
     }
 
@@ -725,6 +804,17 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
         if memory_readiness["ready"]
         else []
     )
+    plan_activity = _recent_plan_activity(root, bounded_limit) if memory_readiness["ready"] else {
+        "recent_plans": [],
+        "unfinished_plans": [],
+        "finished_plans": [],
+        "event_count": 0,
+        "read_count": 0,
+        "verified_count": 0,
+        "useful_count": 0,
+        "noisy_count": 0,
+        "missing_count": 0,
+    }
     git = {
         "available": git_is_available,
         "branch": current_branch(root) if git_is_available else None,
@@ -755,6 +845,7 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
         "recent_memory": recent_memory,
         "recent_feedback": recent_feedback,
         "recent_tasks": recent_tasks,
+        "plan_activity": plan_activity,
         "memory_audit": {
             "note_count": audit.get("note_count", 0),
             "summary": audit.get("summary", {}),
@@ -776,6 +867,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     audit_summary = (summary.get("memory_audit") or {}).get("summary") or {}
     status_count = len(git.get("status") or [])
     task_count = len(summary.get("recent_tasks") or [])
+    unfinished_plan_count = len((summary.get("plan_activity") or {}).get("unfinished_plans") or [])
     stale_count = int(audit_summary.get("stale") or 0)
     quality_issue_count = sum(
         int(audit_summary.get(key) or 0)
@@ -837,6 +929,19 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     )
     checklist.append(
         {
+            "id": "finish_reading_plans",
+            "status": "optional" if unfinished_plan_count else "clean",
+            "title": "Finalize reading plans",
+            "reason": (
+                f"{unfinished_plan_count} reading plans have not been finalized."
+                if unfinished_plan_count
+                else "No unfinished reading plans were found."
+            ),
+            "command": "init-agent plan stats --json",
+        }
+    )
+    checklist.append(
+        {
             "id": "record_durable_learning",
             "status": "optional",
             "title": "Record durable learning",
@@ -854,6 +959,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         }
     )
 
+    suggested_feedback, suggested_memory = _session_suggestions(summary, summary.get("plan_activity") or {})
     return {
         "tool": "repo_session_close",
         "contract": TOOL_CONTRACT_VERSION,
@@ -863,6 +969,9 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         "recent_memory": summary.get("recent_memory", []),
         "recent_feedback": summary.get("recent_feedback", []),
         "recent_tasks": summary.get("recent_tasks", []),
+        "plan_activity": summary.get("plan_activity", {}),
+        "suggested_feedback": suggested_feedback,
+        "suggested_memory": suggested_memory,
         "checklist": checklist,
         "close_ready": status_count == 0 and stale_count == 0 and quality_issue_count == 0 and task_count == 0,
         "followup_commands": summary.get("followup_commands", []),
@@ -981,6 +1090,136 @@ def _compact_task(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _flow_topics(root: Path, tag: str | None = None, limit: int = 20) -> dict[str, Any]:
+    bounded_limit = max(1, min(limit, 100))
+    selected = tag.strip().lower() if tag else None
+    notes = list_notes(root, limit=500)
+    groups: dict[str, dict[str, Any]] = {}
+
+    def group(name: str) -> dict[str, Any]:
+        return groups.setdefault(
+            name,
+            {
+                "tag": name,
+                "paths": set(),
+                "notes": [],
+                "stale_count": 0,
+                "file_tag_count": 0,
+                "memory_tag_count": 0,
+            },
+        )
+
+    for note in notes:
+        for note_tag in note.get("tags") or []:
+            name = str(note_tag).lower()
+            if selected and name != selected:
+                continue
+            item = group(name)
+            if note.get("path"):
+                item["paths"].add(str(note["path"]))
+            item["notes"].append(_compact_memory_note(note))
+            item["memory_tag_count"] += 1
+            if note.get("stale") is True:
+                item["stale_count"] += 1
+
+    with GraphStore(root) as store:
+        store.initialize()
+        rows = store.connection.execute(
+            """
+            SELECT f.path, t.tag
+            FROM file_tags t
+            JOIN files f ON f.id = t.file_id
+            ORDER BY f.path, t.tag
+            """
+        ).fetchall()
+    for row in rows:
+        name = str(row["tag"]).lower()
+        if selected and name != selected:
+            continue
+        item = group(name)
+        item["paths"].add(str(row["path"]))
+        item["file_tag_count"] += 1
+
+    flows = []
+    for item in groups.values():
+        paths = sorted(item["paths"])
+        notes_for_output = list(item["notes"])[:5]
+        needs_summary = len(paths) >= 3 and not any(note.get("scope") == "repo" for note in notes_for_output)
+        flows.append(
+            {
+                "tag": item["tag"],
+                "file_count": len(paths),
+                "paths": paths[:12],
+                "note_count": len(item["notes"]),
+                "stale_count": int(item["stale_count"]),
+                "file_tag_count": int(item["file_tag_count"]),
+                "memory_tag_count": int(item["memory_tag_count"]),
+                "notes": notes_for_output,
+                "suggested_flow_memory": (
+                    {
+                        "command": f"init-agent tool repo_memory_add --scope repo --topic {_shell_double_quote(item['tag'])} --tag {_shell_double_quote(item['tag'])} --evidence inferred_from_graph --note <flow-summary> --json",
+                        "reason": "multiple files share this tag; add a repo-scoped flow note only after verification",
+                    }
+                    if needs_summary
+                    else None
+                ),
+            }
+        )
+    flows.sort(key=lambda item: (-int(item["note_count"]), -int(item["file_count"]), str(item["tag"])))
+    return {"tag": selected, "flows": flows[:bounded_limit]}
+
+
+def _recent_plan_activity(root: Path, limit: int) -> dict[str, Any]:
+    plans = list_reading_plans(root, limit=limit)
+    unfinished = [plan for plan in plans if not plan.get("finished_at")]
+    finished = [plan for plan in plans if plan.get("finished_at")]
+    events = [event for plan in plans for event in plan.get("events", [])]
+    return {
+        "recent_plans": plans,
+        "unfinished_plans": unfinished,
+        "finished_plans": finished,
+        "event_count": len(events),
+        "read_count": sum(1 for event in events if event.get("event") == "read"),
+        "verified_count": sum(1 for event in events if event.get("event") == "verified"),
+        "useful_count": sum(1 for event in events if event.get("event") == "useful"),
+        "noisy_count": sum(1 for event in events if event.get("event") == "noisy"),
+        "missing_count": sum(1 for event in events if event.get("event") == "missing"),
+    }
+
+
+def _session_suggestions(summary: dict[str, Any], plan_activity: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    feedback: list[dict[str, str]] = []
+    memory: list[dict[str, str]] = []
+    for plan in plan_activity.get("unfinished_plans", [])[:5]:
+        feedback.append(
+            {
+                "kind": "finish_plan",
+                "command": f"init-agent plan finish --id {plan['id']} --summary <summary>",
+                "reason": "reading plan was created but not finalized with read/verified/useful/noisy/missing signals",
+            }
+        )
+    for plan in plan_activity.get("finished_plans", [])[:5]:
+        useful_paths = [event["path"] for event in plan.get("events", []) if event.get("event") == "useful"]
+        for path in useful_paths[:3]:
+            memory.append(
+                {
+                    "kind": "memory_for_useful_file",
+                    "command": f"init-agent tool repo_memory_add --path {_shell_double_quote(path)} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
+                    "reason": "file was marked useful in a finalized reading plan; add memory only if stable behavior was verified",
+                }
+            )
+    for note in summary.get("recent_memory", []):
+        if note.get("stale") is True:
+            memory.append(
+                {
+                    "kind": "refresh_stale_memory",
+                    "command": f"init-agent tool repo_memory_update --id {note['id']} --evidence read_excerpt --note <updated-note> --json",
+                    "reason": "recent memory is stale relative to the indexed file hash",
+                }
+            )
+    return feedback[:8], memory[:8]
+
+
 def _lazy_preparation(warnings: list[str]) -> dict[str, Any]:
     return {
         "init": "skipped",
@@ -1087,9 +1326,22 @@ def render_repo_trace_text(result: dict[str, Any]) -> str:
         path = " -> ".join(item.get("path", []))
         if path:
             lines.append(f"   path: {path}")
-        edges = " -> ".join(item.get("edges", []))
+        if item.get("start_reason"):
+            lines.append(f"   start: {item['start_reason']}")
+        if item.get("why_this_path"):
+            lines.append(f"   why: {item['why_this_path']}")
+        edges = list(item.get("edges") or [])
         if edges:
-            lines.append(f"   edges: {edges}")
+            lines.append("   edges:")
+            for edge in edges[:5]:
+                if isinstance(edge, dict):
+                    lines.append(f"   - {edge.get('from')} --{edge.get('relation')}--> {edge.get('to')}")
+                    if edge.get("reason"):
+                        lines.append(f"     reason: {edge.get('reason')}")
+                else:
+                    lines.append(f"   - {edge}")
+        if item.get("stop_reason"):
+            lines.append(f"   stop: {item['stop_reason']}")
         for reason in item.get("reasons", [])[:4]:
             lines.append(f"   - {reason}")
     lines.extend(["", "Suggested first reads:"])
@@ -1107,15 +1359,22 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
     lines = [
         "Init Agent Tool: repo_reading_plan",
         "",
+        f"Plan id: {result.get('id') or '-'}",
         f"Query: {result['query']}",
+        f"Read budget: {result.get('read_budget', '-')}",
         "",
-        "Reading plan:",
+        "Read now:",
     ]
     if not result.get("plan_items"):
         lines.append("-")
-    for item in result.get("plan_items", [])[:10]:
+    read_now = [item for item in result.get("plan_items", []) if item.get("read_priority") == "read_now"]
+    if not read_now and result.get("plan_items"):
+        lines.append("-")
+    for item in read_now[:10]:
         lines.append(f"{item['rank']}. {item['path']} score {item['score']:.2f}")
         lines.append(f"   action: {item.get('action', '-')}")
+        if item.get("read_budget_rank"):
+            lines.append(f"   read_budget_rank: {item.get('read_budget_rank')}")
         lines.append(f"   confidence: {item.get('confidence', '-')}")
         sources = ", ".join(item.get("sources") or [])
         lines.append(f"   sources: {sources or '-'}")
@@ -1129,12 +1388,60 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
             if note.get("stale") is None:
                 stale = "repo/unknown"
             lines.append(f"   memory #{note['id']} ({stale}): {note.get('topic') or '-'}")
+    lines.extend(["", "Read if needed:"])
+    secondary = [item for item in result.get("plan_items", []) if item.get("read_priority") in {"read_if_needed", "context_only", "skip_unless_needed"}]
+    if not secondary:
+        lines.append("-")
+    for item in secondary[:10]:
+        lines.append(f"- {item['path']} ({item.get('read_priority') or '-'}; rank {item.get('rank')})")
+        if item.get("reason"):
+            lines.append(f"  reason: {item['reason']}")
     lines.extend(["", "Recommended actions:"])
     _append_commands(lines, result.get("recommended_actions", []))
     if result.get("repo_memory_context"):
         lines.extend(["", "Repo memory context:"])
         for note in result["repo_memory_context"][:5]:
             lines.append(f"- #{note['id']} {note.get('topic') or '-'}: {note.get('note') or '-'}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_reading_plan_finish",
+        "",
+        f"Plan id: {result.get('id')}",
+        f"Updated: {'yes' if result.get('updated') else 'no'}",
+        "",
+        "Events:",
+    ]
+    if not result.get("events"):
+        lines.append("-")
+    for event in result.get("events", []):
+        suffix = f" feedback #{event['feedback_id']}" if event.get("feedback_id") else ""
+        lines.append(f"- {event.get('event')}: {event.get('path')}{suffix}")
+    if result.get("suggested_memory"):
+        lines.extend(["", "Suggested memory:"])
+        for item in result["suggested_memory"][:5]:
+            lines.append(f"- {item.get('path')}: {item.get('command')}")
+            lines.append(f"  reason: {item.get('reason')}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
+    stats = result.get("stats") or {}
+    lines = [
+        "Init Agent Tool: repo_reading_plan_stats",
+        "",
+        f"Plans: {stats.get('plan_count', 0)}",
+        f"Finished: {stats.get('finished_plan_count', 0)}",
+        f"Unfinished: {stats.get('unfinished_plan_count', 0)}",
+        f"Average files read per finished plan: {stats.get('average_files_read_per_finished_plan', 0)}",
+        f"Top-1 useful rate: {stats.get('top1_verified_useful_rate', 0)}",
+        f"Top-3 useful rate: {stats.get('top3_verified_useful_rate', 0)}",
+        f"Missing count: {stats.get('missing_count', 0)}",
+    ]
     _append_warnings(lines, result.get("warnings", []))
     return "\n".join(lines)
 
@@ -1431,6 +1738,28 @@ def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_flow_topics_text(result: dict[str, Any]) -> str:
+    flows = result["flows"]
+    lines = [
+        "Init Agent Tool: repo_flow_topics",
+        "",
+        f"Tag filter: {flows.get('tag') or '-'}",
+        "Flows:",
+    ]
+    if not flows.get("flows"):
+        lines.append("-")
+    for item in flows.get("flows", [])[:10]:
+        lines.append(f"- {item['tag']}: {item['file_count']} files, {item['note_count']} notes")
+        if item.get("stale_count"):
+            lines.append(f"  stale notes: {item['stale_count']}")
+        if item.get("paths"):
+            lines.append(f"  paths: {', '.join(item['paths'][:5])}")
+        if item.get("suggested_flow_memory"):
+            lines.append(f"  suggested: {item['suggested_flow_memory']['command']}")
+    _append_warnings(lines, result["warnings"])
+    return "\n".join(lines)
+
+
 def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
     audit = result["audit"]
     lines = [
@@ -1694,6 +2023,28 @@ def render_repo_session_close_text(result: dict[str, Any]) -> str:
         lines.append(f"- #{item['id']} [{item['status']}] {item['title']}")
         if item.get("remaining"):
             lines.append(f"  remaining: {'; '.join(item['remaining'][:3])}")
+
+    plan_activity = result.get("plan_activity") or {}
+    lines.extend(["", "Reading plans:"])
+    lines.append(f"- unfinished: {len(plan_activity.get('unfinished_plans') or [])}")
+    lines.append(f"- finished recent: {len(plan_activity.get('finished_plans') or [])}")
+    lines.append(f"- events recent: {plan_activity.get('event_count', 0)}")
+
+    lines.extend(["", "Suggested feedback:"])
+    suggested_feedback = list(result.get("suggested_feedback") or [])
+    if not suggested_feedback:
+        lines.append("-")
+    for item in suggested_feedback[:5]:
+        lines.append(f"- {item.get('command')}")
+        lines.append(f"  reason: {item.get('reason')}")
+
+    lines.extend(["", "Suggested memory:"])
+    suggested_memory = list(result.get("suggested_memory") or [])
+    if not suggested_memory:
+        lines.append("-")
+    for item in suggested_memory[:5]:
+        lines.append(f"- {item.get('command')}")
+        lines.append(f"  reason: {item.get('reason')}")
 
     _append_warnings(lines, result["warnings"])
     return "\n".join(lines)

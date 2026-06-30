@@ -108,9 +108,17 @@ class InitAgentBaseTests(unittest.TestCase):
         skill = (root / "init_agent" / "resources" / "skills" / "init-agent-orientation" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("repo_session_close", commands)
         self.assertIn("repo_task_add", commands)
+        self.assertIn("repo_reading_plan_finish", commands)
+        self.assertIn("repo_reading_plan_stats", commands)
+        self.assertIn("repo_flow_topics", commands)
         self.assertIn("repo_task_note", readme)
+        self.assertIn("repo_reading_plan_finish", readme)
         self.assertIn("repo_task_close", mcp)
+        self.assertIn("repo_reading_plan_finish", mcp)
+        self.assertIn("repo_flow_topics", mcp)
         self.assertIn("repo_task_list", skill)
+        self.assertIn("repo_reading_plan_finish", skill)
+        self.assertIn("init-agent plan \"<user task>\" --read 3", skill)
         self.assertIn("Do not wait for the user to ask", skill)
         self.assertIn("Prefer updating an existing memory", skill)
         self.assertIn("Only fall back to broad filesystem exploration after this recovery loop fails", skill)
@@ -872,18 +880,74 @@ class InitAgentBaseTests(unittest.TestCase):
                 output = StringIO()
                 with redirect_stdout(output):
                     self.assertEqual(
-                        main(["tool", "repo_reading_plan", "--query", "debug login session", "--json"]),
+                        main(["tool", "repo_reading_plan", "--query", "debug login session", "--read", "1", "--json"]),
                         0,
                     )
                 data = json.loads(output.getvalue())
                 self.assertEqual(data["tool"], "repo_reading_plan")
+                self.assertIsInstance(data["id"], int)
+                self.assertEqual(data["read_budget"], 1)
                 by_path = {item["path"]: item for item in data["plan_items"]}
                 self.assertIn("src/auth/session.py", by_path)
                 self.assertEqual(by_path["src/auth/session.py"]["action"], "verify_stale")
+                self.assertEqual(by_path["src/auth/session.py"]["read_priority"], "read_now")
+                self.assertEqual(by_path["src/auth/session.py"]["read_budget_rank"], 1)
                 self.assertIn("memory", by_path["src/auth/session.py"]["sources"])
                 self.assertIn("login", by_path["src/auth/session.py"]["tags"])
                 self.assertTrue(by_path["src/auth/session.py"]["memory"][0]["stale"])
                 self.assertTrue(data["recommended_actions"])
+
+                finish_output = StringIO()
+                with redirect_stdout(finish_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_reading_plan_finish",
+                                "--id",
+                                str(data["id"]),
+                                "--read",
+                                "src/auth/session.py",
+                                "--verified",
+                                "src/auth/session.py",
+                                "--useful",
+                                "src/auth/session.py",
+                                "--summary",
+                                "verified session path",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                finished = json.loads(finish_output.getvalue())
+                self.assertEqual(finished["tool"], "repo_reading_plan_finish")
+                self.assertTrue(finished["updated"])
+                self.assertEqual(len(finished["feedback"]), 1)
+                self.assertEqual(finished["feedback"][0]["rating"], "useful")
+                self.assertTrue(finished["suggested_memory"])
+
+                stats_output = StringIO()
+                with redirect_stdout(stats_output):
+                    self.assertEqual(main(["tool", "repo_reading_plan_stats", "--json"]), 0)
+                stats = json.loads(stats_output.getvalue())
+                self.assertEqual(stats["tool"], "repo_reading_plan_stats")
+                self.assertEqual(stats["stats"]["plan_count"], 1)
+                self.assertEqual(stats["stats"]["finished_plan_count"], 1)
+                self.assertEqual(stats["stats"]["top1_verified_useful_rate"], 1.0)
+
+                close_output = StringIO()
+                with redirect_stdout(close_output):
+                    self.assertEqual(main(["tool", "repo_session_close", "--json"]), 0)
+                close = json.loads(close_output.getvalue())
+                self.assertEqual(close["plan_activity"]["finished_plans"][0]["id"], data["id"])
+                self.assertTrue(close["suggested_memory"])
+
+                flow_output = StringIO()
+                with redirect_stdout(flow_output):
+                    self.assertEqual(main(["tool", "repo_flow_topics", "--tag", "login", "--json"]), 0)
+                flows = json.loads(flow_output.getvalue())
+                self.assertEqual(flows["tool"], "repo_flow_topics")
+                self.assertTrue(flows["flows"]["flows"])
             finally:
                 os.chdir(previous)
 
@@ -1326,6 +1390,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 {
                     "repo_graph_search",
                     "repo_reading_plan",
+                    "repo_reading_plan_finish",
+                    "repo_reading_plan_stats",
                     "repo_trace",
                     "repo_entrypoints",
                     "repo_feedback_add",
@@ -1340,6 +1406,7 @@ class InitAgentBaseTests(unittest.TestCase):
                     "repo_session_close",
                     "repo_session_summary",
                     "repo_memory_topics",
+                    "repo_flow_topics",
                     "repo_memory_update",
                     "repo_related_file",
                     "repo_symbol_callers",
@@ -1538,6 +1605,93 @@ class InitAgentBaseTests(unittest.TestCase):
             explained_data = explained["result"]["structuredContent"]
             self.assertEqual(explained_data["tool"], "repo_feedback_explain")
             self.assertEqual(explained_data["feedback"]["query"], "login session")
+
+    def test_mcp_tool_call_repo_reading_plan_finish_stats_and_flow_topics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            memory_added = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 131,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_memory_add",
+                        "arguments": {
+                            "path": "src/auth/session.py",
+                            "topic": "login session",
+                            "query": "debug login session",
+                            "note": "Session validation lives here.",
+                            "evidence": "read_excerpt",
+                            "tags": ["login_session"],
+                        },
+                    },
+                }
+            )
+            plan = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 132,
+                    "method": "tools/call",
+                    "params": {"name": "repo_reading_plan", "arguments": {"query": "debug login session", "read_budget": 1}},
+                }
+            )
+            self.assertIsNotNone(memory_added)
+            self.assertIsNotNone(plan)
+            plan_data = plan["result"]["structuredContent"]
+            self.assertEqual(plan_data["tool"], "repo_reading_plan")
+            self.assertEqual(plan_data["read_budget"], 1)
+            self.assertIsInstance(plan_data["id"], int)
+            by_path = {item["path"]: item for item in plan_data["plan_items"]}
+            self.assertEqual(by_path["src/auth/session.py"]["read_priority"], "read_now")
+
+            finished = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 133,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_reading_plan_finish",
+                        "arguments": {
+                            "id": plan_data["id"],
+                            "read": ["src/auth/session.py"],
+                            "verified": ["src/auth/session.py"],
+                            "useful": ["src/auth/session.py"],
+                            "summary": "verified session path",
+                        },
+                    },
+                }
+            )
+            stats = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 134,
+                    "method": "tools/call",
+                    "params": {"name": "repo_reading_plan_stats", "arguments": {}},
+                }
+            )
+            flows = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 135,
+                    "method": "tools/call",
+                    "params": {"name": "repo_flow_topics", "arguments": {"tag": "login"}},
+                }
+            )
+            self.assertIsNotNone(finished)
+            self.assertIsNotNone(stats)
+            self.assertIsNotNone(flows)
+            finished_data = finished["result"]["structuredContent"]
+            self.assertEqual(finished_data["tool"], "repo_reading_plan_finish")
+            self.assertTrue(finished_data["updated"])
+            self.assertEqual(finished_data["feedback"][0]["rating"], "useful")
+            stats_data = stats["result"]["structuredContent"]
+            self.assertEqual(stats_data["tool"], "repo_reading_plan_stats")
+            self.assertEqual(stats_data["stats"]["finished_plan_count"], 1)
+            flows_data = flows["result"]["structuredContent"]
+            self.assertEqual(flows_data["tool"], "repo_flow_topics")
+            self.assertTrue(flows_data["flows"]["flows"])
 
     def test_mcp_tool_call_repo_memory_add_search_and_file_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

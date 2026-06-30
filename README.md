@@ -207,10 +207,13 @@ context.
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths from entry points through local graph relations. |
-| `init-agent plan "<task>"` | Build a memory-, feedback-, tag- and stale-aware reading plan. |
+| `init-agent plan "<task>" --read 3` | Build a memory-, feedback-, tag- and stale-aware reading plan with a bounded first-read budget. |
+| `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Agent-facing JSON investigation-path trace contract. |
 | `init-agent tool repo_reading_plan --query "<task>" --json` | Agent-facing JSON reading plan that combines graph, trace, memory, feedback and tags. |
+| `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record what the agent read, verified, found useful/noisy or found missing. |
+| `init-agent tool repo_flow_topics --json` | Summarize memory/tag/flow aggregates for recurring areas. |
 | `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
@@ -271,9 +274,11 @@ Agents can also store short local file notes after understanding code:
 init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
-init-agent tool repo_reading_plan --query "debug login session redirect" --json
+init-agent tool repo_reading_plan --query "debug login session redirect" --read 3 --json
+init-agent tool repo_reading_plan_finish --id 1 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
 init-agent tool repo_memory_audit --json
 init-agent tool repo_memory_topics --topic "login session" --json
+init-agent tool repo_flow_topics --tag login --json
 init-agent tool repo_memory_list --stale --json
 init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 ```
@@ -290,6 +295,13 @@ applicable. They can be recorded before the first `init-agent map` when a
 project starts from an empty directory; keep them small and factual.
 For practical decision-log and area-map patterns, see
 [docs/memory-workflows.md](docs/memory-workflows.md).
+
+Reading plans are durable local metadata. `--read N` limits the number of files
+the agent should open immediately; other candidates stay as `read_if_needed` or
+context-only hints. After verification, `repo_reading_plan_finish` can record
+which files were read, useful, noisy or missing. `session close` then surfaces
+unfinished plans and suggests feedback or memory when verified files look worth
+remembering.
 
 For longer work, agents can also track a local task/session item:
 

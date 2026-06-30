@@ -148,6 +148,44 @@ CREATE TABLE IF NOT EXISTS agent_task_notes (
     created_at TEXT NOT NULL,
     FOREIGN KEY(task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS reading_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query TEXT NOT NULL,
+    query_tokens_json TEXT NOT NULL,
+    read_budget INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    summary TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reading_plan_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    score REAL NOT NULL,
+    action TEXT,
+    read_priority TEXT,
+    read_budget_rank INTEGER,
+    confidence TEXT,
+    sources_json TEXT NOT NULL,
+    tags_json TEXT NOT NULL,
+    reason TEXT,
+    FOREIGN KEY(plan_id) REFERENCES reading_plans(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reading_plan_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    path TEXT NOT NULL,
+    note TEXT,
+    feedback_id INTEGER,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(plan_id) REFERENCES reading_plans(id) ON DELETE CASCADE
+);
 """
 
 
