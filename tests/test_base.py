@@ -475,6 +475,66 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_tool_repo_trace_follows_php_entrypoint_includes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_trace_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main([
+                            "tool",
+                            "repo_trace",
+                            "--query",
+                            "bug frontend h1 titolo auto generato visualizzazione",
+                            "--json",
+                        ]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_trace")
+                self.assertEqual(data["contract"], "init-agent.tool.v1")
+                self.assertEqual(data["profile"], "entrypoint_render")
+                self.assertEqual(data["paths"][0]["target"], "include/page.php")
+                self.assertEqual(data["paths"][0]["path"], ["index.php", "include/page.php"])
+                self.assertIn("include/page.php", data["suggested_first_reads"])
+                commands = [item["command"] for item in data["followup_commands"]]
+                self.assertTrue(any("include/page.php" in command for command in commands))
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_trace_follows_route_handler_to_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_route_template_trace_fixture(Path(tmp))
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main([
+                            "tool",
+                            "repo_trace",
+                            "--query",
+                            "request detail route handler render template",
+                            "--json",
+                        ]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                paths = [item["path"] for item in data["paths"]]
+                self.assertIn(
+                    ["project/urls.py", "blog/views.py", "blog/templates/blog/detail.html"],
+                    paths,
+                )
+                targets = [item["target"] for item in data["paths"]]
+                self.assertIn("blog/views.py", targets)
+                self.assertIn("blog/templates/blog/detail.html", targets)
+            finally:
+                os.chdir(previous)
+
     def test_tool_repo_related_file_json_output_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_php_call_fixture(Path(tmp))
@@ -1177,6 +1237,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 tool_names,
                 {
                     "repo_graph_search",
+                    "repo_trace",
                     "repo_entrypoints",
                     "repo_feedback_add",
                     "repo_feedback_explain",
@@ -1304,6 +1365,30 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertEqual(result["structuredContent"]["tool"], "repo_graph_search")
             self.assertIn("src/auth/session.py", result["structuredContent"]["suggested_first_reads"])
             self.assertEqual(result["content"][0]["type"], "text")
+
+    def test_mcp_tool_call_repo_trace_returns_structured_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_php_trace_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 91,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_trace",
+                        "arguments": {"query": "bug frontend h1 titolo auto generato visualizzazione"},
+                    },
+                }
+            )
+            self.assertIsNotNone(response)
+            result = response["result"]
+            self.assertFalse(result["isError"])
+            data = result["structuredContent"]
+            self.assertEqual(data["tool"], "repo_trace")
+            self.assertEqual(data["paths"][0]["target"], "include/page.php")
+            self.assertIn("include/page.php", data["suggested_first_reads"])
 
     def test_mcp_tool_call_repo_entrypoints_returns_structured_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1863,6 +1948,20 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("os", [item.target for item in fallback_relations])
         self.assertIn(("broken", "function"), [(item.name, item.kind) for item in fallback_symbols])
 
+    def test_python_relative_import_and_template_render_relations(self) -> None:
+        content = (
+            "from .models import Post\n"
+            "from ..services.mail import send\n"
+            "def detail(request):\n"
+            "    return render(request, 'blog/detail.html', {'post': Post()})\n"
+        )
+        _, relations = extract_symbols_and_relations(content, "python", "blog/views.py")
+        imports = [item.target for item in relations if item.relation == "imports"]
+        templates = [item.target for item in relations if item.relation == "renders_template"]
+        self.assertIn("blog.models", imports)
+        self.assertIn("services.mail", imports)
+        self.assertIn("blog/detail.html", templates)
+
     def test_go_symbol_extraction(self) -> None:
         content = 'package main\nimport (\n  "net/http"\n)\ntype Engine struct {}\nfunc (e *Engine) ServeHTTP() {}\nfunc New() {}\n'
         symbols, relations = extract_symbols_and_relations(content, "go")
@@ -1958,6 +2057,20 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("showUser", handlers)
         self.assertIn("createSession", handlers)
 
+    def test_js_ts_import_and_call_extraction(self) -> None:
+        content = (
+            "import { listTasks } from '../api/tasks';\n"
+            "export function TaskList() {\n"
+            "  listTasks();\n"
+            "  return <h1>Tasks</h1>;\n"
+            "}\n"
+        )
+        _, relations = extract_symbols_and_relations(content, "typescript")
+        imports = [item.target for item in relations if item.relation == "imports"]
+        calls = [item.target for item in relations if item.relation == "calls"]
+        self.assertIn("../api/tasks", imports)
+        self.assertIn("listTasks", calls)
+
     def test_python_flask_and_django_route_extraction(self) -> None:
         content = (
             "@app.route('/login')\n"
@@ -2011,6 +2124,19 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertNotIn("mysqli_num_rows", calls)
         self.assertNotIn("json_decode", calls)
         self.assertNotIn("file_get_contents", calls)
+
+    def test_php_sql_table_usage_extraction(self) -> None:
+        content = (
+            "<?php\n"
+            "$rows = mysqli_query($db, \"SELECT title FROM pages WHERE id = 1\");\n"
+            "$update = mysqli_query($db, 'UPDATE users SET active = 1');\n"
+            "$insert = mysqli_query($db, 'INSERT INTO audit_log (event) VALUES (1)');\n"
+        )
+        _, relations = extract_symbols_and_relations(content, "php")
+        tables = [item.target for item in relations if item.relation == "uses_table"]
+        self.assertIn("pages", tables)
+        self.assertIn("users", tables)
+        self.assertIn("audit_log", tables)
 
     def test_cli_init_and_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4102,6 +4228,80 @@ def _create_php_call_fixture(root: Path) -> Path:
         "function renderPage($html) { return $html; }\n",
         encoding="utf-8",
     )
+    return root
+
+
+def _create_php_trace_fixture(root: Path) -> Path:
+    (root / "composer.json").write_text('{"name": "sample/trace"}\n', encoding="utf-8")
+    include = root / "include"
+    assets = root / "assets"
+    include.mkdir()
+    assets.mkdir()
+    (root / "index.php").write_text(
+        "<?php\n"
+        "require_once 'include/bootstrap.php';\n"
+        "include 'include/header.php';\n"
+        "include 'include/page.php';\n"
+        "include 'include/footer.php';\n",
+        encoding="utf-8",
+    )
+    (include / "bootstrap.php").write_text(
+        "<?php\n"
+        "require_once 'helpers.php';\n"
+        "$page = loadCurrentPage();\n",
+        encoding="utf-8",
+    )
+    (include / "helpers.php").write_text(
+        "<?php\n"
+        "function loadCurrentPage() { return ['title' => 'Auto generated title', 'body' => 'Demo']; }\n"
+        "function escapeText($value) { return htmlspecialchars($value, ENT_QUOTES, 'UTF-8'); }\n",
+        encoding="utf-8",
+    )
+    (include / "header.php").write_text(
+        "<?php ?><html><head><title><?= escapeText($page['title']) ?></title></head><body>\n",
+        encoding="utf-8",
+    )
+    (include / "page.php").write_text(
+        "<?php\n"
+        "function renderPageTitle($page) { echo '<h1 class=\"page-title\">' . escapeText($page['title']) . '</h1>'; }\n"
+        "renderPageTitle($page);\n"
+        "echo '<main>' . escapeText($page['body']) . '</main>';\n",
+        encoding="utf-8",
+    )
+    (include / "footer.php").write_text("<?php ?></body></html>\n", encoding="utf-8")
+    (include / "admin_title_tools.php").write_text(
+        "<?php\nfunction rebuildAllTitles() { echo 'title maintenance'; }\n",
+        encoding="utf-8",
+    )
+    (assets / "title-preview.js").write_text(
+        "export function previewTitle(value) { return `<h1>${value}</h1>`; }\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def _create_route_template_trace_fixture(root: Path) -> Path:
+    (root / "project").mkdir(parents=True)
+    (root / "blog" / "templates" / "blog").mkdir(parents=True)
+    (root / "project" / "urls.py").write_text(
+        "from django.urls import path\n"
+        "from blog import views\n\n"
+        "urlpatterns = [\n"
+        "    path('posts/<int:pk>/', views.detail, name='detail'),\n"
+        "]\n",
+        encoding="utf-8",
+    )
+    (root / "blog" / "views.py").write_text(
+        "from django.shortcuts import render\n"
+        "from .models import Post\n\n"
+        "def detail(request, pk):\n"
+        "    post = Post.objects.get(pk=pk)\n"
+        "    return render(request, 'blog/detail.html', {'post': post})\n",
+        encoding="utf-8",
+    )
+    (root / "blog" / "models.py").write_text("class Post:\n    pass\n", encoding="utf-8")
+    (root / "blog" / "templates" / "blog" / "detail.html").write_text("<h1>{{ post.title }}</h1>\n", encoding="utf-8")
+    _prepare_index(root)
     return root
 
 

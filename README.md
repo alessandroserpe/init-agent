@@ -206,7 +206,9 @@ context.
 |---|---|
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
+| `init-agent trace "<task>"` | Trace likely investigation paths from entry points through local graph relations. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
+| `init-agent tool repo_trace --query "<task>" --json` | Agent-facing JSON investigation-path trace contract. |
 | `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |

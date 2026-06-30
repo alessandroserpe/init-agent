@@ -146,6 +146,17 @@ JS_FASTIFY_ROUTE_RE = re.compile(r"""\b(?:fastify|server)\.route\s*\(\s*\{""")
 JS_OBJECT_METHOD_RE = re.compile(r"""\bmethod\s*:\s*['"](?P<method>[A-Z]+)['"]""")
 JS_OBJECT_URL_RE = re.compile(r"""\b(?:url|path)\s*:\s*['"](?P<path>/[^'"]*)['"]""")
 JS_OBJECT_HANDLER_RE = re.compile(r"""\bhandler\s*:\s*(?P<handler>[A-Za-z_$][A-Za-z0-9_$]*)""")
+JS_CALL_RE = re.compile(r"(?<!function\s)\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\(")
+JS_CALL_EXCLUDES = {
+    "describe",
+    "expect",
+    "fetch",
+    "if",
+    "it",
+    "render",
+    "return",
+    "test",
+}
 
 GO_FUNCTION_RE = re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 GO_TYPE_RE = re.compile(r"^\s*type\s+([A-Za-z_][A-Za-z0-9_]*)\s+(struct|interface)\b")
@@ -244,7 +255,7 @@ def extract_symbols_and_relations(
     if language == "yaml":
         return _extract_yaml_config(content)
     if language == "python":
-        return _extract_python(content)
+        return _extract_python(content, path)
     if language == "php":
         return _extract_php(content)
     if language in {"javascript", "typescript"}:
@@ -254,6 +265,12 @@ def extract_symbols_and_relations(
     if language == "rust":
         return _extract_rust(content)
     return [], []
+
+
+SQL_TABLE_RE = re.compile(
+    r"\b(?:from|join|into|update)\s+[`\"']?([A-Za-z_][A-Za-z0-9_\.]*)[`\"']?",
+    re.IGNORECASE,
+)
 
 
 def _extract_markdown(content: str, file_name: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
@@ -370,14 +387,14 @@ def _clean_heading(text: str) -> str:
     return text
 
 
-def _extract_python(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+def _extract_python(content: str, path: str | None = None) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     try:
-        return _extract_python_ast(content)
+        return _extract_python_ast(content, path)
     except SyntaxError:
-        return _extract_python_regex(content)
+        return _extract_python_regex(content, path)
 
 
-def _extract_python_ast(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     tree = ast.parse(content)
     lines = content.splitlines()
     symbols: list[ExtractedSymbol] = []
@@ -427,7 +444,8 @@ def _extract_python_ast(content: str) -> tuple[list[ExtractedSymbol], list[Extra
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
             if node.module:
-                relations.append(ExtractedRelation("imports", "module", node.module, node.lineno, 0.75))
+                module = _python_import_module(path, node.module, node.level)
+                relations.append(ExtractedRelation("imports", "module", module, node.lineno, 0.75))
             self.generic_visit(node)
 
         def visit_Call(self, node: ast.Call) -> None:
@@ -439,13 +457,15 @@ def _extract_python_ast(content: str) -> tuple[list[ExtractedSymbol], list[Extra
             if call_name := _python_call_name(node.func):
                 if call_name not in PY_CALL_EXCLUDES:
                     relations.append(ExtractedRelation("calls", "symbol_name", call_name, node.lineno, 0.45))
+            if template := _python_render_template(node):
+                relations.append(ExtractedRelation("renders_template", "template", template, node.lineno, 0.7))
             self.generic_visit(node)
 
     Visitor().visit(tree)
     return symbols, relations
 
 
-def _extract_python_regex(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+def _extract_python_regex(content: str, path: str | None = None) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     class_indent: int | None = None
@@ -474,7 +494,7 @@ def _extract_python_regex(content: str) -> tuple[list[ExtractedSymbol], list[Ext
             for module in _split_imports(match.group(1)):
                 relations.append(ExtractedRelation("imports", "module", module, line_no, 0.65))
         if match := PY_FROM_RE.match(line):
-            relations.append(ExtractedRelation("imports", "module", match.group(1), line_no, 0.75))
+            relations.append(ExtractedRelation("imports", "module", _python_import_module_from_string(path, match.group(1)), line_no, 0.75))
         if match := DJANGO_PATH_RE.match(line):
             route = _normalize_route_path("/" + match.group("path").strip("/"))
             symbols.append(ExtractedSymbol(route, "route", line_no, stripped))
@@ -542,6 +562,35 @@ def _python_call_handler_name(node: ast.expr) -> str:
     return ""
 
 
+def _python_import_module(path: str | None, module: str, level: int) -> str:
+    if level <= 0:
+        return module
+    current = Path(path or "")
+    parts = list(current.with_suffix("").parts[:-1])
+    if level > 1:
+        parts = parts[: -(level - 1)] if level - 1 <= len(parts) else []
+    if module:
+        parts.extend(module.split("."))
+    return ".".join(part for part in parts if part)
+
+
+def _python_import_module_from_string(path: str | None, module: str) -> str:
+    if not module.startswith("."):
+        return module
+    level = len(module) - len(module.lstrip("."))
+    return _python_import_module(path, module.lstrip("."), level)
+
+
+def _python_render_template(node: ast.Call) -> str:
+    call_name = _python_dotted_name(node.func)
+    if call_name.split(".")[-1] not in {"render", "TemplateResponse"}:
+        return ""
+    for arg in node.args[1:3]:
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+    return ""
+
+
 def _python_dotted_name(node: ast.expr) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -598,6 +647,8 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
                 relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler, line_no, 0.65))
         for call_name in _php_calls_in_line(line):
             relations.append(ExtractedRelation("calls", "symbol_name", call_name, line_no, 0.45))
+        for table in _sql_tables_in_text(line):
+            relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
         if in_class:
             class_brace_balance += line.count("{") - line.count("}")
             if class_brace_balance <= 0 and "}" in line:
@@ -639,6 +690,9 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
             walk(child)
 
     walk(tree.root_node)
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        for table in _sql_tables_in_text(line):
+            relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
     return symbols, relations
 
 
@@ -805,7 +859,30 @@ def _extract_js_ts(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedR
         for pattern in (JS_IMPORT_RE, JS_SIDE_EFFECT_IMPORT_RE, JS_REQUIRE_RE):
             if match := pattern.search(line):
                 relations.append(ExtractedRelation("imports", "module", match.group(1), line_no, 0.75))
+        for call_name in _js_calls_in_line(line):
+            relations.append(ExtractedRelation("calls", "symbol_name", call_name, line_no, 0.45))
     return symbols, relations
+
+
+def _js_calls_in_line(line: str) -> list[str]:
+    cleaned = re.sub(r"""(["'`]).*?\1""", '""', line)
+    calls: list[str] = []
+    for match in JS_CALL_RE.finditer(cleaned):
+        name = match.group(1)
+        if name in JS_CALL_EXCLUDES or name[0].isupper():
+            continue
+        if name not in calls:
+            calls.append(name)
+    return calls
+
+
+def _sql_tables_in_text(text: str) -> list[str]:
+    tables: list[str] = []
+    for match in SQL_TABLE_RE.finditer(text):
+        table = match.group(1).strip(".")
+        if table and table not in tables:
+            tables.append(table)
+    return tables
 
 
 def _extract_go(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:

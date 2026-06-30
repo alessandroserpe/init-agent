@@ -84,6 +84,14 @@ If the context pack identifies a likely file and you need its local neighborhood
 init-agent related path/to/file
 ```
 
+If the task is about a runtime path, rendering bug, legacy entrypoint flow,
+route composition or "where does this page come from?", use trace before broad
+reading:
+
+```bash
+init-agent trace "<user task>"
+```
+
 If the task is large or the user asks about context savings:
 
 ```bash

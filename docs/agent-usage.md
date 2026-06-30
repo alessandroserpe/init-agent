@@ -66,6 +66,19 @@ before broad filesystem exploration: check `doctor`, rebuild stale indexes with
 `map`, retry with a narrower query, inspect related files/symbols and record
 noisy or missing feedback after verification.
 
+Use `trace` when the task is about a runtime path rather than a single symbol
+match: frontend/rendering bugs, legacy PHP pages, route-to-view flows, CLI
+startup or “where does this page come from?” questions.
+
+```bash
+init-agent trace "bug frontend h1 title"
+init-agent tool repo_trace --query "bug frontend h1 title" --json
+```
+
+`trace` returns investigation paths such as
+`index.php -> include/page.php`. It is a follow-up orientation view: verify the
+suggested files directly before changing code.
+
 For failing-test or symptom-heavy debugging, the first context pack can point at
 high-level files that describe the symptom rather than the lower-level cause.
 When `next_agent_actions` suggests `related <test-file>`, agents should do that
@@ -113,8 +126,8 @@ Or point it at a root explicitly:
 init-agent-mcp --root /path/to/repository
 ```
 
-The MCP server exposes the same tools: `repo_graph_search`, `repo_overview`,
-`repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
+The MCP server exposes the same tools: `repo_graph_search`, `repo_trace`,
+`repo_overview`, `repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
 `repo_feedback_add`, `repo_feedback_explain`, `repo_memory_add`,
 `repo_memory_audit`, `repo_memory_list`, `repo_memory_search`,
 `repo_session_summary`, `repo_session_close`, `repo_memory_topics`,

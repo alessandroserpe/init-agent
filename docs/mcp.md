@@ -6,6 +6,7 @@ Model Context Protocol tools.
 The MCP server exposes the same local repo tool contracts as the CLI:
 
 - `repo_graph_search`
+- `repo_trace`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -103,6 +104,7 @@ Expected result: framed JSON-RPC responses. The `tools/list` response should
 include:
 
 - `repo_graph_search`
+- `repo_trace`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`

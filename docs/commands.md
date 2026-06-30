@@ -19,7 +19,9 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent overview` | Print a broad repository orientation pack. |
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
+| `init-agent trace "<task>"` | Trace likely investigation paths through the local graph. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
+| `init-agent tool repo_trace --query "<task>" --json` | Return an agent-facing investigation-path trace contract. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
@@ -169,6 +171,26 @@ init-agent run "login sessione admin" --markdown
 
 Use `init-agent run --overview --markdown` for broad repository orientation.
 
+## `init-agent trace <text>`
+
+Traces likely investigation paths through the local graph. Unlike `run`, which
+returns a ranked file list, `trace` tries to answer “how could execution or
+composition reach the relevant file?”
+
+The first MVP is intentionally conservative. It favors structural file
+relations such as PHP `include`/`require` and resolved imports, then scores
+reachable files by distance, role, query terms and render/markup hints. It is
+most useful for legacy entrypoint flows and rendering bugs:
+
+```bash
+init-agent trace "bug frontend h1 title"
+init-agent trace "bug frontend h1 title" --json
+```
+
+Use it as a follow-up when `run` is empty/noisy or when the task is about a
+runtime path, page composition, route, CLI flow or entrypoint. It does not
+replace reading files before editing.
+
 ## `init-agent tool repo_graph_search`
 
 Returns a compact JSON contract designed for agent/tool integrations. It uses
@@ -194,6 +216,26 @@ The response includes:
 
 The same contract is exposed through the MCP server, so agents can consume it
 without parsing terminal Markdown.
+
+## `init-agent tool repo_trace`
+
+Returns the same investigation-path trace as a stable JSON contract:
+
+```bash
+init-agent tool repo_trace --query "bug frontend h1 title" --json
+```
+
+The response includes:
+
+- `tool`
+- `contract`
+- `query`
+- `profile`
+- `starts`
+- `paths`
+- `suggested_first_reads`
+- `followup_commands`
+- `warnings`
 
 ## `init-agent tool repo_overview`
 
@@ -442,6 +484,7 @@ init-agent mcp uninstall-codex
 The server exposes:
 
 - `repo_graph_search`
+- `repo_trace`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`

@@ -23,6 +23,17 @@ python3 experiments/evaluate.py --strict --output-dir experiments/results
 python3 experiments/plot_results.py experiments/results/results.csv
 ```
 
+For lower-level graph diagnostics, run:
+
+```bash
+python3 experiments/flow-graph/evaluate.py
+```
+
+That experiment builds small framework-shaped fixture repositories and checks
+whether the SQLite graph contains expected runtime-flow edges such as
+include/import/call/route links. It is useful when deciding whether a ranking
+problem is actually caused by missing graph semantics.
+
 By default it expects local benchmark repositories under `/tmp`, for example:
 
 - `/tmp/init-agent-bench-django`

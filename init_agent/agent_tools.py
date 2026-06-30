@@ -15,6 +15,7 @@ from .overview import build_overview_pack
 from .query import callers_for_symbol, related
 from .run import run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
+from .trace import trace_query
 from .utils import db_path, ensure_agent_dir
 
 
@@ -190,6 +191,41 @@ def repo_entrypoints(root: Path, prepare: bool = True, limit: int = 12) -> dict[
         "manifests": manifests,
         "followup_commands": _entrypoint_followup_commands(entry_points, supporting_files),
         "warnings": warnings,
+    }
+
+
+def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prepare: bool = True) -> dict[str, Any]:
+    """Return likely investigation paths through the local graph."""
+
+    bounded_limit = max(1, min(limit, 30))
+    bounded_depth = max(1, min(max_depth, 6))
+    if prepare:
+        run_result = run_query(root, f"trace {query}", overview=False)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+    trace = trace_query(root, query, limit=bounded_limit, max_depth=bounded_depth) if prepare or readiness["ready"] else {
+        "query": query,
+        "profile": "entrypoint_trace",
+        "starts": [],
+        "paths": [],
+        "suggested_first_reads": [],
+        "warnings": [],
+    }
+    return {
+        "tool": "repo_trace",
+        "contract": TOOL_CONTRACT_VERSION,
+        "query": query,
+        "preparation": preparation,
+        "profile": trace.get("profile", "entrypoint_trace"),
+        "starts": trace.get("starts", []),
+        "paths": trace.get("paths", []),
+        "suggested_first_reads": trace.get("suggested_first_reads", []),
+        "followup_commands": _trace_followup_commands(trace.get("paths", [])),
+        "warnings": [*warnings, *trace.get("warnings", [])],
     }
 
 
@@ -989,6 +1025,43 @@ def render_repo_graph_search_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_trace_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_trace",
+        "",
+        f"Query: {result['query']}",
+        f"Profile: {result.get('profile') or '-'}",
+        "",
+        "Starts:",
+    ]
+    if not result.get("starts"):
+        lines.append("-")
+    for item in result.get("starts", [])[:8]:
+        lines.append(f"- {item.get('path', '-')} ({item.get('language') or '-'} / {item.get('role') or '-'})")
+    lines.extend(["", "Investigation paths:"])
+    if not result.get("paths"):
+        lines.append("-")
+    for index, item in enumerate(result.get("paths", [])[:10], start=1):
+        lines.append(f"{index}. {item['target']} score {item['score']:.2f}")
+        path = " -> ".join(item.get("path", []))
+        if path:
+            lines.append(f"   path: {path}")
+        edges = " -> ".join(item.get("edges", []))
+        if edges:
+            lines.append(f"   edges: {edges}")
+        for reason in item.get("reasons", [])[:4]:
+            lines.append(f"   - {reason}")
+    lines.extend(["", "Suggested first reads:"])
+    if not result.get("suggested_first_reads"):
+        lines.append("-")
+    for path in result.get("suggested_first_reads", [])[:5]:
+        lines.append(f"- {path}")
+    lines.extend(["", "Follow-up commands:"])
+    _append_commands(lines, result.get("followup_commands", []))
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
 def render_repo_related_file_text(result: dict[str, Any]) -> str:
     lines = [
         "Init Agent Tool: repo_related_file",
@@ -1587,6 +1660,26 @@ def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbol
                     "reason": "record local feedback only after verifying the file",
                 }
             )
+    return commands
+
+
+def _trace_followup_commands(paths: list[dict[str, Any]]) -> list[dict[str, str]]:
+    commands: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in paths:
+        path = str(item.get("target") or "")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        commands.append(
+            {
+                "tool": "repo_related_file",
+                "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                "reason": "inspect the traced target file neighborhood before editing",
+            }
+        )
+        if len(commands) >= 5:
+            break
     return commands
 
 

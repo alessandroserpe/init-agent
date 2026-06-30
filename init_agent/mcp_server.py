@@ -35,6 +35,7 @@ from .agent_tools import (
     repo_task_list,
     repo_task_note,
     repo_task_update,
+    repo_trace,
 )
 
 
@@ -106,6 +107,7 @@ class InitAgentMcpServer:
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         handlers: dict[str, ToolHandler] = {
             "repo_graph_search": _handle_repo_graph_search,
+            "repo_trace": _handle_repo_trace,
             "repo_entrypoints": _handle_repo_entrypoints,
             "repo_feedback_add": _handle_repo_feedback_add,
             "repo_feedback_explain": _handle_repo_feedback_explain,
@@ -156,6 +158,15 @@ def _handle_repo_graph_search(root: Path, arguments: dict[str, Any]) -> dict[str
         raise ValueError("repo_graph_search requires query")
     limit = int(arguments.get("limit") or 10)
     return repo_graph_search(root, query, limit=limit, prepare=False)
+
+
+def _handle_repo_trace(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        raise ValueError("repo_trace requires query")
+    limit = int(arguments.get("limit") or 10)
+    max_depth = int(arguments.get("max_depth") or 4)
+    return repo_trace(root, query, limit=limit, max_depth=max_depth, prepare=False)
 
 
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -421,6 +432,20 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "properties": {
                     "query": {"type": "string", "description": "Free-text task or question."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_trace",
+            "description": "Trace likely investigation paths through entry points, includes, imports and local graph relations for a coding task.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Free-text task or question."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 6, "default": 4},
                 },
                 "required": ["query"],
                 "additionalProperties": False,

@@ -31,6 +31,7 @@ from .agent_tools import (
     render_repo_task_list_text,
     render_repo_task_note_text,
     render_repo_task_update_text,
+    render_repo_trace_text,
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
@@ -53,6 +54,7 @@ from .agent_tools import (
     repo_task_list,
     repo_task_note,
     repo_task_update,
+    repo_trace,
 )
 from .context_builder import build_context_pack
 from .doctor import run_doctor
@@ -114,6 +116,13 @@ def build_parser() -> argparse.ArgumentParser:
     estimate_parser.add_argument("text", nargs="+", help="Free-text request.")
     estimate_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     estimate_parser.set_defaults(handler=cmd_estimate)
+
+    trace_parser = subparsers.add_parser("trace", help="Trace likely investigation paths through the local graph.")
+    trace_parser.add_argument("text", nargs="+", help="Free-text task or question.")
+    trace_parser.add_argument("--limit", type=int, default=10, help="Maximum traced paths to return.")
+    trace_parser.add_argument("--max-depth", type=int, default=4, help="Maximum graph traversal depth.")
+    trace_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    trace_parser.set_defaults(handler=cmd_trace)
 
     overview_parser = subparsers.add_parser("overview", help="Show a broad repository orientation pack.")
     overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -254,6 +263,13 @@ def build_parser() -> argparse.ArgumentParser:
     repo_graph_search_parser.add_argument("--limit", type=int, default=10, help="Maximum candidate files to return.")
     repo_graph_search_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_graph_search_parser.set_defaults(handler=cmd_tool_repo_graph_search)
+
+    repo_trace_parser = tool_subparsers.add_parser("repo_trace", help="Trace likely investigation paths through the local graph.")
+    repo_trace_parser.add_argument("--query", required=True, help="Free-text task or question.")
+    repo_trace_parser.add_argument("--limit", type=int, default=10, help="Maximum traced paths to return.")
+    repo_trace_parser.add_argument("--max-depth", type=int, default=4, help="Maximum graph traversal depth.")
+    repo_trace_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_trace_parser.set_defaults(handler=cmd_tool_repo_trace)
 
     repo_related_file_parser = tool_subparsers.add_parser("repo_related_file", help="Inspect one indexed file neighborhood.")
     repo_related_file_parser.add_argument("--path", required=True, help="Project-relative file path.")
@@ -608,6 +624,16 @@ def cmd_estimate(args: argparse.Namespace) -> int:
     else:
         print(render_estimate_text(report))
     return 0
+
+
+def cmd_trace(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_trace(root, _text_arg(args.text), limit=args.limit, max_depth=args.max_depth)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_trace_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 
 def cmd_export(args: argparse.Namespace) -> int:
@@ -1202,6 +1228,16 @@ def cmd_tool_repo_graph_search(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_graph_search_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_tool_repo_trace(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_trace(root, args.query, limit=args.limit, max_depth=args.max_depth)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_trace_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 
