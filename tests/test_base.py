@@ -3722,6 +3722,45 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_feedback_missing_contributes_to_explain_and_ranking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            internal_dir = root / "src" / "internal"
+            internal_dir.mkdir(parents=True)
+            (internal_dir / "state.py").write_text("def mark_read():\n    return True\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                main(
+                    [
+                        "feedback",
+                        "add",
+                        "login session",
+                        "src/internal/state.py",
+                        "--rating",
+                        "missing",
+                        "--source",
+                        "agent",
+                    ]
+                )
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(["feedback", "explain", "login", "session", "--json"]), 0)
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["signals"][0]["path"], "src/internal/state.py")
+                self.assertEqual(data["signals"][0]["boost"], 8.0)
+                self.assertEqual(data["signals"][0]["items"][0]["rating"], "missing")
+                self.assertEqual(data["signals"][0]["items"][0]["contribution"], 8.0)
+
+                pack = build_context_pack(root, "login session")
+                state = next(item for item in pack["candidate_files"] if item["path"] == "src/internal/state.py")
+                self.assertIn("previously marked missing from similar query", state["reasons"])
+            finally:
+                os.chdir(previous)
+
     def test_feedback_explain_accepts_unquoted_query_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))

@@ -13,14 +13,14 @@ from .utils import utc_now
 
 RATINGS = {"crucial", "useful", "neutral", "noisy", "missing"}
 SOURCES = {"user", "agent", "benchmark"}
-POSITIVE_RATINGS = {"crucial", "useful"}
+POSITIVE_RATINGS = {"crucial", "useful", "missing"}
 NEGATIVE_RATINGS = {"noisy"}
 RATING_WEIGHTS = {
     "crucial": 24.0,
     "useful": 10.0,
     "neutral": 0.0,
     "noisy": -3.0,
-    "missing": 0.0,
+    "missing": 8.0,
 }
 SOURCE_WEIGHTS = {
     "agent": 1.0,

@@ -11,7 +11,8 @@ It does not call an LLM and does not store source code.
 - `useful`: relevant supporting file
 - `neutral`: recorded context without ranking effect
 - `noisy`: matched but was not useful for the task
-- `missing`: useful file that was absent from the context pack
+- `missing`: useful file that was absent from the context pack; gives a
+  moderate positive boost on similar future queries
 
 ## Commands
 
@@ -87,10 +88,16 @@ Feedback affects `context` and `run` only when query tokens are similar enough.
 The score contribution is capped, so old feedback cannot override strong direct
 path, filename, symbol or call matches.
 
+`missing` is intentionally positive, but weaker than `useful` and `crucial`.
+Use it when an agent verified that an important file was absent from the first
+context pack. Future similar queries can then surface that file earlier, with a
+reason that explains it was previously missing rather than merely useful.
+
 Context reasons stay explicit:
 
 ```text
 previously marked crucial for similar query
+previously marked missing from similar query
 previously marked noisy for similar query
 ```
 

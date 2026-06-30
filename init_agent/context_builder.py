@@ -381,6 +381,8 @@ def _score_files_by_feedback(
             ratings = {str(item) for item in signal.get("positive", set())}
             if "crucial" in ratings:
                 _prepend_reason(reasons[path], "previously marked crucial for similar query")
+            elif "missing" in ratings:
+                _prepend_reason(reasons[path], "previously marked missing from similar query")
             else:
                 _prepend_reason(reasons[path], "previously marked useful for similar query")
         if penalty < 0 and file_scores[path] > 0:

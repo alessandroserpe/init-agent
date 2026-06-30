@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "init-agent"
-version = "0.36.0"
+version = "0.36.1"
 description = "A local Project Orientation Layer for future AI CLI agents."
 readme = "README.md"
 requires-python = ">=3.11"
