@@ -8,6 +8,8 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_graph_search`
 - `repo_trace`
 - `repo_reading_plan`
+- `repo_reading_plan_read`
+- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
 - `repo_reading_plan_stats`
 - `repo_overview`
@@ -45,8 +47,10 @@ stale, vague or duplicate notes. Use `repo_memory_topics` and
 `repo_flow_topics` to get compact area-level memory and tag maps before
 opening files. Use `repo_memory_update` after re-reading a stale note to
 refresh it without creating duplicates. Reading-plan tools let agents create a
-bounded `read_now` list and later record which candidates were useful, noisy or
-missing. Use task tools to keep an operational thread for longer work: open
+bounded `read_now` list, record files actually opened, inspect the diff between
+planned and actual reads, and later record which candidates were useful, noisy
+or missing. This is explicit local metadata, not automatic editor telemetry.
+Use task tools to keep an operational thread for longer work: open
 task title, linked files, verification performed and remaining follow-up. Open
 tasks and unfinished reading plans are included in `repo_session_summary` and
 `repo_session_close`. Use
@@ -113,6 +117,8 @@ include:
 - `repo_graph_search`
 - `repo_trace`
 - `repo_reading_plan`
+- `repo_reading_plan_read`
+- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
 - `repo_reading_plan_stats`
 - `repo_overview`
@@ -297,8 +303,8 @@ Expected result:
 
 - `init_agent` is listed as enabled.
 - The repo tools are available, for example `repo_overview`,
-  `repo_graph_search`, `repo_reading_plan`, `repo_related_file`,
-  `repo_memory_search` and `repo_memory_audit`.
+  `repo_graph_search`, `repo_reading_plan`, `repo_reading_plan_diff`,
+  `repo_related_file`, `repo_memory_search` and `repo_memory_audit`.
 - Calling `repo_overview` reports the same repository root you started Codex
   from, unless you intentionally pinned `--root`.
 

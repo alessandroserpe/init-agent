@@ -109,15 +109,23 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("repo_session_close", commands)
         self.assertIn("repo_task_add", commands)
         self.assertIn("repo_reading_plan_finish", commands)
+        self.assertIn("repo_reading_plan_read", commands)
+        self.assertIn("repo_reading_plan_diff", commands)
         self.assertIn("repo_reading_plan_stats", commands)
         self.assertIn("repo_flow_topics", commands)
         self.assertIn("repo_task_note", readme)
         self.assertIn("repo_reading_plan_finish", readme)
+        self.assertIn("repo_reading_plan_read", readme)
+        self.assertIn("repo_reading_plan_diff", readme)
         self.assertIn("repo_task_close", mcp)
         self.assertIn("repo_reading_plan_finish", mcp)
+        self.assertIn("repo_reading_plan_read", mcp)
+        self.assertIn("repo_reading_plan_diff", mcp)
         self.assertIn("repo_flow_topics", mcp)
         self.assertIn("repo_task_list", skill)
         self.assertIn("repo_reading_plan_finish", skill)
+        self.assertIn("repo_reading_plan_read", skill)
+        self.assertIn("repo_reading_plan_diff", skill)
         self.assertIn("init-agent plan \"<user task>\" --read 3", skill)
         self.assertIn("Do not wait for the user to ask", skill)
         self.assertIn("Prefer updating an existing memory", skill)
@@ -897,6 +905,37 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertTrue(by_path["src/auth/session.py"]["memory"][0]["stale"])
                 self.assertTrue(data["recommended_actions"])
 
+                read_output = StringIO()
+                with redirect_stdout(read_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_reading_plan_read",
+                                "--id",
+                                str(data["id"]),
+                                "--path",
+                                "src/auth/session.py",
+                                "--note",
+                                "opened stale session file",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                read_data = json.loads(read_output.getvalue())
+                self.assertEqual(read_data["tool"], "repo_reading_plan_read")
+                self.assertTrue(read_data["updated"])
+                self.assertEqual(read_data["events"][0]["event"], "opened")
+
+                diff_output = StringIO()
+                with redirect_stdout(diff_output):
+                    self.assertEqual(main(["tool", "repo_reading_plan_diff", "--id", str(data["id"]), "--json"]), 0)
+                diff = json.loads(diff_output.getvalue())
+                self.assertEqual(diff["tool"], "repo_reading_plan_diff")
+                self.assertIn("src/auth/session.py", diff["diff"]["read_paths"])
+                self.assertIn("src/auth/session.py", diff["diff"]["read_without_outcome"])
+
                 finish_output = StringIO()
                 with redirect_stdout(finish_output):
                     self.assertEqual(
@@ -925,6 +964,12 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(len(finished["feedback"]), 1)
                 self.assertEqual(finished["feedback"][0]["rating"], "useful")
                 self.assertTrue(finished["suggested_memory"])
+
+                post_finish_diff_output = StringIO()
+                with redirect_stdout(post_finish_diff_output):
+                    self.assertEqual(main(["tool", "repo_reading_plan_diff", "--id", str(data["id"]), "--json"]), 0)
+                post_finish_diff = json.loads(post_finish_diff_output.getvalue())
+                self.assertNotIn("src/auth/session.py", post_finish_diff["diff"]["read_without_outcome"])
 
                 stats_output = StringIO()
                 with redirect_stdout(stats_output):
@@ -1390,6 +1435,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 {
                     "repo_graph_search",
                     "repo_reading_plan",
+                    "repo_reading_plan_read",
+                    "repo_reading_plan_diff",
                     "repo_reading_plan_finish",
                     "repo_reading_plan_stats",
                     "repo_trace",
@@ -1645,6 +1692,38 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIsInstance(plan_data["id"], int)
             by_path = {item["path"]: item for item in plan_data["plan_items"]}
             self.assertEqual(by_path["src/auth/session.py"]["read_priority"], "read_now")
+
+            read = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 136,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_reading_plan_read",
+                        "arguments": {
+                            "id": plan_data["id"],
+                            "paths": ["src/auth/session.py"],
+                            "note": "opened session file",
+                        },
+                    },
+                }
+            )
+            diff = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 137,
+                    "method": "tools/call",
+                    "params": {"name": "repo_reading_plan_diff", "arguments": {"id": plan_data["id"]}},
+                }
+            )
+            self.assertIsNotNone(read)
+            self.assertIsNotNone(diff)
+            read_data = read["result"]["structuredContent"]
+            self.assertEqual(read_data["tool"], "repo_reading_plan_read")
+            self.assertTrue(read_data["updated"])
+            diff_data = diff["result"]["structuredContent"]
+            self.assertEqual(diff_data["tool"], "repo_reading_plan_diff")
+            self.assertIn("src/auth/session.py", diff_data["diff"]["read_paths"])
 
             finished = server.handle(
                 {

@@ -141,6 +141,85 @@ def finish_reading_plan(
     }
 
 
+def record_reading_plan_read(
+    root: Path,
+    plan_id: int,
+    paths: list[str],
+    note: str = "",
+    source: str = "agent",
+) -> dict[str, Any]:
+    if plan_id <= 0:
+        raise ValueError("plan id must be positive")
+    normalized_paths = _paths(paths)
+    ensure_agent_dir(root)
+    with GraphStore(root) as store:
+        store.initialize()
+        plan_row = store.connection.execute("SELECT * FROM reading_plans WHERE id = ?", (plan_id,)).fetchone()
+        if plan_row is None:
+            return {"updated": False, "id": plan_id, "plan": None, "events": []}
+        now = utc_now()
+        events = []
+        for path in normalized_paths:
+            cursor = store.connection.execute(
+                """
+                INSERT INTO reading_plan_events(plan_id, event, path, note, feedback_id, created_at)
+                VALUES(?, ?, ?, ?, ?, ?)
+                """,
+                (plan_id, "opened", path, note.strip(), None, now),
+            )
+            events.append(
+                {
+                    "id": int(cursor.lastrowid),
+                    "plan_id": plan_id,
+                    "event": "opened",
+                    "path": path,
+                    "note": note.strip(),
+                    "feedback_id": None,
+                    "created_at": now,
+                }
+            )
+        store.connection.commit()
+    return {"updated": True, "id": plan_id, "plan": get_reading_plan(root, plan_id), "events": events}
+
+
+def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
+    plan = get_reading_plan(root, plan_id)
+    if plan is None:
+        return {"id": plan_id, "found": False, "plan": None, "diff": {}}
+    items = list(plan.get("items") or [])
+    events = list(plan.get("events") or [])
+    planned_paths = [str(item.get("path") or "") for item in items if item.get("path")]
+    read_now_paths = [str(item.get("path") or "") for item in items if item.get("read_priority") == "read_now"]
+    read_events = _event_paths(events, {"opened", "read"})
+    verified_paths = _event_paths(events, {"verified"})
+    useful_paths = _event_paths(events, {"useful"})
+    noisy_paths = _event_paths(events, {"noisy"})
+    missing_paths = _event_paths(events, {"missing"})
+    planned_set = set(planned_paths)
+    read_set = set(read_events)
+    useful_set = set(useful_paths)
+    noisy_set = set(noisy_paths)
+    missing_set = set(missing_paths)
+    return {
+        "id": plan_id,
+        "found": True,
+        "plan": plan,
+        "diff": {
+            "planned_paths": planned_paths,
+            "read_now_paths": read_now_paths,
+            "read_paths": read_events,
+            "verified_paths": verified_paths,
+            "useful_paths": useful_paths,
+            "noisy_paths": noisy_paths,
+            "missing_paths": missing_paths,
+            "suggested_not_read": [path for path in planned_paths if path not in read_set],
+            "read_not_planned": [path for path in read_events if path not in planned_set],
+            "read_now_not_read": [path for path in read_now_paths if path not in read_set],
+            "read_without_outcome": [path for path in read_events if path not in useful_set | noisy_set | missing_set],
+        },
+    }
+
+
 def get_reading_plan(root: Path, plan_id: int) -> dict[str, Any] | None:
     ensure_agent_dir(root)
     with GraphStore(root) as store:
@@ -209,7 +288,7 @@ def reading_plan_stats(root: Path) -> dict[str, Any]:
     read_counts: Counter[int] = Counter()
     for event in events:
         plan_id = int(event["plan_id"])
-        if str(event["event"]) == "read":
+        if str(event["event"]) in {"opened", "read"}:
             read_counts[plan_id] += 1
         rank = rank_by_plan_path.get((plan_id, str(event["path"])), 0)
         if str(event["event"]) == "useful" and rank:
@@ -301,6 +380,19 @@ def _feedback_reason(event: str, path: str) -> str:
     if event == "noisy":
         return f"verified reading-plan candidate was not useful: {path}"
     return f"verified reading-plan candidate was useful: {path}"
+
+
+def _event_paths(events: list[dict[str, Any]], event_names: set[str]) -> list[str]:
+    result = []
+    seen = set()
+    for event in events:
+        if event.get("event") not in event_names:
+            continue
+        path = str(event.get("path") or "")
+        if path and path not in seen:
+            seen.add(path)
+            result.append(path)
+    return result
 
 
 def _suggested_memory_commands(plan: dict[str, Any] | None) -> list[dict[str, str]]:

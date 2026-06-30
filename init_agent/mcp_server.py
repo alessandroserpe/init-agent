@@ -27,7 +27,9 @@ from .agent_tools import (
     repo_memory_update,
     repo_overview,
     repo_flow_topics,
+    repo_reading_plan_diff,
     repo_reading_plan_finish,
+    repo_reading_plan_read,
     repo_reading_plan_stats,
     repo_reading_plan,
     repo_related_file,
@@ -113,6 +115,8 @@ class InitAgentMcpServer:
             "repo_graph_search": _handle_repo_graph_search,
             "repo_trace": _handle_repo_trace,
             "repo_reading_plan": _handle_repo_reading_plan,
+            "repo_reading_plan_read": _handle_repo_reading_plan_read,
+            "repo_reading_plan_diff": _handle_repo_reading_plan_diff,
             "repo_reading_plan_finish": _handle_repo_reading_plan_finish,
             "repo_reading_plan_stats": _handle_repo_reading_plan_stats,
             "repo_entrypoints": _handle_repo_entrypoints,
@@ -184,6 +188,31 @@ def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str
     limit = int(arguments.get("limit") or 10)
     read_budget = int(arguments.get("read_budget") or arguments.get("read") or 3)
     return repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False)
+
+
+def _handle_repo_reading_plan_read(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    if plan_id <= 0:
+        raise ValueError("repo_reading_plan_read requires positive id")
+    paths = _string_list(arguments.get("paths"))
+    if not paths:
+        paths = _string_list(arguments.get("path"))
+    if not paths:
+        raise ValueError("repo_reading_plan_read requires paths")
+    return repo_reading_plan_read(
+        root,
+        plan_id,
+        paths=paths,
+        note=str(arguments.get("note") or ""),
+        source=str(arguments.get("source") or "agent"),
+    )
+
+
+def _handle_repo_reading_plan_diff(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    if plan_id <= 0:
+        raise ValueError("repo_reading_plan_diff requires positive id")
+    return repo_reading_plan_diff(root, plan_id)
 
 
 def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -421,6 +450,9 @@ def _handle_repo_task_close(root: Path, arguments: dict[str, Any]) -> dict[str, 
 
 
 def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
@@ -508,6 +540,33 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "read_budget": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_reading_plan_read",
+            "description": "Record files the agent actually opened while following a reading plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Files opened or inspected."},
+                    "note": {"type": "string", "description": "Optional short note for this read event."},
+                    "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                },
+                "required": ["id", "paths"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_reading_plan_diff",
+            "description": "Compare a saved reading plan with recorded read and outcome events.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                },
+                "required": ["id"],
                 "additionalProperties": False,
             },
         },

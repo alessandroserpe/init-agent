@@ -80,12 +80,17 @@ memory or a task note. Do not wait for the user to ask.
 If you used a saved reading plan, close the loop after verification:
 
 ```bash
+init-agent plan read --id <plan-id> --file path/to/read-file --note "opened while investigating"
+init-agent plan diff --id <plan-id>
 init-agent plan finish --id <plan-id> --read-file path/to/read-file --verified path/to/verified-file --useful path/to/useful-file --summary "short factual outcome"
 ```
 
-For MCP-capable agents, use `repo_reading_plan_finish`. Mark only verified
+For MCP-capable agents, use `repo_reading_plan_read` after opening planned or
+unplanned files, `repo_reading_plan_diff` before handoff when the plan is not
+obvious, and `repo_reading_plan_finish` after verification. Mark only verified
 outcomes. Use `--noisy` for irrelevant candidates and `--missing` for important
-files absent from the plan.
+files absent from the plan. The read ledger is explicit metadata, not automatic
+editor telemetry.
 
 ## Targeted Follow-Up
 

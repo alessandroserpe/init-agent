@@ -21,11 +21,15 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths through the local graph. |
 | `init-agent plan "<task>" --read 3` | Build a memory-, feedback-, tag- and stale-aware reading plan with a bounded first-read budget. |
+| `init-agent plan read --id <id> --file <path>` | Record a file opened while following a saved reading plan. |
+| `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
 | `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
 | `init-agent plan stats` | Summarize reading-plan usefulness/noise metrics. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Return an agent-facing investigation-path trace contract. |
 | `init-agent tool repo_reading_plan --query "<task>" --read 3 --json` | Return an agent-facing reading plan contract. |
+| `init-agent tool repo_reading_plan_read --id <id> --path <path> --json` | Record files opened while following a reading plan. |
+| `init-agent tool repo_reading_plan_diff --id <id> --json` | Return the gap between a plan and recorded activity. |
 | `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record reading-plan outcomes after verification. |
 | `init-agent tool repo_reading_plan_stats --json` | Return aggregate reading-plan outcome metrics. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
@@ -207,6 +211,8 @@ tags, local memory notes, feedback and stale state:
 init-agent plan "installare server mcp codex"
 init-agent plan "installare server mcp codex" --read 3
 init-agent plan "installare server mcp codex" --json
+init-agent plan read --id 7 --file init_agent/mcp_server.py --note "Opened MCP server implementation."
+init-agent plan diff --id 7
 init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path."
 init-agent plan stats
 ```
@@ -225,6 +231,17 @@ before editing.
 `context_only` or `skip_unless_needed`. This lets an agent start with a small
 explicit file budget instead of opening every candidate when the ranking is
 noisy.
+
+`plan read` records files the agent actually opened while following a saved
+plan. `plan diff` compares the saved plan with recorded activity:
+
+- `read_now_not_read`: high-priority suggestions not yet opened
+- `suggested_not_read`: any planned file that has not been opened
+- `read_not_planned`: files opened outside the plan
+- `read_without_outcome`: opened files that have not been marked useful, noisy
+  or missing yet
+
+This is explicit agent metadata, not automatic editor telemetry.
 
 `plan finish` records the agent's verified outcome for a saved plan. Use
 `--read-file` for files actually opened, `--verified` for files whose role was
@@ -285,6 +302,8 @@ Returns the reading plan as a stable JSON contract:
 
 ```bash
 init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3 --json
+init-agent tool repo_reading_plan_read --id 7 --path init_agent/mcp_server.py --note "Opened MCP server implementation." --json
+init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path." --json
 init-agent tool repo_reading_plan_stats --json
 ```
@@ -293,9 +312,12 @@ The response includes query tokens, plan items, memory matches, repo-wide
 memory context, recommended actions and warnings. Each plan item includes an
 action, confidence, signal sources, tags, compact memory notes and feedback
 signals. Saved plans include an `id` so agents can finish the loop after
-reading files. `repo_reading_plan_stats` reports aggregate plan counts, useful
-hits by rank, noisy hits by rank and missing counts; it is optional and meant
-for local self-audit, not for user-facing claims.
+reading files. `repo_reading_plan_read` records files opened during the session,
+and `repo_reading_plan_diff` highlights unread suggestions, unplanned reads and
+opened files that still need an outcome. `repo_reading_plan_stats` reports
+aggregate plan counts, useful hits by rank, noisy hits by rank and missing
+counts; it is optional and meant for local self-audit, not for user-facing
+claims.
 
 ## `init-agent tool repo_flow_topics`
 
@@ -564,6 +586,8 @@ The server exposes:
 - `repo_graph_search`
 - `repo_trace`
 - `repo_reading_plan`
+- `repo_reading_plan_read`
+- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
 - `repo_reading_plan_stats`
 - `repo_overview`

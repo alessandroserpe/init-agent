@@ -42,6 +42,8 @@ For structured agent integrations:
 ```bash
 init-agent tool repo_graph_search --query "debug login session redirect" --json
 init-agent tool repo_reading_plan --query "debug login session redirect" --read 3 --json
+init-agent tool repo_reading_plan_read --id 7 --path src/auth/session.py --note "Opened session file." --json
+init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
 init-agent tool repo_reading_plan_stats --json
 init-agent tool repo_overview --json
@@ -73,9 +75,13 @@ the file, not trust the note.
 
 Use `--read N` to keep the first pass bounded. Items marked `read_now` are the
 initial file budget; `read_if_needed` and `context_only` are follow-ups. After
-reading files, call `repo_reading_plan_finish` with the plan id and the actual
-outcome: files read, verified, useful, noisy or missing. This creates a small
-feedback loop without asking the agent to remember every opened file in chat.
+opening files, call `repo_reading_plan_read` so the plan has an explicit read
+ledger. Use `repo_reading_plan_diff` before finishing when you need to see
+unread suggestions, unplanned reads or opened files that still need an outcome.
+After verification, call `repo_reading_plan_finish` with the plan id and the
+actual outcome: files read, verified, useful, noisy or missing. This creates a
+small feedback loop without asking the agent to remember every opened file in
+chat. The read ledger is explicit metadata, not automatic editor telemetry.
 Use `repo_reading_plan_stats` only when local metrics are useful; it is optional
 and should not be treated as proof of agent speed.
 
@@ -147,7 +153,8 @@ init-agent-mcp --root /path/to/repository
 ```
 
 The MCP server exposes the same tools: `repo_graph_search`, `repo_trace`,
-`repo_reading_plan`, `repo_overview`, `repo_entrypoints`,
+`repo_reading_plan`, `repo_reading_plan_read`, `repo_reading_plan_diff`,
+`repo_overview`, `repo_entrypoints`,
 `repo_related_file`, `repo_symbol_callers`, `repo_feedback_add`,
 `repo_feedback_explain`, `repo_reading_plan_finish`,
 `repo_reading_plan_stats`, `repo_memory_add`,

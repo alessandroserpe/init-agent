@@ -12,7 +12,14 @@ from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
 from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
-from .plan_feedback import finish_reading_plan, list_reading_plans, reading_plan_stats, save_reading_plan
+from .plan_feedback import (
+    finish_reading_plan,
+    list_reading_plans,
+    reading_plan_diff,
+    reading_plan_stats,
+    record_reading_plan_read,
+    save_reading_plan,
+)
 from .query import callers_for_symbol, related
 from .reading_plan import build_reading_plan
 from .run import run_query
@@ -312,6 +319,52 @@ def repo_reading_plan_finish(
         "safety": [
             "finish a reading plan only after actually reading or verifying files",
             "feedback is created only for explicit useful, noisy and missing paths",
+        ],
+    }
+
+
+def repo_reading_plan_read(root: Path, plan_id: int, paths: list[str], note: str = "", source: str = "agent") -> dict[str, Any]:
+    """Record files opened while following a saved reading plan."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    normalized_paths = [Path(path).as_posix().lstrip("./") for path in paths if str(path).strip()]
+    read = (
+        record_reading_plan_read(root, plan_id, normalized_paths, note=note, source=source)
+        if readiness["ready"]
+        else {"updated": False, "id": plan_id, "plan": None, "events": []}
+    )
+    return {
+        "tool": "repo_reading_plan_read",
+        "contract": TOOL_CONTRACT_VERSION,
+        **read,
+        "warnings": warnings,
+        "safety": [
+            "record only files actually opened or inspected by the agent",
+            "this is metadata-only tracking; it does not read source files for you",
+        ],
+    }
+
+
+def repo_reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
+    """Return the gap between a saved reading plan and recorded agent activity."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    diff = reading_plan_diff(root, plan_id) if readiness["ready"] else {
+        "id": plan_id,
+        "found": False,
+        "plan": None,
+        "diff": {},
+    }
+    return {
+        "tool": "repo_reading_plan_diff",
+        "contract": TOOL_CONTRACT_VERSION,
+        **diff,
+        "warnings": warnings,
+        "safety": [
+            "diff is based on recorded plan events, not automatic editor telemetry",
+            "verify files before converting diff output into feedback or memory",
         ],
     }
 
@@ -1429,6 +1482,48 @@ def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_repo_reading_plan_read_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_reading_plan_read",
+        "",
+        f"Plan id: {result.get('id')}",
+        f"Updated: {'yes' if result.get('updated') else 'no'}",
+        "",
+        "Opened files:",
+    ]
+    if not result.get("events"):
+        lines.append("-")
+    for event in result.get("events", []):
+        lines.append(f"- {event.get('path')}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
+    diff = result.get("diff") or {}
+    lines = [
+        "Init Agent Tool: repo_reading_plan_diff",
+        "",
+        f"Plan id: {result.get('id')}",
+        f"Found: {'yes' if result.get('found') else 'no'}",
+        "",
+        "Read now not read:",
+    ]
+    _append_plain_list(lines, diff.get("read_now_not_read", []))
+    lines.extend(["", "Suggested not read:"])
+    _append_plain_list(lines, diff.get("suggested_not_read", []))
+    lines.extend(["", "Read but not planned:"])
+    _append_plain_list(lines, diff.get("read_not_planned", []))
+    lines.extend(["", "Read without outcome:"])
+    _append_plain_list(lines, diff.get("read_without_outcome", []))
+    lines.extend(["", "Outcomes:"])
+    lines.append(f"- useful: {len(diff.get('useful_paths', []))}")
+    lines.append(f"- noisy: {len(diff.get('noisy_paths', []))}")
+    lines.append(f"- missing: {len(diff.get('missing_paths', []))}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
 def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
     stats = result.get("stats") or {}
     lines = [
@@ -2245,6 +2340,13 @@ def _append_commands(lines: list[str], commands: list[dict[str, str]]) -> None:
         lines.append("-")
     for command in commands:
         lines.append(f"- {command['command']}")
+
+
+def _append_plain_list(lines: list[str], items: list[str]) -> None:
+    if not items:
+        lines.append("-")
+    for item in items:
+        lines.append(f"- {item}")
 
 
 def _append_warnings(lines: list[str], warnings: list[str]) -> None:

@@ -24,7 +24,9 @@ from .agent_tools import (
     render_repo_memory_update_text,
     render_repo_overview_text,
     render_repo_flow_topics_text,
+    render_repo_reading_plan_diff_text,
     render_repo_reading_plan_finish_text,
+    render_repo_reading_plan_read_text,
     render_repo_reading_plan_stats_text,
     render_repo_reading_plan_text,
     render_repo_related_file_text,
@@ -50,7 +52,9 @@ from .agent_tools import (
     repo_memory_update,
     repo_overview,
     repo_flow_topics,
+    repo_reading_plan_diff,
     repo_reading_plan_finish,
+    repo_reading_plan_read,
     repo_reading_plan_stats,
     repo_reading_plan,
     repo_related_file,
@@ -136,7 +140,9 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("text", nargs="+", help="Free-text task or question.")
     plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
     plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
-    plan_parser.add_argument("--id", type=int, help="Plan id for `plan finish`.")
+    plan_parser.add_argument("--id", type=int, help="Plan id for `plan read`, `plan diff` or `plan finish`.")
+    plan_parser.add_argument("--file", action="append", default=[], help="For `plan read`: file that was opened.")
+    plan_parser.add_argument("--note", default="", help="For `plan read`: optional note for opened files.")
     plan_parser.add_argument("--read-file", action="append", default=[], help="For `plan finish`: file that was read.")
     plan_parser.add_argument("--verified", action="append", default=[], help="For `plan finish`: file that was verified.")
     plan_parser.add_argument("--useful", action="append", default=[], help="For `plan finish`: file verified useful.")
@@ -312,6 +318,19 @@ def build_parser() -> argparse.ArgumentParser:
     repo_reading_plan_finish_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan finish source.")
     repo_reading_plan_finish_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_finish_parser.set_defaults(handler=cmd_tool_repo_reading_plan_finish)
+
+    repo_reading_plan_read_parser = tool_subparsers.add_parser("repo_reading_plan_read", help="Record files opened while following a reading plan.")
+    repo_reading_plan_read_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_reading_plan_read_parser.add_argument("--path", action="append", default=[], help="Opened file path. Can be repeated.")
+    repo_reading_plan_read_parser.add_argument("--note", default="", help="Optional note for these opened files.")
+    repo_reading_plan_read_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan read source.")
+    repo_reading_plan_read_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_read_parser.set_defaults(handler=cmd_tool_repo_reading_plan_read)
+
+    repo_reading_plan_diff_parser = tool_subparsers.add_parser("repo_reading_plan_diff", help="Compare a reading plan with recorded read/outcome events.")
+    repo_reading_plan_diff_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_reading_plan_diff_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_diff_parser.set_defaults(handler=cmd_tool_repo_reading_plan_diff)
 
     repo_reading_plan_stats_parser = tool_subparsers.add_parser("repo_reading_plan_stats", help="Show optional local reading-plan metrics.")
     repo_reading_plan_stats_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -712,6 +731,26 @@ def cmd_plan(args: argparse.Namespace) -> int:
         else:
             print(render_repo_reading_plan_finish_text(result))
         return 0 if result.get("updated") else 1
+    if mode == "read":
+        if not args.id:
+            raise SystemExit("init-agent plan read requires --id")
+        if not args.file:
+            raise SystemExit("init-agent plan read requires --file")
+        result = repo_reading_plan_read(root, args.id, args.file, note=args.note, source=args.source)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_reading_plan_read_text(result))
+        return 0 if result.get("updated") else 1
+    if mode == "diff":
+        if not args.id:
+            raise SystemExit("init-agent plan diff requires --id")
+        result = repo_reading_plan_diff(root, args.id)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_reading_plan_diff_text(result))
+        return 0 if result.get("found") else 1
     if mode == "stats":
         result = repo_reading_plan_stats(root)
         if args.json:
@@ -1360,6 +1399,26 @@ def cmd_tool_repo_reading_plan_finish(args: argparse.Namespace) -> int:
     else:
         print(render_repo_reading_plan_finish_text(result))
     return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_reading_plan_read(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_read(root, args.id, args.path, note=args.note, source=args.source)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_read_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_reading_plan_diff(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_diff(root, args.id)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_diff_text(result))
+    return 0 if result.get("found") else 1
 
 
 def cmd_tool_repo_reading_plan_stats(args: argparse.Namespace) -> int:
