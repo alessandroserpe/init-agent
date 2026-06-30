@@ -36,11 +36,11 @@ PYTHONPATH=$PWD /tmp/django-init-agent-venv/bin/python tests/runtests.py templat
 | --- | ---: | ---: |
 | Outcome | PASS | PASS |
 | Targeted tests | 1 OK | 1 OK |
-| Approx wall-clock | ~8 min | ~1.5 min |
-| Files read | 7 | 6 |
+| Approx logged wall-clock | ~8 min | ~1.5 min |
+| Logged files read | 7 | 6 |
 | Correct source file read position | 3rd | 3rd |
-| Files modified | 2 | 2 |
-| Logged commands | 22 | 11 plus init-agent |
+| Source/test files modified | 2 | 2 |
+| Logged commands | 22 | 11 plus 5 init-agent commands |
 | init-agent commands | 0 | 5 |
 | Wrong turns / rework | broad noisy rg; HTTPS warning after source fix | noisy Generated match; HTTPS warning after source fix |
 
@@ -61,5 +61,5 @@ This is not a perfect benchmark because the new high-level test introduced a sec
 
 ## Raw Logs
 
-- `runs/baseline_no_init_agent/agent_log.md`
-- `runs/with_init_agent/agent_log.md`
+- `logs/baseline_agent_log.md`
+- `logs/init_agent_log.md`

@@ -19,6 +19,8 @@ python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict
 python3 experiments/evaluate.py --strict --rebuild-index
 python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
+python3 experiments/evaluate.py --strict --output-dir experiments/results
+python3 experiments/plot_results.py experiments/results/results.csv
 ```
 
 By default it expects local benchmark repositories under `/tmp`, for example:
@@ -69,12 +71,30 @@ Each case reports:
 - `top1_hit`
 - `top3_hit`
 - `top5_hit`
+- `expected_file_ranks`
+- `missing_expected_files`
 - `expected_hits`
 - `noise_hits`
 - `elapsed_seconds`
 - `candidate_file_count`
 - `manual_scan_file_count`
 - `manual_scan_reduction_percent`
+
+By default the evaluator prints JSON to stdout. Use `--output-dir` to write the
+standard reproducible artifacts:
+
+- `results.json`
+- `results.csv`
+- `summary.md`
+
+Use `experiments/plot_results.py` to generate simple PNG charts from the CSV:
+
+- Top-1 / Top-3 / Top-5 hit rate
+- noise hits per case
+- elapsed seconds per case
+- manual scan reduction percent per case
+
+`matplotlib` is optional and only required for chart generation.
 
 Use `--case <name>` to isolate one benchmark while tuning a ranking issue. The
 flag can be passed more than once.

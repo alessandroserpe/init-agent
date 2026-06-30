@@ -21,11 +21,11 @@ direct string search for the implementation file.
 | Repository size | 7,018 files | 7,018 files |
 | Outcome | PASS | PASS |
 | Targeted tests | 1 OK | 1 OK |
-| Approx wall-clock | ~8 min | ~1.5 min |
-| Files read | 7 | 6 |
+| Approx logged wall-clock | ~8 min | ~1.5 min |
+| Logged files read | 7 | 6 |
 | Correct source file read position | 3rd | 3rd |
-| Files modified | 2 | 2 |
-| Logged commands | 22 | 11 plus init-agent |
+| Source/test files modified | 2 | 2 |
+| Logged commands | 22 | 11 plus 5 init-agent commands |
 | init-agent commands | 0 | 5 |
 
 ## Interpretation

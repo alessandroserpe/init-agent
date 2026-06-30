@@ -40,13 +40,13 @@ task: one using normal repository exploration, one required to start with
 
 Both agents passed the targeted test. On a 7,018-file Django checkout, the
 init-agent-assisted run used fewer exploratory commands and less estimated
-wall-clock time:
+wall-clock time in the agent logs:
 
 | Metric | Baseline | With init-agent |
 |---|---:|---:|
-| Approx wall-clock | ~8 min | ~1.5 min |
-| Files read | 7 | 6 |
-| Logged commands | 22 | 11 plus init-agent |
+| Approx logged wall-clock | ~8 min | ~1.5 min |
+| Logged files read | 7 | 6 |
+| Logged commands | 22 | 11 plus 5 init-agent commands |
 
 This is an observed run, not a scientific benchmark. See
 [experiments/django-hidden-cause](experiments/django-hidden-cause/) for the
@@ -304,9 +304,14 @@ multiple real-world repositories and counter-cases:
 ```bash
 python -m unittest discover -s tests -v
 python experiments/evaluate.py --strict
+python experiments/evaluate.py --strict --output-dir experiments/results
+python experiments/plot_results.py experiments/results/results.csv
 ```
 
-See [docs/experiments.md](docs/experiments.md) for benchmark setup and output.
+The deterministic benchmark measures repository-orientation quality: whether
+expected useful files appear early in the generated context pack. It can write
+JSON, CSV and Markdown summaries, plus optional charts. See
+[docs/experiments.md](docs/experiments.md) for benchmark setup and output.
 
 ## Security And Privacy
 

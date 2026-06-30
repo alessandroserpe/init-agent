@@ -24,9 +24,12 @@ from init_agent.symbol_extractor import extract_symbols_and_relations
 from experiments.evaluate import (
     candidate_paths_for_case,
     case_command,
+    expected_ranks,
     load_cases,
     measure_indexed_file_read,
+    render_markdown_summary,
     resolve_case_repo,
+    result_csv_row,
     scan_reduction_percent,
     strict_failures_for,
     summarize,
@@ -1761,6 +1764,52 @@ class InitAgentBaseTests(unittest.TestCase):
         failures = strict_failures_for(summary, args)
         self.assertIn("top3_rate 0.5 < 0.85", failures)
         self.assertNotIn("top5_rate 1.0 < 1.0", failures)
+
+    def test_experiment_expected_ranks_csv_and_markdown_outputs(self) -> None:
+        candidates = ["src/a.py", "src/b.py", "src/c.py"]
+        expected = ["src/b.py", "src/missing.py"]
+        self.assertEqual(expected_ranks(candidates, expected), {"src/b.py": 2, "src/missing.py": None})
+        result = {
+            "name": "sample",
+            "status": "ok",
+            "top1_hit": False,
+            "top3_hit": True,
+            "top5_hit": True,
+            "expected_count": 2,
+            "expected_hit_count": 1,
+            "expected_file_ranks": expected_ranks(candidates, expected),
+            "missing_expected_files": ["src/missing.py"],
+            "noise_hit_count": 1,
+            "candidate_file_count": 3,
+            "elapsed_seconds": 0.25,
+            "manual_scan_file_count": 30,
+            "manual_scan_reduction_percent": 90.0,
+        }
+        row = result_csv_row(result)
+        self.assertEqual(row["top1_hit"], "false")
+        self.assertEqual(row["top3_hit"], "true")
+        self.assertEqual(row["missing_expected_count"], 1)
+        self.assertIn("src/b.py=2", row["expected_file_ranks"])
+        self.assertIn("src/missing.py=missing", row["expected_file_ranks"])
+        markdown = render_markdown_summary(
+            {
+                "summary": {
+                    "cases": 1,
+                    "top1_rate": 0.0,
+                    "top3_rate": 1.0,
+                    "top5_rate": 1.0,
+                    "noise_hits": 1,
+                    "average_elapsed_seconds": 0.25,
+                    "average_manual_scan_reduction_percent": 90.0,
+                },
+                "results": [result],
+                "skipped": [{"name": "missing-case", "reason": "missing repo"}],
+            }
+        )
+        self.assertIn("# init-agent Benchmark Summary", markdown)
+        self.assertIn("sample", markdown)
+        self.assertIn("src/missing.py", markdown)
+        self.assertIn("missing-case", markdown)
 
     def test_role_detection_does_not_treat_pytest_package_as_test(self) -> None:
         self.assertEqual(detect_role("src/_pytest/fixtures.py"), "source")
