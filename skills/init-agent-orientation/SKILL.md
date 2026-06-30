@@ -57,6 +57,16 @@ init-agent run "<user task>" --markdown
 
 5. Read the suggested files directly from the filesystem before proposing or making code changes.
 
+6. After reading files, keep a tiny verification ledger for yourself:
+
+- verified central files: files that were actually useful for the task
+- verified noisy files: files that looked relevant in the ranking but were not
+- verified missing files: important files you had to open that were absent from the initial suggestions
+- durable facts learned: stable facts about file purpose, project conventions or decisions
+
+Use this ledger before finishing the task to decide whether to record feedback,
+memory or a task note. Do not wait for the user to ask.
+
 ## Targeted Follow-Up
 
 Use more specific commands when the question shape suggests them.
@@ -86,6 +96,51 @@ If the project state seems stale or broken:
 init-agent doctor
 ```
 
+## Noisy Or Empty Results
+
+If the first overview or context pack is empty, stale or noisy, do not give up
+and do not start reading the whole repository. Recover in this order:
+
+1. Check readiness:
+
+```bash
+init-agent doctor
+```
+
+2. If the index is missing, empty or stale, rebuild it:
+
+```bash
+init-agent map
+```
+
+3. Retry with a narrower query using concrete terms found in the repo or task:
+
+```bash
+init-agent run "<specific module, symbol, route, table, error or workflow>" --markdown
+```
+
+4. Use targeted follow-ups instead of broad reading:
+
+```bash
+init-agent related path/to/candidate-file
+init-agent callers SomeSymbol
+init-agent symbol SomeSymbol
+```
+
+5. After verification, record why the first result was noisy:
+
+```bash
+init-agent feedback add "<task>" path/to/noisy-file --rating noisy --source agent --reason "matched query terms but verified unrelated"
+init-agent feedback add "<task>" path/to/missing-file --rating missing --source agent --reason "verified important file absent from initial pack"
+```
+
+For MCP-capable agents, use the corresponding `repo_*` tools.
+
+Only fall back to broad filesystem exploration after this recovery loop fails.
+If you must fall back, inspect a small set of manifests, entry points and search
+results, then record feedback/memory so the same failure is less likely next
+time.
+
 After verifying files, record useful or noisy feedback locally when it would
 help future similar tasks:
 
@@ -96,37 +151,79 @@ init-agent feedback add "<user task>" path/to/missing-file --rating missing --so
 ```
 
 When init-agent MCP tools are available, prefer `repo_feedback_add` for the
-same workflow after verification. Feedback is optional; use it only when it
-would help future similar tasks.
+same workflow after verification.
+
+Feedback is expected after non-trivial verified work when one of these is true:
+
+- the top suggested file was correct and central
+- a suggested file was clearly irrelevant/noisy
+- an important file was missing from the initial suggestions
+- the ranking surprised you and future runs would benefit from the correction
+
+Feedback is still optional for tiny tasks, but do not skip it on multi-file
+investigations just because the user did not ask.
 
 When an inspected file contains useful operational knowledge, record a short
 local note with `repo_memory_add` or search previous notes with
 `repo_memory_search`. Notes should explain what was learned about the file,
 not copy source code. Include an evidence level when possible, such as
 `read_full_file`, `read_excerpt`, `manifest_only`, `inferred_from_graph`,
-`user_decision`, `implementation_note` or `planning_note`. Use `scope=repo`
-for project-wide decisions and conventions that are not tied to one file,
-especially when a project starts from zero before the first map. Keep repo
-memories small; they are for orientation, not project management. If a memory
-result is marked stale, re-read the file before relying on the note. Use
-`repo_memory_audit` to find stale, vague or duplicate notes, `repo_memory_topics`
-for a topic-level area map, `repo_memory_list --stale` to audit stale notes,
-`repo_memory_update` to refresh corrected notes after verification, and
-`repo_memory_delete` to remove wrong or duplicate notes.
+`user_decision`, `implementation_note` or `planning_note`.
+
+Memory is expected after non-trivial work when you learned something stable
+that would save future context, such as:
+
+- what a large or central file owns
+- which file is the real entry point for a workflow
+- where a bug class usually belongs
+- a project-wide convention or user decision
+- why a recurring candidate is a false-positive support file
+
+Use `scope=repo` for project-wide decisions and conventions that are not tied
+to one file, especially when a project starts from zero before the first map.
+Keep repo memories small; they are for orientation, not project management. If
+a memory result is marked stale, re-read the file before relying on the note.
+Use `repo_memory_audit` to find stale, vague or duplicate notes,
+`repo_memory_topics` for a topic-level area map, `repo_memory_list --stale` to
+audit stale notes, `repo_memory_update` to refresh corrected notes after
+verification, and `repo_memory_delete` to remove wrong or duplicate notes.
+
+Prefer updating an existing memory over adding a near-duplicate note for the
+same file/topic.
+
+For longer work that spans multiple files, modifications, checks or handoff
+points, use local task/session memory to keep the operational thread explicit.
+Prefer MCP tools when available:
+
+```text
+repo_task_add
+repo_task_note
+repo_task_list
+repo_task_update
+repo_task_close
+```
+
+Use `repo_task_add` when starting a non-trivial task, `repo_task_note` after
+meaningful progress or verification, and `repo_task_close` only when the work is
+actually done. Link relevant files, tests, memory ids, feedback ids and
+remaining follow-up. Do not create local tasks for tiny one-shot questions.
 
 Before finishing a non-trivial task, do a short memory/feedback check:
 
-- If a suggested file was verified and central to the task, consider `useful`
-  or `crucial` feedback.
-- If a suggested file matched the query but was irrelevant, consider `noisy`
-  feedback.
-- If an important file was missing from the initial suggestions, consider
-  `missing` feedback.
-- If you learned a stable fact about a file or project decision, consider a
-  short memory note with evidence.
+- If a suggested file was verified and central to the task, record `useful`
+  or `crucial` feedback unless the task was tiny.
+- If a suggested file matched the query but was irrelevant, record `noisy`
+  feedback when the mismatch is clear.
+- If an important file was missing from the initial suggestions, record
+  `missing` feedback after verifying its relevance.
+- If you learned a stable fact about a file or project decision, add or update
+  a short memory note with evidence.
+- If the work spans multiple steps or needs handoff continuity, consider a
+  local task note or close the local task if complete.
 - If nothing stable was learned, do not write memory or feedback.
 
 Never write feedback or memory just because a file appeared in a ranking.
+Never store source snippets in memory or feedback.
 
 ## End Of Session
 
@@ -152,9 +249,9 @@ init-agent session close
 ```
 
 Use the result to inform the final answer: mention modified files, stale memory,
-memory quality issues, verification still needed and follow-up commands when
-they matter. Do not run session close for tiny one-shot answers or when the user
-explicitly asks only for a quick fact.
+open local tasks, memory quality issues, verification still needed and follow-up
+commands when they matter. Do not run session close for tiny one-shot answers or
+when the user explicitly asks only for a quick fact.
 
 If repeated context packs behave unexpectedly, inspect the local feedback
 signals before adding more:

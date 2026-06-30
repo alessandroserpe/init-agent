@@ -49,6 +49,11 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("init-agent related", content)
         self.assertIn("init-agent feedback add", content)
         self.assertIn("init-agent feedback explain", content)
+        self.assertIn("keep a tiny verification ledger", content)
+        self.assertIn("Noisy Or Empty Results", content)
+        self.assertIn("do not start reading the whole repository", content)
+        self.assertIn("Feedback is expected after non-trivial verified work", content)
+        self.assertIn("Memory is expected after non-trivial work", content)
         self.assertIn("Do not treat the context pack as source of truth", content)
 
     def test_agent_skill_readme_documents_install_and_shim(self) -> None:
@@ -91,6 +96,9 @@ class InitAgentBaseTests(unittest.TestCase):
         self.assertIn("repo_task_note", readme)
         self.assertIn("repo_task_close", mcp)
         self.assertIn("repo_task_list", skill)
+        self.assertIn("Do not wait for the user to ask", skill)
+        self.assertIn("Prefer updating an existing memory", skill)
+        self.assertIn("Only fall back to broad filesystem exploration after this recovery loop fails", skill)
         self.assertIn("pipx inject init-agent tree-sitter tree-sitter-php", commands)
         self.assertIn("tree-sitter", parsing)
         self.assertIn("falls back to the built-in PHP parser", parsing)
