@@ -66,6 +66,12 @@ before broad filesystem exploration: check `doctor`, rebuild stale indexes with
 `map`, retry with a narrower query, inspect related files/symbols and record
 noisy or missing feedback after verification.
 
+For failing-test or symptom-heavy debugging, the first context pack can point at
+high-level files that describe the symptom rather than the lower-level cause.
+When `next_agent_actions` suggests `related <test-file>`, agents should do that
+early: the failing test neighborhood can expose implementation files through
+imports, calls and recent co-change history before the agent scans broadly.
+
 For feedback specifically, use the loop documented in
 [feedback.md](feedback.md): run orientation, verify files, record useful/noisy/
 missing feedback only for verified outcomes, then inspect

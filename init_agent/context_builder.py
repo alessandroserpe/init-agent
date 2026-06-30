@@ -15,6 +15,42 @@ from .text_tokens import is_query_noise_token, tokenize_query
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
+SYMPTOM_QUERY_TOKENS = {
+    "bug",
+    "errore",
+    "error",
+    "exception",
+    "fail",
+    "fails",
+    "failing",
+    "failure",
+    "regression",
+    "regressione",
+    "render",
+    "rendered",
+    "response",
+    "risposta",
+    "symptom",
+    "sintomo",
+    "test",
+    "tests",
+    "wrong",
+}
+GENERIC_SYMPTOM_PATH_TOKENS = {
+    "base",
+    "component",
+    "controller",
+    "handler",
+    "http",
+    "page",
+    "request",
+    "response",
+    "route",
+    "router",
+    "template",
+    "view",
+    "views",
+}
 MAX_COMMIT_FILES = 10
 UI_INTENT_TOKENS = {"css", "style", "stile", "layout", "design", "ui", "frontend", "colore", "colori"}
 DB_INTENT_TOKENS = {"sql", "migration", "migrations", "database", "db", "tabella", "schema"}
@@ -557,6 +593,7 @@ def _recent_commits(query_commits: list[dict[str, Any]], candidate_paths: set[st
 
 def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> dict[str, Any]:
     reasons: list[str] = []
+    tokens = _tokens(query)
     if not candidate_files:
         reasons.append("no candidate files were found")
         return {
@@ -579,6 +616,9 @@ def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> d
         reasons.append("top candidate is not supported by strong symbol, call, feedback or exact filename signals")
     if weak_soft_reasons >= 5:
         reasons.append("ranking is driven by broad soft path matches")
+    symptom_test_candidate = _symptom_test_candidate(tokens, candidate_files)
+    if _is_symptom_query(tokens) and symptom_test_candidate and _has_generic_symptom_candidates(candidate_files):
+        reasons.append("symptom or failing-test query may point at high-level files before the underlying cause")
 
     if len(reasons) >= 2 or (reasons and not strong_reason):
         level = "low"
@@ -586,9 +626,15 @@ def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> d
         level = "medium"
     else:
         level = "high"
+    if symptom_test_candidate and any("underlying cause" in reason for reason in reasons):
+        level = "medium" if level == "high" else level
     return {
         "confidence": {"level": level, "reasons": reasons},
-        "next_agent_actions": _recovery_actions(query, no_candidates=False) if level in {"low", "medium"} else _verification_actions(query, candidate_files),
+        "next_agent_actions": (
+            _recovery_actions(query, no_candidates=False, candidate_files=candidate_files)
+            if level in {"low", "medium"}
+            else _verification_actions(query, candidate_files)
+        ),
     }
 
 
@@ -607,31 +653,69 @@ def _is_strong_reason(reason: str) -> bool:
     )
 
 
-def _recovery_actions(query: str, no_candidates: bool) -> list[dict[str, str]]:
+def _symptom_test_candidate(tokens: list[str], candidate_files: list[dict[str, Any]]) -> str:
+    if not _is_symptom_query(tokens):
+        return ""
+    for item in candidate_files[:8]:
+        path = str(item.get("path") or "")
+        role = str(item.get("role") or "")
+        path_parts = set(_path_tokens(path))
+        if role == "test" or "test" in path_parts or "tests" in path_parts:
+            return path
+    return ""
+
+
+def _is_symptom_query(tokens: list[str]) -> bool:
+    token_set = set(tokens)
+    return bool(token_set.intersection(SYMPTOM_QUERY_TOKENS) or token_set.intersection(TEST_AWARE_TOKENS))
+
+
+def _has_generic_symptom_candidates(candidate_files: list[dict[str, Any]]) -> bool:
+    for item in candidate_files[:5]:
+        path_tokens = set(_path_tokens(str(item.get("path") or "")))
+        if path_tokens.intersection(GENERIC_SYMPTOM_PATH_TOKENS):
+            return True
+    return False
+
+
+def _recovery_actions(query: str, no_candidates: bool, candidate_files: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
     reason = "context pack is empty" if no_candidates else "context pack confidence is low or noisy"
     quoted = _shell_double_quote(query)
-    return [
-        {
-            "action": "check_index",
-            "command": "init-agent doctor",
-            "reason": "verify whether the local index is missing, stale or unhealthy",
-        },
-        {
-            "action": "refresh_index",
-            "command": "init-agent map",
-            "reason": "rebuild the map if doctor reports missing, empty or stale index data",
-        },
-        {
-            "action": "narrow_query",
-            "command": f"init-agent run {quoted} --markdown",
-            "reason": f"{reason}; retry with concrete module, symbol, route, table, error or workflow terms before broad reading",
-        },
-        {
-            "action": "record_feedback_after_verification",
-            "command": f"init-agent feedback add {quoted} <path> --rating noisy --source agent --reason \"verified irrelevant suggestion\"",
-            "reason": "teach future runs when a suggested file was verified as noisy",
-        },
-    ]
+    actions: list[dict[str, str]] = []
+    test_path = _symptom_test_candidate(_tokens(query), candidate_files or [])
+    if test_path:
+        actions.append(
+            {
+                "action": "inspect_failing_test_neighborhood",
+                "command": f"init-agent related {test_path}",
+                "reason": "for symptom-heavy or failing-test queries, inspect the test neighborhood to find lower-level implementation files before broad reading",
+            }
+        )
+    actions.extend(
+        [
+            {
+                "action": "check_index",
+                "command": "init-agent doctor",
+                "reason": "verify whether the local index is missing, stale or unhealthy",
+            },
+            {
+                "action": "refresh_index",
+                "command": "init-agent map",
+                "reason": "rebuild the map if doctor reports missing, empty or stale index data",
+            },
+            {
+                "action": "narrow_query",
+                "command": f"init-agent run {quoted} --markdown",
+                "reason": f"{reason}; retry with concrete module, symbol, route, table, error or workflow terms before broad reading",
+            },
+            {
+                "action": "record_feedback_after_verification",
+                "command": f"init-agent feedback add {quoted} <path> --rating noisy --source agent --reason \"verified irrelevant suggestion\"",
+                "reason": "teach future runs when a suggested file was verified as noisy",
+            },
+        ]
+    )
+    return actions
 
 
 def _verification_actions(query: str, candidate_files: list[dict[str, Any]]) -> list[dict[str, str]]:

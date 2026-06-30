@@ -3119,6 +3119,44 @@ class InitAgentBaseTests(unittest.TestCase):
             self.assertIn("init-agent doctor", commands)
             self.assertIn("init-agent map", commands)
 
+    def test_context_pack_guides_symptom_queries_to_failing_test_related_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            test_dir = root / "tests" / "template_tests"
+            test_dir.mkdir(parents=True)
+            (test_dir / "test_response.py").write_text(
+                "class GeneratedContentPunctuationRegressionTest:\n"
+                "    def test_sentence_terminal_marker_stays_outside_generated_anchor(self):\n"
+                "        assert render_response('example.com!')\n",
+                encoding="utf-8",
+            )
+            template_dir = root / "django" / "template"
+            template_dir.mkdir(parents=True)
+            (template_dir / "response.py").write_text("class TemplateResponse: pass\n", encoding="utf-8")
+            (template_dir / "base.py").write_text("def render_response(value):\n    return value\n", encoding="utf-8")
+            http_dir = root / "django" / "http"
+            http_dir.mkdir(parents=True)
+            (http_dir / "response.py").write_text("class HttpResponse: pass\n", encoding="utf-8")
+            utils_dir = root / "django" / "utils"
+            utils_dir.mkdir(parents=True)
+            (utils_dir / "html.py").write_text("def normalize_terminal_marker(value):\n    return value\n", encoding="utf-8")
+
+            _prepare_index(root)
+            pack = build_context_pack(
+                root,
+                "template response regression GeneratedContentPunctuationRegressionTest terminal marker rendered output wrong",
+            )
+
+            self.assertIn(pack["confidence"]["level"], {"low", "medium"})
+            self.assertIn(
+                "symptom or failing-test query may point at high-level files before the underlying cause",
+                pack["confidence"]["reasons"],
+            )
+            actions = pack["next_agent_actions"]
+            self.assertEqual(actions[0]["action"], "inspect_failing_test_neighborhood")
+            self.assertEqual(actions[0]["command"], "init-agent related tests/template_tests/test_response.py")
+
     def test_run_on_uninitialized_project_creates_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
