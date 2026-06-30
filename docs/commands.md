@@ -20,8 +20,10 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths through the local graph. |
+| `init-agent plan "<task>"` | Build a memory-, feedback-, tag- and stale-aware reading plan. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Return an agent-facing investigation-path trace contract. |
+| `init-agent tool repo_reading_plan --query "<task>" --json` | Return an agent-facing reading plan contract. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Return an agent-facing file-neighborhood contract. |
@@ -191,6 +193,25 @@ Use it as a follow-up when `run` is empty/noisy or when the task is about a
 runtime path, page composition, route, CLI flow or entrypoint. It does not
 replace reading files before editing.
 
+## `init-agent plan <text>`
+
+Builds a reading plan for agents by combining graph search, trace paths, file
+tags, local memory notes, feedback and stale state:
+
+```bash
+init-agent plan "installare server mcp codex"
+init-agent plan "installare server mcp codex" --json
+```
+
+Use it when a repository has local memory/feedback or when a task is broad
+enough that a plain ranked list may be noisy. The output recommends actions
+such as `read`, `verify_stale`, `use_memory_context`, `inspect_related` and
+`skip_unless_needed`.
+
+`verify_stale` means the file should be re-read before relying on the note.
+The command is still an orientation tool and does not replace direct file reads
+before editing.
+
 ## `init-agent tool repo_graph_search`
 
 Returns a compact JSON contract designed for agent/tool integrations. It uses
@@ -236,6 +257,19 @@ The response includes:
 - `suggested_first_reads`
 - `followup_commands`
 - `warnings`
+
+## `init-agent tool repo_reading_plan`
+
+Returns the reading plan as a stable JSON contract:
+
+```bash
+init-agent tool repo_reading_plan --query "installare server mcp codex" --json
+```
+
+The response includes query tokens, plan items, memory matches, repo-wide
+memory context, recommended actions and warnings. Each plan item includes an
+action, confidence, signal sources, tags, compact memory notes and feedback
+signals.
 
 ## `init-agent tool repo_overview`
 
@@ -316,7 +350,7 @@ Records a short local note about what an agent learned after inspecting a file,
 or a repo-wide project note for decisions made before meaningful files exist:
 
 ```bash
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --query "debug login redirect" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --query "debug login redirect" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_add --scope repo --topic architecture --query "start from zero" --evidence user_decision --note "Use a local-only CLI with SQLite storage and no runtime dependencies." --json
 ```
 
@@ -329,7 +363,9 @@ later changes in the index. Evidence values are `read_full_file`,
 repo-scoped notes use `--scope repo` and have stale status marked as not
 applicable. Repo-scoped notes can be recorded before the first map in an empty
 project; use them for compact decisions and conventions, not long project
-management logs.
+management logs. Use repeated `--tag` values for structured retrieval hints;
+if omitted, init-agent derives lightweight tags from the path, topic, query and
+note.
 
 See [memory-workflows.md](memory-workflows.md) for decision-log and area-map
 patterns using repo-scoped memories and topics.
@@ -434,7 +470,7 @@ the note is file-scoped:
 
 ```bash
 init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
-init-agent tool repo_memory_update --id 13 --topic "runtime entrypoints" --json
+init-agent tool repo_memory_update --id 13 --topic "runtime entrypoints" --tag startup --tag cli --json
 ```
 
 The command does not change the memory scope or path. Use it after re-reading a

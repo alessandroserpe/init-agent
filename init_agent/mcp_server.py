@@ -26,6 +26,7 @@ from .agent_tools import (
     repo_memory_topics,
     repo_memory_update,
     repo_overview,
+    repo_reading_plan,
     repo_related_file,
     repo_session_close,
     repo_session_summary,
@@ -108,6 +109,7 @@ class InitAgentMcpServer:
         handlers: dict[str, ToolHandler] = {
             "repo_graph_search": _handle_repo_graph_search,
             "repo_trace": _handle_repo_trace,
+            "repo_reading_plan": _handle_repo_reading_plan,
             "repo_entrypoints": _handle_repo_entrypoints,
             "repo_feedback_add": _handle_repo_feedback_add,
             "repo_feedback_explain": _handle_repo_feedback_explain,
@@ -169,6 +171,14 @@ def _handle_repo_trace(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     return repo_trace(root, query, limit=limit, max_depth=max_depth, prepare=False)
 
 
+def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        raise ValueError("repo_reading_plan requires query")
+    limit = int(arguments.get("limit") or 10)
+    return repo_reading_plan(root, query, limit=limit, prepare=False)
+
+
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     return repo_overview(root, prepare=False)
 
@@ -224,11 +234,12 @@ def _handle_repo_memory_add(root: Path, arguments: dict[str, Any]) -> dict[str, 
     source = str(arguments.get("source") or "agent").strip()
     evidence = str(arguments.get("evidence") or "read_excerpt").strip()
     scope = str(arguments.get("scope") or "file").strip()
+    tags = _string_list(arguments.get("tags"))
     if scope != "repo" and not path:
         raise ValueError("repo_memory_add requires path for file scope")
     if not note:
         raise ValueError("repo_memory_add requires note")
-    return repo_memory_add(root, path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope)
+    return repo_memory_add(root, path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope, tags=tags)
 
 
 def _handle_repo_memory_list(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -261,7 +272,8 @@ def _handle_repo_memory_update(root: Path, arguments: dict[str, Any]) -> dict[st
     query = str(arguments.get("query")).strip() if "query" in arguments else None
     source = str(arguments.get("source")).strip() if "source" in arguments else None
     evidence = str(arguments.get("evidence")).strip() if "evidence" in arguments else None
-    return repo_memory_update(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence)
+    tags = _string_list(arguments.get("tags")) if "tags" in arguments else None
+    return repo_memory_update(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags)
 
 
 def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -452,6 +464,19 @@ def _tool_definitions() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "repo_reading_plan",
+            "description": "Return a memory-, feedback-, tag- and stale-aware reading plan for a coding task.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Free-text task or question."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "repo_overview",
             "description": "Return a broad local repository overview with likely entry points, manifests and subsystems.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -532,6 +557,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
                     "path": {"type": "string", "description": "Project-relative file path."},
                     "scope": {"type": "string", "enum": ["file", "repo"], "default": "file", "description": "Use repo for project-wide notes that are not tied to one file."},
                     "note": {"type": "string", "description": "Short factual note; do not include source code snippets."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional structured tags such as mcp or server_startup."},
                     "topic": {"type": "string", "description": "Optional topic such as badge messages or runtime entrypoints."},
                     "query": {"type": "string", "description": "Optional user task/query that led to the note."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
@@ -649,6 +675,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
                 "properties": {
                     "id": {"type": "integer", "minimum": 1, "description": "Memory note id to update."},
                     "note": {"type": "string", "description": "Replacement short factual note; do not include source code snippets."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Replacement structured tags."},
                     "topic": {"type": "string", "description": "Replacement topic."},
                     "query": {"type": "string", "description": "Replacement task/query that led to the note."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "description": "Replacement memory source."},

@@ -41,13 +41,14 @@ For structured agent integrations:
 
 ```bash
 init-agent tool repo_graph_search --query "debug login session redirect" --json
+init-agent tool repo_reading_plan --query "debug login session redirect" --json
 init-agent tool repo_overview --json
 init-agent tool repo_entrypoints --json
 init-agent tool repo_related_file --path src/auth/session.py --json
 init-agent tool repo_symbol_callers --symbol validateSession --json
 init-agent tool repo_feedback_add --query "debug login session redirect" --path src/auth/session.py --rating useful --reason "verified session flow" --json
 init-agent tool repo_feedback_explain --query "debug login session redirect" --json
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
 init-agent tool repo_memory_audit --json
@@ -59,6 +60,13 @@ init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Ses
 These commands return stable JSON contracts with candidate files, symbols,
 file neighborhoods, callers, commits, follow-up commands, optional local
 feedback, local file notes and safety warnings.
+
+Use `repo_reading_plan` when local memory exists or when the task is broad
+enough that graph ranking alone may be noisy. It combines graph search, trace
+paths, file tags, memory notes, feedback and stale state into suggested actions
+such as `read`, `verify_stale`, `use_memory_context` and
+`skip_unless_needed`. It is still orientation only: stale memory means re-read
+the file, not trust the note.
 
 Context packs also include a confidence diagnostic and suggested next agent
 actions. If confidence is low or medium, agents should follow those actions
@@ -127,8 +135,9 @@ init-agent-mcp --root /path/to/repository
 ```
 
 The MCP server exposes the same tools: `repo_graph_search`, `repo_trace`,
-`repo_overview`, `repo_entrypoints`, `repo_related_file`, `repo_symbol_callers`,
-`repo_feedback_add`, `repo_feedback_explain`, `repo_memory_add`,
+`repo_reading_plan`, `repo_overview`, `repo_entrypoints`,
+`repo_related_file`, `repo_symbol_callers`, `repo_feedback_add`,
+`repo_feedback_explain`, `repo_memory_add`,
 `repo_memory_audit`, `repo_memory_list`, `repo_memory_search`,
 `repo_session_summary`, `repo_session_close`, `repo_memory_topics`,
 `repo_memory_update`, `repo_memory_delete` and `repo_file_notes`.

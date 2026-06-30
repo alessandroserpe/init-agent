@@ -13,6 +13,7 @@ from .graph_store import GraphStore
 from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
 from .query import callers_for_symbol, related
+from .reading_plan import build_reading_plan
 from .run import run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .trace import trace_query
@@ -229,6 +230,41 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
     }
 
 
+def repo_reading_plan(root: Path, query: str, limit: int = 10, prepare: bool = True) -> dict[str, Any]:
+    """Return a reading plan composed from graph, trace, memory, feedback and tags."""
+
+    bounded_limit = max(1, min(limit, 30))
+    if prepare:
+        run_result = run_query(root, f"reading plan {query}", overview=False)
+        preparation = run_result.get("preparation", {})
+        warnings = _warnings(run_result)
+    else:
+        readiness = _readiness(root)
+        preparation = _lazy_preparation(readiness["warnings"])
+        warnings = list(readiness["warnings"])
+    plan = build_reading_plan(root, query, limit=bounded_limit) if prepare or readiness["ready"] else {
+        "query": query,
+        "query_tokens": [],
+        "plan_items": [],
+        "memory_matches": [],
+        "repo_memory_context": [],
+        "recommended_actions": [],
+        "warnings": [],
+    }
+    return {
+        "tool": "repo_reading_plan",
+        "contract": TOOL_CONTRACT_VERSION,
+        "query": query,
+        "preparation": preparation,
+        "query_tokens": plan.get("query_tokens", []),
+        "plan_items": plan.get("plan_items", []),
+        "memory_matches": plan.get("memory_matches", []),
+        "repo_memory_context": plan.get("repo_memory_context", []),
+        "recommended_actions": plan.get("recommended_actions", []),
+        "warnings": [*warnings, *plan.get("warnings", [])],
+    }
+
+
 def repo_feedback_add(
     root: Path,
     query: str,
@@ -301,6 +337,7 @@ def repo_memory_add(
     source: str = "agent",
     evidence: str = "read_excerpt",
     scope: str = "file",
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record a local file note after an agent understands a file."""
 
@@ -316,6 +353,7 @@ def repo_memory_add(
         "query": query,
         "source": source,
         "evidence": evidence,
+        "tags": tags or [],
         "recorded": False,
         "memory": None,
         "warnings": warnings,
@@ -326,7 +364,7 @@ def repo_memory_add(
     }
     if not readiness["ready"]:
         return result
-    record = add_note(root, normalized_path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope)
+    record = add_note(root, normalized_path, note, topic=topic, query=query, source=source, evidence=evidence, scope=scope, tags=tags)
     result.update(
         {
             "scope": record["scope"],
@@ -335,6 +373,7 @@ def repo_memory_add(
             "query": record["query"],
             "source": record["source"],
             "evidence": record["evidence"],
+            "tags": record.get("tags", []),
             "recorded": True,
             "memory": record,
         }
@@ -455,13 +494,14 @@ def repo_memory_update(
     query: str | None = None,
     source: str | None = None,
     evidence: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Update one local memory note and refresh its file hash when applicable."""
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     updated = (
-        update_note(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence)
+        update_note(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags)
         if readiness["ready"]
         else {"updated": False, "id": note_id, "memory": None}
     )
@@ -899,6 +939,7 @@ def _compact_memory_note(note: dict[str, Any]) -> dict[str, Any]:
         "topic": note.get("topic", ""),
         "query": note.get("query", ""),
         "note": note.get("note", ""),
+        "tags": list(note.get("tags") or []),
         "file_sha256": note.get("file_sha256", ""),
         "current_file_sha256": note.get("current_file_sha256", ""),
         "stale": note.get("stale"),
@@ -1058,6 +1099,42 @@ def render_repo_trace_text(result: dict[str, Any]) -> str:
         lines.append(f"- {path}")
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands", []))
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
+    lines = [
+        "Init Agent Tool: repo_reading_plan",
+        "",
+        f"Query: {result['query']}",
+        "",
+        "Reading plan:",
+    ]
+    if not result.get("plan_items"):
+        lines.append("-")
+    for item in result.get("plan_items", [])[:10]:
+        lines.append(f"{item['rank']}. {item['path']} score {item['score']:.2f}")
+        lines.append(f"   action: {item.get('action', '-')}")
+        lines.append(f"   confidence: {item.get('confidence', '-')}")
+        sources = ", ".join(item.get("sources") or [])
+        lines.append(f"   sources: {sources or '-'}")
+        tags = ", ".join(item.get("tags") or [])
+        if tags:
+            lines.append(f"   tags: {tags}")
+        if item.get("reason"):
+            lines.append(f"   reason: {item['reason']}")
+        for note in item.get("memory", [])[:2]:
+            stale = "stale" if note.get("stale") else "fresh"
+            if note.get("stale") is None:
+                stale = "repo/unknown"
+            lines.append(f"   memory #{note['id']} ({stale}): {note.get('topic') or '-'}")
+    lines.extend(["", "Recommended actions:"])
+    _append_commands(lines, result.get("recommended_actions", []))
+    if result.get("repo_memory_context"):
+        lines.extend(["", "Repo memory context:"])
+        for note in result["repo_memory_context"][:5]:
+            lines.append(f"- #{note['id']} {note.get('topic') or '-'}: {note.get('note') or '-'}")
     _append_warnings(lines, result.get("warnings", []))
     return "\n".join(lines)
 
@@ -1233,6 +1310,7 @@ def render_repo_memory_add_text(result: dict[str, Any]) -> str:
         f"Query: {result['query'] or '-'}",
         f"Source: {result['source']}",
         f"Evidence: {result['evidence']}",
+        f"Tags: {', '.join(result.get('tags') or []) or '-'}",
         f"Recorded: {'yes' if result['recorded'] else 'no'}",
     ]
     if result.get("memory"):
@@ -1260,6 +1338,8 @@ def render_repo_memory_search_text(result: dict[str, Any]) -> str:
             lines.append(f"  topic: {item['topic']}")
         if item.get("evidence"):
             lines.append(f"  evidence: {item['evidence']}")
+        if item.get("tags"):
+            lines.append(f"  tags: {', '.join(item['tags'])}")
         if item.get("stale"):
             lines.append(f"  stale: {item.get('stale_reason') or 'yes'}")
         elif item.get("stale") is None:

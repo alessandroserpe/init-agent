@@ -23,6 +23,7 @@ from .agent_tools import (
     render_repo_memory_topics_text,
     render_repo_memory_update_text,
     render_repo_overview_text,
+    render_repo_reading_plan_text,
     render_repo_related_file_text,
     render_repo_session_close_text,
     render_repo_session_summary_text,
@@ -45,6 +46,7 @@ from .agent_tools import (
     repo_memory_topics,
     repo_memory_update,
     repo_overview,
+    repo_reading_plan,
     repo_related_file,
     repo_session_close,
     repo_session_summary,
@@ -123,6 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     trace_parser.add_argument("--max-depth", type=int, default=4, help="Maximum graph traversal depth.")
     trace_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     trace_parser.set_defaults(handler=cmd_trace)
+
+    plan_parser = subparsers.add_parser("plan", help="Build a memory- and feedback-aware reading plan.")
+    plan_parser.add_argument("text", nargs="+", help="Free-text task or question.")
+    plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
+    plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    plan_parser.set_defaults(handler=cmd_plan)
 
     overview_parser = subparsers.add_parser("overview", help="Show a broad repository orientation pack.")
     overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -271,6 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
     repo_trace_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_trace_parser.set_defaults(handler=cmd_tool_repo_trace)
 
+    repo_reading_plan_parser = tool_subparsers.add_parser("repo_reading_plan", help="Return a memory- and feedback-aware reading plan.")
+    repo_reading_plan_parser.add_argument("--query", required=True, help="Free-text task or question.")
+    repo_reading_plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
+    repo_reading_plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_parser.set_defaults(handler=cmd_tool_repo_reading_plan)
+
     repo_related_file_parser = tool_subparsers.add_parser("repo_related_file", help="Inspect one indexed file neighborhood.")
     repo_related_file_parser.add_argument("--path", required=True, help="Project-relative file path.")
     repo_related_file_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -312,6 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_add_parser.add_argument("--note", required=True, help="Short factual note. Do not include source snippets.")
     repo_memory_add_parser.add_argument("--topic", default="", help="Optional topic for the note.")
     repo_memory_add_parser.add_argument("--query", default="", help="Optional task/query that led to the note.")
+    repo_memory_add_parser.add_argument("--tag", action="append", default=[], help="Structured tag for the note. Can be repeated.")
     repo_memory_add_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Memory source.")
     repo_memory_add_parser.add_argument(
         "--evidence",
@@ -384,6 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_memory_update_parser.add_argument("--note", help="Replacement short factual note. Do not include source snippets.")
     repo_memory_update_parser.add_argument("--topic", help="Replacement topic.")
     repo_memory_update_parser.add_argument("--query", help="Replacement task/query that led to the note.")
+    repo_memory_update_parser.add_argument("--tag", action="append", help="Replacement structured tag. Can be repeated.")
     repo_memory_update_parser.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement memory source.")
     repo_memory_update_parser.add_argument(
         "--evidence",
@@ -633,6 +649,16 @@ def cmd_trace(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_trace_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_plan(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan(root, _text_arg(args.text), limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 
@@ -1241,6 +1267,16 @@ def cmd_tool_repo_trace(args: argparse.Namespace) -> int:
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
 
 
+def cmd_tool_repo_reading_plan(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan(root, args.query, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_text(result))
+    return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
 def cmd_tool_repo_related_file(args: argparse.Namespace) -> int:
     root = project_root()
     result = repo_related_file(root, args.path)
@@ -1319,6 +1355,7 @@ def cmd_tool_repo_memory_add(args: argparse.Namespace) -> int:
             source=args.source,
             evidence=args.evidence,
             scope=args.scope,
+            tags=args.tag,
         )
     except ValueError as exc:
         print(f"Memory failed: {exc}", file=sys.stderr)
@@ -1425,6 +1462,7 @@ def cmd_tool_repo_memory_update(args: argparse.Namespace) -> int:
             query=args.query,
             source=args.source,
             evidence=args.evidence,
+            tags=args.tag,
         )
     except ValueError as exc:
         print(f"Memory update failed: {exc}", file=sys.stderr)

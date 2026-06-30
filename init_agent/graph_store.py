@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS term_stats (
     PRIMARY KEY(term, source)
 );
 
+CREATE TABLE IF NOT EXISTS file_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL,
+    tag TEXT NOT NULL,
+    source TEXT NOT NULL,
+    weight REAL NOT NULL,
+    FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE,
+    UNIQUE(file_id, tag, source)
+);
+
 CREATE TABLE IF NOT EXISTS orientation_feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query TEXT NOT NULL,
@@ -101,6 +111,7 @@ CREATE TABLE IF NOT EXISTS agent_notes (
     query TEXT,
     note TEXT NOT NULL,
     note_tokens_json TEXT NOT NULL,
+    tags_json TEXT,
     file_sha256 TEXT,
     evidence TEXT,
     source TEXT NOT NULL,
@@ -166,6 +177,7 @@ class GraphStore:
         self._ensure_column("agent_notes", "file_sha256", "TEXT")
         self._ensure_column("agent_notes", "evidence", "TEXT")
         self._ensure_column("agent_notes", "scope", "TEXT")
+        self._ensure_column("agent_notes", "tags_json", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -265,6 +277,26 @@ class GraphStore:
             ],
         )
 
+    def replace_file_tags(self, file_id: int, tags: Iterable[dict[str, Any]]) -> None:
+        tag_items = list(tags)
+        self.connection.execute("DELETE FROM file_tags WHERE file_id = ?", (file_id,))
+        self.connection.executemany(
+            """
+            INSERT INTO file_tags(file_id, tag, source, weight)
+            VALUES(?, ?, ?, ?)
+            ON CONFLICT(file_id, tag, source) DO UPDATE SET weight=excluded.weight
+            """,
+            [
+                (
+                    file_id,
+                    str(item["tag"]),
+                    str(item.get("source") or "auto"),
+                    float(item.get("weight", 1.0)),
+                )
+                for item in tag_items
+            ],
+        )
+
     def replace_git_history(self, commits: Iterable[dict[str, Any]]) -> None:
         self.connection.execute("DELETE FROM git_commit_files")
         self.connection.execute("DELETE FROM git_commits")
@@ -303,6 +335,7 @@ class GraphStore:
         ]
         self.connection.execute("DELETE FROM relations WHERE source_type = 'file' AND source_id = ?", (file_id,))
         self.connection.execute("DELETE FROM relations WHERE target_type = 'file' AND target_id = ?", (path,))
+        self.connection.execute("DELETE FROM file_tags WHERE file_id = ?", (file_id,))
         if symbol_ids:
             placeholders = ",".join("?" for _ in symbol_ids)
             self.connection.execute(f"DELETE FROM relations WHERE target_type = 'symbol' AND target_id IN ({placeholders})", symbol_ids)

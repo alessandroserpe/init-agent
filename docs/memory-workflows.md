@@ -42,6 +42,28 @@ init-agent tool repo_memory_audit --json
 init-agent tool repo_file_notes --path src/server/app.py --json
 ```
 
+## Tags
+
+Memory notes can include structured tags. Tags are useful when natural-language
+notes are too loose for ranking, for example `mcp`, `server_startup`,
+`login_session` or `crud_builder`.
+
+```bash
+init-agent tool repo_memory_add \
+  --path src/server/app.py \
+  --topic "server startup" \
+  --tag server_startup \
+  --tag fastapi \
+  --evidence read_excerpt \
+  --note "Creates the API app and wires middleware/routes." \
+  --json
+```
+
+If tags are omitted, init-agent derives lightweight tags from the path, topic,
+query and note. During `map`, it also derives file tags from path, filename,
+symbols and graph relations. These tags help `repo_reading_plan`; they do not
+replace reading files before editing.
+
 ## Decision Log
 
 Use repo-scoped memories for decisions that affect the whole project or an area

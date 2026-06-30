@@ -207,8 +207,10 @@ context.
 | `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
 | `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths from entry points through local graph relations. |
+| `init-agent plan "<task>"` | Build a memory-, feedback-, tag- and stale-aware reading plan. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Agent-facing JSON investigation-path trace contract. |
+| `init-agent tool repo_reading_plan --query "<task>" --json` | Agent-facing JSON reading plan that combines graph, trace, memory, feedback and tags. |
 | `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
 | `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
@@ -266,9 +268,10 @@ See [docs/feedback.md](docs/feedback.md) for details.
 Agents can also store short local file notes after understanding code:
 
 ```bash
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
+init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
 init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
 init-agent tool repo_memory_search --query "login session validation" --json
+init-agent tool repo_reading_plan --query "debug login session redirect" --json
 init-agent tool repo_memory_audit --json
 init-agent tool repo_memory_topics --topic "login session" --json
 init-agent tool repo_memory_list --stale --json
@@ -280,9 +283,11 @@ reading files before editing. Memory results include a stale flag when the
 indexed file hash changed after the note was recorded. Notes also include an
 evidence field so agents can distinguish full-file reads, excerpts, manifest
 checks, graph-only inferences, user decisions, implementation notes and
-planning notes. Repo-wide memories are not tied to a file hash and report stale
-status as not applicable. They can be recorded before the first `init-agent map`
-when a project starts from an empty directory; keep them small and factual.
+planning notes. Notes can also carry structured tags; if tags are omitted,
+init-agent derives lightweight tags from the path, topic, query and note.
+Repo-wide memories are not tied to a file hash and report stale status as not
+applicable. They can be recorded before the first `init-agent map` when a
+project starts from an empty directory; keep them small and factual.
 For practical decision-log and area-map patterns, see
 [docs/memory-workflows.md](docs/memory-workflows.md).
 

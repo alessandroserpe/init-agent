@@ -33,6 +33,7 @@ def add_note(
     source: str = "agent",
     evidence: str = "read_excerpt",
     scope: str = "file",
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     normalized_source = source.lower().strip()
     if normalized_source not in SOURCES:
@@ -49,7 +50,8 @@ def add_note(
     clean_note = note.strip()
     if not clean_note:
         raise ValueError("note is required")
-    token_text = " ".join([normalized_scope, normalized_path, topic, query, normalized_evidence, clean_note])
+    normalized_tags = _normalize_tags(tags, normalized_path, topic, query, clean_note)
+    token_text = " ".join([normalized_scope, normalized_path, topic, query, normalized_evidence, clean_note, *normalized_tags])
     tokens = tokenize_query(token_text)
     record = {
         "path": normalized_path,
@@ -58,6 +60,7 @@ def add_note(
         "query": query.strip(),
         "note": clean_note,
         "note_tokens_json": json.dumps(tokens, sort_keys=True),
+        "tags_json": json.dumps(normalized_tags, sort_keys=True),
         "file_sha256": None,
         "evidence": normalized_evidence,
         "source": normalized_source,
@@ -69,8 +72,8 @@ def add_note(
         record["file_sha256"] = _file_sha256(store, normalized_path) if normalized_scope == "file" else None
         cursor = store.connection.execute(
             """
-            INSERT INTO agent_notes(path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at)
-            VALUES(:path, :scope, :topic, :query, :note, :note_tokens_json, :file_sha256, :evidence, :source, :created_at)
+            INSERT INTO agent_notes(path, scope, topic, query, note, note_tokens_json, tags_json, file_sha256, evidence, source, created_at)
+            VALUES(:path, :scope, :topic, :query, :note, :note_tokens_json, :tags_json, :file_sha256, :evidence, :source, :created_at)
             """,
             record,
         )
@@ -110,7 +113,7 @@ def list_notes(
         store.initialize()
         rows = store.connection.execute(
             f"""
-            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            SELECT id, path, scope, topic, query, note, note_tokens_json, tags_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             {where}
             ORDER BY id DESC
@@ -136,7 +139,7 @@ def delete_note(root: Path, note_id: int) -> dict[str, Any]:
         store.initialize()
         row = store.connection.execute(
             """
-            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            SELECT id, path, scope, topic, query, note, note_tokens_json, tags_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             WHERE id = ?
             """,
@@ -159,6 +162,7 @@ def update_note(
     query: str | None = None,
     source: str | None = None,
     evidence: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     if note_id <= 0:
         raise ValueError("note id must be positive")
@@ -167,7 +171,7 @@ def update_note(
         store.initialize()
         row = store.connection.execute(
             """
-            SELECT id, path, scope, topic, query, note, note_tokens_json, file_sha256, evidence, source, created_at
+            SELECT id, path, scope, topic, query, note, note_tokens_json, tags_json, file_sha256, evidence, source, created_at
             FROM agent_notes
             WHERE id = ?
             """,
@@ -190,7 +194,8 @@ def update_note(
         clean_query = query.strip() if query is not None else existing["query"]
         scope = existing["scope"]
         path = existing["path"]
-        token_text = " ".join([scope, path, clean_topic, clean_query, normalized_evidence, clean_note])
+        clean_tags = _normalize_tags(tags, path, clean_topic, clean_query, clean_note) if tags is not None else list(existing.get("tags") or [])
+        token_text = " ".join([scope, path, clean_topic, clean_query, normalized_evidence, clean_note, *clean_tags])
         tokens = tokenize_query(token_text)
         file_sha256 = _file_sha256(store, path) if scope == "file" else None
         record = {
@@ -201,6 +206,7 @@ def update_note(
             "query": clean_query,
             "note": clean_note,
             "note_tokens_json": json.dumps(tokens, sort_keys=True),
+            "tags_json": json.dumps(clean_tags, sort_keys=True),
             "file_sha256": file_sha256,
             "evidence": normalized_evidence,
             "source": normalized_source,
@@ -213,6 +219,7 @@ def update_note(
                 query = :query,
                 note = :note,
                 note_tokens_json = :note_tokens_json,
+                tags_json = :tags_json,
                 file_sha256 = :file_sha256,
                 evidence = :evidence,
                 source = :source,
@@ -342,6 +349,10 @@ def _row_to_note(row: Any) -> dict[str, Any]:
         tokens = json.loads(row["note_tokens_json"])
     except Exception:
         tokens = []
+    try:
+        tags = json.loads(row["tags_json"] or "[]")
+    except Exception:
+        tags = []
     return {
         "id": int(row["id"]),
         "path": row["path"],
@@ -350,6 +361,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
         "query": row["query"] or "",
         "note": row["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
+        "tags": tags if isinstance(tags, list) else [],
         "file_sha256": row["file_sha256"] or "",
         "evidence": row["evidence"] or "unknown",
         "source": row["source"],
@@ -359,6 +371,7 @@ def _row_to_note(row: Any) -> dict[str, Any]:
 
 def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
     tokens = json.loads(str(record["note_tokens_json"]))
+    tags = json.loads(str(record.get("tags_json") or "[]"))
     file_sha256 = str(record.get("file_sha256") or "")
     return {
         "id": int(record["id"]),
@@ -368,6 +381,7 @@ def _record_to_note(record: dict[str, Any]) -> dict[str, Any]:
         "query": record["query"],
         "note": record["note"],
         "tokens": tokens if isinstance(tokens, list) else [],
+        "tags": tags if isinstance(tags, list) else [],
         "file_sha256": file_sha256,
         "current_file_sha256": file_sha256,
         "stale": None if record["scope"] == "repo" else (False if file_sha256 else True),
@@ -386,6 +400,7 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
         "topic": note["topic"],
         "query": note["query"],
         "note": note["note"],
+        "tags": list(note.get("tags") or []),
         "file_sha256": note.get("file_sha256", ""),
         "current_file_sha256": note.get("current_file_sha256", ""),
         "stale": note.get("stale"),
@@ -444,8 +459,26 @@ def _score(query_tokens: set[str], note_tokens: set[str], query: str, note: dict
         score += 0.5
     if any(token and token in path for token in query_tokens):
         score += 0.2
+    if query_tokens.intersection(set(str(tag) for tag in note.get("tags") or [])):
+        score += 0.4
     return score
 
 
 def _normalize_path(path: str | None) -> str:
     return Path(path or "").as_posix().lstrip("./")
+
+
+def _normalize_tags(tags: list[str] | None, path: str, topic: str, query: str, note: str) -> list[str]:
+    raw_tags: list[str] = []
+    for tag in tags or []:
+        raw_tags.extend(tokenize_query(str(tag)))
+    if not raw_tags:
+        raw_tags.extend(tokenize_query(" ".join([path, topic, query, note]))[:12])
+    seen: set[str] = set()
+    result: list[str] = []
+    for tag in raw_tags:
+        if tag in seen:
+            continue
+        seen.add(tag)
+        result.append(tag)
+    return result[:20]

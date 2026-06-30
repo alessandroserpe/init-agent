@@ -11,7 +11,7 @@ from typing import Any
 
 from .feedback import feedback_signals
 from .graph_store import GraphStore
-from .text_tokens import is_query_noise_token, tokenize_query
+from .text_tokens import identifier_terms, is_query_noise_token, tokenize_query
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
@@ -513,15 +513,10 @@ def _basename(path: str) -> str:
 
 def _path_tokens(value: str) -> list[str]:
     parts = []
-    for token in re.split(r"[^a-z0-9]+", value.lower()):
+    for token in identifier_terms(value):
         if len(token) >= 3:
-            parts.extend(_split_camel_like(token))
+            parts.append(token)
     return list(dict.fromkeys(parts))
-
-
-def _split_camel_like(token: str) -> list[str]:
-    pieces = re.sub(r"([a-z])([A-Z])", r"\1 \2", token).lower().split()
-    return pieces or [token]
 
 
 def _best_soft_match(query_token: str, candidates: list[str]) -> float:

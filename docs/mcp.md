@@ -7,6 +7,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 
 - `repo_graph_search`
 - `repo_trace`
+- `repo_reading_plan`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -105,6 +106,7 @@ include:
 
 - `repo_graph_search`
 - `repo_trace`
+- `repo_reading_plan`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -286,8 +288,8 @@ Expected result:
 
 - `init_agent` is listed as enabled.
 - The repo tools are available, for example `repo_overview`,
-  `repo_graph_search`, `repo_related_file`, `repo_memory_search` and
-  `repo_memory_audit`.
+  `repo_graph_search`, `repo_reading_plan`, `repo_related_file`,
+  `repo_memory_search` and `repo_memory_audit`.
 - Calling `repo_overview` reports the same repository root you started Codex
   from, unless you intentionally pinned `--root`.
 

@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from collections import Counter, defaultdict
 from math import log
 from pathlib import Path
-from typing import Iterable
 
-from .text_tokens import is_query_noise_token
-
-
-TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+from .text_tokens import identifier_terms, is_query_noise_token
 
 
 def rebuild_term_stats(conn: sqlite3.Connection) -> int:
@@ -67,20 +62,13 @@ def _source_stats(source: str, documents: list[list[str]]) -> list[tuple[str, st
 
 def _path_terms(value: str) -> list[str]:
     terms: list[str] = []
-    for token in re.split(r"[^A-Za-z0-9_]+", value):
+    for token in identifier_terms(value):
         terms.extend(_basic_terms(token))
     return terms
 
 
 def _basic_terms(value: str) -> list[str]:
     terms: list[str] = []
-    for token in TOKEN_RE.findall(value):
-        terms.extend(_split_identifier(token))
+    for token in identifier_terms(value):
+        terms.append(token)
     return [term for term in terms if not is_query_noise_token(term)]
-
-
-def _split_identifier(token: str) -> Iterable[str]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token.replace("_", " "))
-    for part in spaced.lower().split():
-        if part:
-            yield part

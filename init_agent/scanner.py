@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .language_detector import detect_language, detect_role
-from .symbol_extractor import extract_symbols_and_relations
+from .symbol_extractor import ExtractedRelation, ExtractedSymbol, extract_symbols_and_relations
+from .text_tokens import is_query_noise_token, tokenize_query
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "6"
+INDEX_VERSION = "7"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:
@@ -101,8 +102,44 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
         ],
         relations,
     )
+    if hasattr(store, "replace_file_tags"):
+        store.replace_file_tags(file_id, _file_tags(rel_path, language, role, symbols, extracted_relations))
     return {"path": rel_path, "symbols": len(symbols), "relations": len(relations) + len(symbols)}
 
 
 def iter_project_files(root: Path) -> list[Path]:
     return iter_indexable_files(root)
+
+
+def _file_tags(
+    rel_path: str,
+    language: str,
+    role: str,
+    symbols: list[ExtractedSymbol],
+    relations: list[ExtractedRelation],
+) -> list[dict[str, str | float]]:
+    weighted: dict[tuple[str, str], float] = {}
+
+    def add_many(source: str, text: str, weight: float) -> None:
+        for token in tokenize_query(text):
+            if is_query_noise_token(token):
+                continue
+            key = (token, source)
+            weighted[key] = max(weighted.get(key, 0.0), weight)
+
+    path = Path(rel_path)
+    add_many("path", rel_path, 1.0)
+    add_many("filename", path.stem, 1.3)
+    add_many("language", language, 0.6)
+    add_many("role", role, 0.6)
+    for symbol in symbols:
+        add_many("symbol", symbol.name, 1.2)
+        add_many("symbol_kind", symbol.kind, 0.5)
+    for relation in relations:
+        add_many("relation", relation.relation, 0.8)
+        add_many("relation_target", str(relation.target), 1.0)
+
+    return [
+        {"tag": tag, "source": source, "weight": round(weight, 3)}
+        for (tag, source), weight in sorted(weighted.items())
+    ]

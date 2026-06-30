@@ -45,9 +45,18 @@ init-agent run --overview --markdown
 init-agent run "<user task>" --markdown
 ```
 
-4. Use the overview or context pack to choose the first files to inspect:
+4. If the repository has local memory/feedback or the task is broad/noisy, build
+   a reading plan before opening many files:
+
+```bash
+init-agent plan "<user task>"
+```
+
+5. Use the overview, context pack or reading plan to choose the first files to inspect:
 
 - Suggested first reads
+- Reading plan actions such as `read`, `verify_stale` or `skip_unless_needed`
+- Fresh or stale memory attached to candidate files
 - Likely entry points
 - Package manifests and config
 - Major subsystems
@@ -55,9 +64,9 @@ init-agent run "<user task>" --markdown
 - Recent related commits
 - Reasons for each candidate file
 
-5. Read the suggested files directly from the filesystem before proposing or making code changes.
+6. Read the suggested files directly from the filesystem before proposing or making code changes.
 
-6. After reading files, keep a tiny verification ledger for yourself:
+7. After reading files, keep a tiny verification ledger for yourself:
 
 - verified central files: files that were actually useful for the task
 - verified noisy files: files that looked relevant in the ranking but were not
@@ -90,6 +99,13 @@ reading:
 
 ```bash
 init-agent trace "<user task>"
+```
+
+If the task needs a combined view of graph, trace, memory, feedback, tags and
+stale state, use plan:
+
+```bash
+init-agent plan "<user task>"
 ```
 
 If the task is large or the user asks about context savings:
@@ -177,6 +193,8 @@ local note with `repo_memory_add` or search previous notes with
 not copy source code. Include an evidence level when possible, such as
 `read_full_file`, `read_excerpt`, `manifest_only`, `inferred_from_graph`,
 `user_decision`, `implementation_note` or `planning_note`.
+Use short structured tags when they would help future retrieval, such as
+`mcp`, `server_startup`, `login_session` or `crud_builder`.
 
 Memory is expected after non-trivial work when you learned something stable
 that would save future context, such as:

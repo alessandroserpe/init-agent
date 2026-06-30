@@ -22,6 +22,7 @@ from init_agent.mcp_server import InitAgentMcpServer, _read_message, _write_mess
 from init_agent.query import related as related_query
 from init_agent.refresh import refresh_index
 from init_agent.symbol_extractor import extract_symbols_and_relations
+from init_agent.text_tokens import identifier_terms, tokenize_query
 from experiments.evaluate import (
     candidate_paths_for_case,
     case_command,
@@ -38,6 +39,19 @@ from experiments.evaluate import (
 
 
 class InitAgentBaseTests(unittest.TestCase):
+    def test_tokenize_query_splits_camel_case_acronyms_and_snake_case(self) -> None:
+        raw_terms = identifier_terms("MCPServerStartup repoGraphSearch")
+        self.assertIn("repo", raw_terms)
+        tokens = tokenize_query("MCPServerStartup repoGraphSearch chat_intent_router.php")
+        self.assertIn("mcp", tokens)
+        self.assertIn("server", tokens)
+        self.assertIn("startup", tokens)
+        self.assertIn("graph", tokens)
+        self.assertIn("search", tokens)
+        self.assertIn("chat", tokens)
+        self.assertIn("intent", tokens)
+        self.assertIn("router", tokens)
+
     def test_agent_skill_template_documents_core_workflow(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skill_path = root / "skills" / "init-agent-orientation" / "SKILL.md"
@@ -711,9 +725,13 @@ class InitAgentBaseTests(unittest.TestCase):
                                 "debug login session",
                                 "--note",
                                 "Session validation lives here; verified during login redirect debugging.",
-                                "--evidence",
-                                "read_full_file",
-                                "--json",
+                            "--evidence",
+                            "read_full_file",
+                            "--tag",
+                            "login_session",
+                            "--tag",
+                            "redirectFlow",
+                            "--json",
                             ]
                         ),
                         0,
@@ -724,6 +742,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertEqual(added["memory"]["scope"], "file")
                 self.assertFalse(added["memory"]["stale"])
                 self.assertEqual(added["memory"]["evidence"], "read_full_file")
+                self.assertIn("login", added["memory"]["tags"])
+                self.assertIn("redirect", added["memory"]["tags"])
 
                 search_output = StringIO()
                 with redirect_stdout(search_output):
@@ -734,6 +754,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 searched = json.loads(search_output.getvalue())
                 self.assertEqual(searched["tool"], "repo_memory_search")
                 self.assertEqual(searched["memory"]["matches"][0]["path"], "src/auth/session.py")
+                self.assertIn("login", searched["memory"]["matches"][0]["tags"])
 
                 topics_output = StringIO()
                 with redirect_stdout(topics_output):
@@ -796,6 +817,73 @@ class InitAgentBaseTests(unittest.TestCase):
                     )
                 empty_notes = json.loads(empty_output.getvalue())
                 self.assertEqual(empty_notes["notes"], [])
+            finally:
+                os.chdir(previous)
+
+    def test_tool_repo_reading_plan_uses_memory_tags_feedback_and_stale_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                self.assertEqual(
+                    main(
+                        [
+                            "tool",
+                            "repo_memory_add",
+                            "--path",
+                            "src/auth/session.py",
+                            "--topic",
+                            "login session",
+                            "--query",
+                            "debug login session",
+                            "--note",
+                            "Session validation lives here.",
+                            "--tag",
+                            "login_session",
+                            "--json",
+                        ]
+                    ),
+                    0,
+                )
+                self.assertEqual(
+                    main(
+                        [
+                            "tool",
+                            "repo_feedback_add",
+                            "--query",
+                            "debug login session",
+                            "--path",
+                            "README.md",
+                            "--rating",
+                            "noisy",
+                            "--reason",
+                            "verified docs-only for this task",
+                            "--json",
+                        ]
+                    ),
+                    0,
+                )
+                session = root / "src" / "auth" / "session.py"
+                session.write_text(session.read_text(encoding="utf-8") + "\nSESSION_TIMEOUT = 60\n", encoding="utf-8")
+                self.assertEqual(main(["map"]), 0)
+
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(["tool", "repo_reading_plan", "--query", "debug login session", "--json"]),
+                        0,
+                    )
+                data = json.loads(output.getvalue())
+                self.assertEqual(data["tool"], "repo_reading_plan")
+                by_path = {item["path"]: item for item in data["plan_items"]}
+                self.assertIn("src/auth/session.py", by_path)
+                self.assertEqual(by_path["src/auth/session.py"]["action"], "verify_stale")
+                self.assertIn("memory", by_path["src/auth/session.py"]["sources"])
+                self.assertIn("login", by_path["src/auth/session.py"]["tags"])
+                self.assertTrue(by_path["src/auth/session.py"]["memory"][0]["stale"])
+                self.assertTrue(data["recommended_actions"])
             finally:
                 os.chdir(previous)
 
@@ -1237,6 +1325,7 @@ class InitAgentBaseTests(unittest.TestCase):
                 tool_names,
                 {
                     "repo_graph_search",
+                    "repo_reading_plan",
                     "repo_trace",
                     "repo_entrypoints",
                     "repo_feedback_add",
@@ -2142,7 +2231,7 @@ class InitAgentBaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
-            (root / "app.py").write_text("class App:\n    pass\n\ndef main():\n    return App()\n", encoding="utf-8")
+            (root / "app.py").write_text("class MCPServerStartup:\n    pass\n\ndef main():\n    return MCPServerStartup()\n", encoding="utf-8")
             previous = Path.cwd()
             try:
                 os.chdir(root)
@@ -2151,10 +2240,24 @@ class InitAgentBaseTests(unittest.TestCase):
                 with GraphStore(root) as store:
                     counts = store.counts()
                     term_count = store.connection.execute("SELECT COUNT(*) AS count FROM term_stats").fetchone()["count"]
+                    tags = {
+                        row["tag"]
+                        for row in store.connection.execute(
+                            """
+                            SELECT t.tag
+                            FROM file_tags t
+                            JOIN files f ON f.id = t.file_id
+                            WHERE f.path = 'app.py'
+                            """
+                        ).fetchall()
+                    }
                 self.assertGreaterEqual(counts["files"], 2)
                 self.assertGreaterEqual(counts["symbols"], 2)
                 self.assertGreaterEqual(counts["relations"], 2)
                 self.assertGreater(term_count, 0)
+                self.assertIn("mcp", tags)
+                self.assertIn("server", tags)
+                self.assertIn("startup", tags)
             finally:
                 os.chdir(previous)
 
