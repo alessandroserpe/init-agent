@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,15 +21,32 @@ DEFAULT_EXCLUDED_DIRS = {
     ".vscode",
     ".idea",
     ".history",
+    ".cache",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    ".turbo",
+    ".parcel-cache",
     "node_modules",
     "vendor",
     "dist",
     "build",
+    "out",
+    "target",
     ".venv",
+    "venv",
+    "env",
+    ".env",
     "__pycache__",
     ".next",
+    ".nuxt",
+    ".svelte-kit",
     "storage",
     "cache",
+    "coverage",
+    "htmlcov",
     "logs",
     "tmp",
     "temp",
@@ -159,6 +177,7 @@ def load_ignore_rules(root: Path) -> dict[str, set[str]]:
         "exclude_dirs": set(DEFAULT_EXCLUDED_DIRS),
         "exclude_files": set(DEFAULT_EXCLUDED_FILES),
         "exclude_extensions": set(DEFAULT_EXCLUDED_EXTENSIONS),
+        "include_hidden_dirs": set(),
     }
     path = config_path(root)
     if not path.exists():
@@ -188,6 +207,8 @@ def is_indexable_path(path: Path, root: Path, rules: dict[str, set[str]] | None 
         return False
     if any(_is_excluded_dir_part(part) for part in rel_parts[:-1]):
         return False
+    if any(_is_hidden_dir_part(part, ignore) for part in rel_parts[:-1]):
+        return False
     if path.name in ignore["exclude_files"]:
         return False
     if path.suffix.lower() in ignore["exclude_extensions"]:
@@ -197,6 +218,14 @@ def is_indexable_path(path: Path, root: Path, rules: dict[str, set[str]] | None 
 
 def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -> list[Path]:
     ignore = rules or load_ignore_rules(root)
+    git_paths = _git_indexable_paths(root)
+    if git_paths is not None:
+        files = []
+        for rel_path in git_paths:
+            path = root / rel_path
+            if path.is_file() and is_indexable_path(path, root, ignore):
+                files.append(path)
+        return sorted(files)
     files = []
     for current_root, dirnames, filenames in os.walk(root):
         current = Path(current_root)
@@ -205,6 +234,7 @@ def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -
             for dirname in dirnames
             if dirname not in ignore["exclude_dirs"]
             and not _is_excluded_dir_part(dirname)
+            and not _is_hidden_dir_part(dirname, ignore)
             and is_indexable_path(current / dirname, root, ignore)
         ]
         for filename in filenames:
@@ -224,6 +254,31 @@ def is_hidden_or_excluded_dir(path: Path, root: Path, excluded: set[str]) -> boo
 
 def _is_excluded_dir_part(part: str) -> bool:
     return any(part.endswith(suffix) for suffix in DEFAULT_EXCLUDED_DIR_SUFFIXES)
+
+
+def _is_hidden_dir_part(part: str, ignore: dict[str, set[str]]) -> bool:
+    if not part.startswith(".") or part in {".", ".."}:
+        return False
+    return part not in ignore.get("include_hidden_dirs", set())
+
+
+def _git_indexable_paths(root: Path) -> list[str] | None:
+    if not (root / ".git").exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-co", "--exclude-standard"],
+            cwd=root,
+            env=env_with_clean_locale(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def format_count(label: str, count: int) -> str:

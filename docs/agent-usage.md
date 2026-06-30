@@ -60,6 +60,12 @@ These commands return stable JSON contracts with candidate files, symbols,
 file neighborhoods, callers, commits, follow-up commands, optional local
 feedback, local file notes and safety warnings.
 
+Context packs also include a confidence diagnostic and suggested next agent
+actions. If confidence is low or medium, agents should follow those actions
+before broad filesystem exploration: check `doctor`, rebuild stale indexes with
+`map`, retry with a narrower query, inspect related files/symbols and record
+noisy or missing feedback after verification.
+
 For feedback specifically, use the loop documented in
 [feedback.md](feedback.md): run orientation, verify files, record useful/noisy/
 missing feedback only for verified outcomes, then inspect

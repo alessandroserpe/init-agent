@@ -4,6 +4,7 @@ import os
 import json
 import argparse
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -447,6 +448,8 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertIn("src/auth/session.py", data["suggested_first_reads"])
                 self.assertIn("symbols", data)
                 self.assertIn("related_commits", data)
+                self.assertIn("confidence", data)
+                self.assertIn("next_agent_actions", data)
                 self.assertIn("followup_commands", data)
                 self.assertIn("warnings", data)
             finally:
@@ -2973,6 +2976,51 @@ class InitAgentBaseTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_ignore_excludes_common_env_and_cache_dirs_without_gitignore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_ignore_fixture(Path(tmp))
+            (root / ".venv" / "lib").mkdir(parents=True)
+            (root / ".venv" / "lib" / "site.py").write_text("def ignored():\n    return True\n", encoding="utf-8")
+            (root / "venv" / "lib").mkdir(parents=True)
+            (root / "venv" / "lib" / "site.py").write_text("def ignored2():\n    return True\n", encoding="utf-8")
+            (root / ".pytest_cache").mkdir()
+            (root / ".pytest_cache" / "cache.py").write_text("def ignored3():\n    return True\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                paths = _indexed_paths(root)
+                self.assertNotIn(".venv/lib/site.py", paths)
+                self.assertNotIn("venv/lib/site.py", paths)
+                self.assertNotIn(".pytest_cache/cache.py", paths)
+                self.assertIn("app.php", paths)
+            finally:
+                os.chdir(previous)
+
+    def test_git_indexing_respects_gitignore_and_internal_excludes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app.py").write_text("def app_main():\n    return True\n", encoding="utf-8")
+            (root / ".gitignore").write_text("ignored_dir/\n", encoding="utf-8")
+            (root / "ignored_dir").mkdir()
+            (root / "ignored_dir" / "ignored.py").write_text("def ignored():\n    return True\n", encoding="utf-8")
+            (root / ".venv" / "lib").mkdir(parents=True)
+            (root / ".venv" / "lib" / "site.py").write_text("def ignored_env():\n    return True\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=root, text=True, capture_output=True, check=True)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                paths = _indexed_paths(root)
+                self.assertIn("app.py", paths)
+                self.assertNotIn("ignored_dir/ignored.py", paths)
+                self.assertNotIn(".venv/lib/site.py", paths)
+            finally:
+                os.chdir(previous)
+
     def test_ignore_custom_exclude_dirs_from_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_ignore_fixture(Path(tmp))
@@ -3051,6 +3099,25 @@ class InitAgentBaseTests(unittest.TestCase):
                 self.assertIn("candidate_files", data)
             finally:
                 os.chdir(previous)
+
+    def test_context_pack_reports_low_confidence_for_broad_noisy_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            source = root / "src"
+            source.mkdir()
+            for index in range(8):
+                (source / f"manager_{index}.py").write_text(
+                    f"def helper_{index}():\n    return {index}\n",
+                    encoding="utf-8",
+                )
+            _prepare_index(root)
+            pack = build_context_pack(root, "manager")
+            self.assertIn(pack["confidence"]["level"], {"low", "medium"})
+            self.assertTrue(pack["next_agent_actions"])
+            commands = [item["command"] for item in pack["next_agent_actions"]]
+            self.assertIn("init-agent doctor", commands)
+            self.assertIn("init-agent map", commands)
 
     def test_run_on_uninitialized_project_creates_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -117,6 +117,16 @@ def render_run_text(result: dict[str, Any]) -> str:
         lines.append("   reasons:")
         for reason in item["reasons"]:
             lines.append(f"   - {reason}")
+    lines.extend(["", "Confidence:"])
+    confidence = context.get("confidence", {})
+    lines.append(f"- Level: {confidence.get('level', '-')}")
+    for reason in confidence.get("reasons", []):
+        lines.append(f"- {reason}")
+    lines.extend(["", "Next agent actions:"])
+    for action in context.get("next_agent_actions", []):
+        lines.append(f"- {action.get('command', '-')}")
+        if action.get("reason"):
+            lines.append(f"  reason: {action['reason']}")
     lines.extend(["", "Related symbols:"])
     if not context["related_symbols"]:
         lines.append("-")
@@ -159,6 +169,18 @@ def render_run_markdown(result: dict[str, Any]) -> str:
         lines.append(f"   - score: {item['score']:.2f}")
         for reason in item["reasons"]:
             lines.append(f"   - {reason}")
+    confidence = context.get("confidence", {})
+    lines.extend(["", "## Confidence", f"- Level: {confidence.get('level', '-')}"])
+    for reason in confidence.get("reasons", []):
+        lines.append(f"- {reason}")
+    lines.extend(["", "## Next agent actions"])
+    actions = context.get("next_agent_actions", [])
+    if not actions:
+        lines.append("-")
+    for action in actions:
+        lines.append(f"- `{action.get('command', '-')}`")
+        if action.get("reason"):
+            lines.append(f"  - reason: {action['reason']}")
     lines.extend(["", "## Related symbols"])
     if not context["related_symbols"]:
         lines.append("-")
@@ -258,6 +280,19 @@ def _empty_context(query: str) -> dict[str, Any]:
         "suggested_first_reads": [],
         "related_symbols": [],
         "recent_commits": [],
+        "confidence": {"level": "low", "reasons": ["no candidate files were found"]},
+        "next_agent_actions": [
+            {
+                "action": "check_index",
+                "command": "init-agent doctor",
+                "reason": "verify whether the local index is missing, stale or unhealthy",
+            },
+            {
+                "action": "refresh_index",
+                "command": "init-agent map",
+                "reason": "rebuild the map if doctor reports missing, empty or stale index data",
+            },
+        ],
     }
 
 

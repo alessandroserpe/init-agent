@@ -109,6 +109,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
 
     related_symbols = _related_symbols(symbols, tokens, candidate_paths)
     recent_commits = _recent_commits(query_commits, candidate_paths)
+    diagnostics = _context_diagnostics(query, candidate_files)
 
     return {
         "query": query,
@@ -116,6 +117,8 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
         "suggested_first_reads": [item["path"] for item in candidate_files[:5]],
         "related_symbols": related_symbols[:10],
         "recent_commits": recent_commits[:5],
+        "confidence": diagnostics["confidence"],
+        "next_agent_actions": diagnostics["next_agent_actions"],
     }
 
 
@@ -548,6 +551,108 @@ def _recent_commits(query_commits: list[dict[str, Any]], candidate_paths: set[st
                 }
             )
     return result
+
+
+def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> dict[str, Any]:
+    reasons: list[str] = []
+    if not candidate_files:
+        reasons.append("no candidate files were found")
+        return {
+            "confidence": {"level": "low", "reasons": reasons},
+            "next_agent_actions": _recovery_actions(query, no_candidates=True),
+        }
+
+    broad_candidates = sum(1 for item in candidate_files if float(item.get("score") or 0.0) >= 0.5)
+    top_reasons = [str(reason) for reason in candidate_files[0].get("reasons", [])]
+    strong_reason = any(_is_strong_reason(reason) for reason in top_reasons)
+    weak_soft_reasons = sum(
+        1
+        for item in candidate_files[:8]
+        for reason in item.get("reasons", [])
+        if "softly matches" in str(reason)
+    )
+    if broad_candidates >= 6:
+        reasons.append("many candidates have similar scores")
+    if not strong_reason:
+        reasons.append("top candidate is not supported by strong symbol, call, feedback or exact filename signals")
+    if weak_soft_reasons >= 5:
+        reasons.append("ranking is driven by broad soft path matches")
+
+    if len(reasons) >= 2 or (reasons and not strong_reason):
+        level = "low"
+    elif reasons:
+        level = "medium"
+    else:
+        level = "high"
+    return {
+        "confidence": {"level": level, "reasons": reasons},
+        "next_agent_actions": _recovery_actions(query, no_candidates=False) if level in {"low", "medium"} else _verification_actions(query, candidate_files),
+    }
+
+
+def _is_strong_reason(reason: str) -> bool:
+    return any(
+        marker in reason
+        for marker in (
+            "previously marked",
+            "symbol matches",
+            "calls ",
+            "filename matches",
+            "filename contains",
+            "path matches",
+            "modified in recent query-related commit",
+        )
+    )
+
+
+def _recovery_actions(query: str, no_candidates: bool) -> list[dict[str, str]]:
+    reason = "context pack is empty" if no_candidates else "context pack confidence is low or noisy"
+    quoted = _shell_double_quote(query)
+    return [
+        {
+            "action": "check_index",
+            "command": "init-agent doctor",
+            "reason": "verify whether the local index is missing, stale or unhealthy",
+        },
+        {
+            "action": "refresh_index",
+            "command": "init-agent map",
+            "reason": "rebuild the map if doctor reports missing, empty or stale index data",
+        },
+        {
+            "action": "narrow_query",
+            "command": f"init-agent run {quoted} --markdown",
+            "reason": f"{reason}; retry with concrete module, symbol, route, table, error or workflow terms before broad reading",
+        },
+        {
+            "action": "record_feedback_after_verification",
+            "command": f"init-agent feedback add {quoted} <path> --rating noisy --source agent --reason \"verified irrelevant suggestion\"",
+            "reason": "teach future runs when a suggested file was verified as noisy",
+        },
+    ]
+
+
+def _verification_actions(query: str, candidate_files: list[dict[str, Any]]) -> list[dict[str, str]]:
+    first_path = str(candidate_files[0].get("path") or "")
+    if not first_path:
+        return []
+    quoted = _shell_double_quote(query)
+    return [
+        {
+            "action": "inspect_top_candidate",
+            "command": f"init-agent related {first_path}",
+            "reason": "verify the top candidate before editing or trusting the ranking",
+        },
+        {
+            "action": "record_feedback_after_verification",
+            "command": f"init-agent feedback add {quoted} {first_path} --rating useful --source agent --reason \"verified relevant\"",
+            "reason": "record useful feedback only after verifying the file",
+        },
+    ]
+
+
+def _shell_double_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _add_reason(items: list[str], reason: str) -> None:

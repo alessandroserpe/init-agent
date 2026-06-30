@@ -47,6 +47,8 @@ def repo_graph_search(root: Path, query: str, limit: int = 10, prepare: bool = T
         "suggested_first_reads": [item["path"] for item in candidate_files[:5]],
         "symbols": symbols,
         "related_commits": related_commits,
+        "confidence": context.get("confidence", {}),
+        "next_agent_actions": context.get("next_agent_actions", []),
         "followup_commands": _followup_commands(query, candidate_files, symbols),
         "warnings": warnings,
     }
@@ -919,6 +921,19 @@ def _empty_context(query: str) -> dict[str, Any]:
         "suggested_first_reads": [],
         "related_symbols": [],
         "recent_commits": [],
+        "confidence": {"level": "low", "reasons": ["no candidate files were found"]},
+        "next_agent_actions": [
+            {
+                "action": "check_index",
+                "command": "init-agent doctor",
+                "reason": "verify whether the local index is missing, stale or unhealthy",
+            },
+            {
+                "action": "refresh_index",
+                "command": "init-agent map",
+                "reason": "rebuild the map if doctor reports missing, empty or stale index data",
+            },
+        ],
     }
 
 
@@ -946,6 +961,17 @@ def render_repo_graph_search_text(result: dict[str, Any]) -> str:
         lines.append(f"{index}. {item['path']} score {item['score']:.2f}")
         for reason in item.get("reasons", [])[:3]:
             lines.append(f"   - {reason}")
+    confidence = result.get("confidence", {})
+    lines.extend(["", "Confidence:", f"- Level: {confidence.get('level', '-')}"])
+    for reason in confidence.get("reasons", [])[:5]:
+        lines.append(f"- {reason}")
+    lines.extend(["", "Next agent actions:"])
+    if not result.get("next_agent_actions"):
+        lines.append("-")
+    for action in result.get("next_agent_actions", []):
+        lines.append(f"- {action.get('command', '-')}")
+        if action.get("reason"):
+            lines.append(f"  reason: {action['reason']}")
     lines.extend(["", "Symbols:"])
     if not result["symbols"]:
         lines.append("-")
