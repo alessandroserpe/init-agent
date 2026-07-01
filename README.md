@@ -23,6 +23,11 @@ first.
 `init-agent` builds a local Project Orientation Layer so an agent can start
 from a small, explainable context pack instead of reading the whole repo.
 
+It also includes a local read-only dashboard for humans. While agents use the
+CLI/MCP tools, you can run `init-agent web` to inspect the same local metadata:
+recent memories, feedback, open tasks, reading plans and the files that keep
+coming up during work.
+
 On a private PHP codebase with 274 indexed readable files:
 
 - Full indexed project estimate: ~350,876 tokens
@@ -234,6 +239,7 @@ context.
 | `init-agent tool repo_task_add --title "..." --json` | Track an open local task/session item linked to files and checks. |
 | `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a local task. |
 | `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
+| `init-agent web` | Serve a local read-only dashboard for memory, feedback, tasks, plans and file activity. |
 | `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
 | `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
 | `init-agent mcp uninstall-codex` | Remove init-agent MCP from Codex through `codex mcp remove`. |
@@ -325,6 +331,20 @@ Tasks are local operational memory. They are useful for handoff and session
 continuity, but they are not a replacement for GitHub Issues or project
 management tools.
 
+To inspect this metadata as a human, run:
+
+```bash
+init-agent web
+```
+
+The local read-only dashboard shows project counts, recent memories, feedback,
+open tasks, reading plans and file activity from `.agent/graph.sqlite`. It is
+organized into tabs with a client-side search box, so it stays usable on larger
+repositories where a single long metadata page would become hard to scan.
+
+Use `init-agent web --snapshot-json` when you want the same data as JSON without
+starting the HTTP server.
+
 ## Validation
 
 This repository includes unit tests and a local experiment runner covering
@@ -366,7 +386,7 @@ See [docs/security.md](docs/security.md) for details.
 - Context packs are a starting point, not a source of truth.
 - Refresh is incremental by file hash, but it does not yet do dependency-aware cascading updates.
 - No built-in LLM execution.
-- No graph visualization yet.
+- The web dashboard does not yet render an interactive symbol/relation graph.
 
 ## Roadmap
 

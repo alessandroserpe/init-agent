@@ -47,6 +47,7 @@ and `estimate` also accept unquoted multi-word text.
 | `init-agent tool repo_task_add --title "..." --json` | Create a local task/session memory item. |
 | `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a task. |
 | `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
+| `init-agent web` | Serve a local read-only dashboard for memory, feedback, tasks, plans and file activity. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -510,6 +511,25 @@ recording and verification that should be reported to the user. It also
 surfaces recent plan outcomes and suggests feedback/memory opportunities when
 verified files were marked useful, noisy or missing. It does not write memories
 automatically, modify source files or create commits.
+
+## `init-agent web`
+
+Serves a local read-only dashboard for human inspection:
+
+```bash
+init-agent web
+init-agent web --host 127.0.0.1 --port 8765
+init-agent web --snapshot-json
+```
+
+The dashboard reads `.agent/graph.sqlite` and shows project counts, recent
+memory notes, recent feedback, open tasks, reading plans and file activity.
+It is intended as a lightweight observability layer for developers who want to
+see what an agent has recorded while using init-agent. It does not modify the
+repository or write metadata.
+
+Use `--snapshot-json` to inspect the same data without starting the local HTTP
+server.
 
 ## `init-agent tool repo_file_notes`
 

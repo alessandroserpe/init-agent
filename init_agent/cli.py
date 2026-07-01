@@ -91,6 +91,7 @@ from .run import render_run_markdown, render_run_text, run_query
 from .scanner import INDEX_VERSION, scan_project
 from .skill_installer import install_codex_skill
 from .utils import config_path, ensure_agent_dir, has_project_marker, project_root, utc_now, write_json
+from .web_ui import build_web_snapshot, serve_web_ui
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -162,6 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser = subparsers.add_parser("export", help="Export the indexed graph as JSON.")
     export_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     export_parser.set_defaults(handler=cmd_export)
+
+    web_parser = subparsers.add_parser("web", help="Serve a local read-only dashboard for agent memory and session metadata.")
+    web_parser.add_argument("--host", default="127.0.0.1", help="Host to bind. Defaults to 127.0.0.1.")
+    web_parser.add_argument("--port", type=int, default=8765, help="Port to bind. Defaults to 8765.")
+    web_parser.add_argument("--limit", type=int, default=25, help="Maximum rows per dashboard section.")
+    web_parser.add_argument("--snapshot-json", action="store_true", help="Print the dashboard data as JSON and exit.")
+    web_parser.set_defaults(handler=cmd_web)
 
     mcp_parser = subparsers.add_parser("mcp", help="Run or install the MCP stdio server for agent integrations.")
     mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
@@ -547,6 +555,15 @@ def cmd_export(args: argparse.Namespace) -> int:
     print(f"Git commits: {data['stats']['git_commits']}")
     print()
     print("Use --json to print the full graph export.")
+    return 0
+
+
+def cmd_web(args: argparse.Namespace) -> int:
+    root = project_root()
+    if args.snapshot_json:
+        print(json.dumps(build_web_snapshot(root, limit=args.limit), indent=2, sort_keys=True))
+        return 0
+    serve_web_ui(root, host=args.host, port=args.port, limit=args.limit)
     return 0
 
 
