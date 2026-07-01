@@ -27,6 +27,20 @@ Skip it when:
 
 ## Base Workflow
 
+Default to the smallest useful loop:
+
+```bash
+init-agent overview
+init-agent plan "<user task>" --read 3
+# read and verify files directly
+init-agent plan finish --id <plan-id> --read-file <path> --verified <path> --useful <path> --summary "short factual outcome"
+init-agent session close
+```
+
+Use lower-level commands such as `run`, `trace`, `related`, `symbol`,
+`callers`, `feedback` and `memory` as targeted follow-ups. Do not turn every
+task into every command.
+
 1. From the repository root, check availability:
 
 ```bash

@@ -104,7 +104,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="init-agent", description="Build a local project orientation layer for AI CLI agents.")
+    parser = argparse.ArgumentParser(
+        prog="init-agent",
+        description="Build a local project orientation layer for AI CLI agents.",
+        epilog=(
+            "Recommended daily loop: "
+            "init-agent overview; "
+            "init-agent plan \"<task>\" --read 3; "
+            "init-agent plan finish --id <id> ...; "
+            "init-agent session close. "
+            "Use init-agent web for a read-only local dashboard."
+        ),
+    )
     parser.add_argument("--version", action="version", version=f"init-agent {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 

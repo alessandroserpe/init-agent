@@ -100,6 +100,19 @@ init-agent run "fix login session bug" --markdown
 `run` automatically initializes `.agent/`, maps or refreshes the index, imports
 Git metadata when available, and prints a compact context pack.
 
+For day-to-day agent work, use the smaller loop:
+
+```bash
+init-agent plan "fix login session bug" --read 3
+# read and verify the suggested files
+init-agent plan finish --id <id> --read-file <path> --verified <path> --useful <path> --summary "short outcome"
+init-agent session close
+```
+
+Use `init-agent web` in another terminal when you want a read-only view of
+memory, feedback, open tasks, reading plans and recurring files while the agent
+works.
+
 For a token estimate:
 
 ```bash
@@ -206,6 +219,19 @@ It is a local orientation layer that helps those tools start from better
 context.
 
 ## Commands
+
+You do not need to remember every command. The recommended daily workflow is:
+
+| Step | Command | Use when |
+|---|---|---|
+| Orient | `init-agent overview` | You are new to the repository. |
+| Plan | `init-agent plan "<task>" --read 3` | You are about to inspect or change code. |
+| Close loop | `init-agent plan finish --id <id> ...` | You verified which files were useful, noisy or missing. |
+| Handoff | `init-agent session close` | You are wrapping up work or handing context to a future session. |
+| Observe | `init-agent web` | A human wants to inspect local memory, tasks, plans and file activity. |
+
+The full command surface remains available for scripts, MCP clients and
+advanced follow-up.
 
 | Command | Purpose |
 |---|---|

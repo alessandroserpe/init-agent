@@ -4,12 +4,29 @@
 repository broadly. It gives the agent a compact map, then the agent verifies
 the suggested files directly from the filesystem.
 
+## Recommended Agent Loop
+
+For most non-trivial work, prefer this loop:
+
+```bash
+init-agent plan "why does the login session expire after redirect" --read 3
+# read and verify the suggested files
+init-agent plan read --id <id> --file src/auth/session.py --note "Opened session flow."
+init-agent plan diff --id <id>
+init-agent plan finish --id <id> --read-file src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path."
+init-agent session close
+```
+
+Use `init-agent overview` for broad orientation, `init-agent web` for human
+observation, and the lower-level commands below only when they answer a
+specific follow-up question.
+
 ## Generic Workflow
 
 For broad orientation:
 
 ```bash
-init-agent run --overview --markdown
+init-agent overview --markdown
 ```
 
 For a specific task:

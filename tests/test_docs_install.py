@@ -9,6 +9,7 @@ class DocsInstallTests(InitAgentTestCase):
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("init-agent run --overview", content)
         self.assertIn("init-agent run", content)
+        self.assertIn("Default to the smallest useful loop", content)
         self.assertIn("init-agent symbol", content)
         self.assertIn("init-agent callers", content)
         self.assertIn("init-agent related", content)
@@ -39,6 +40,10 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("pipx install git+https://github.com/alessandroserpe/init-agent.git", content)
         self.assertIn("init-agent mcp install-codex", content)
         self.assertIn("init-agent install-skill codex", content)
+        self.assertIn("recommended daily workflow", content)
+        self.assertIn('init-agent plan "<task>" --read 3', content)
+        self.assertIn("init-agent session close", content)
+        self.assertIn("init-agent web", content)
 
     def test_mcp_docs_include_codex_config_and_smoke_test(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -57,6 +62,7 @@ class DocsInstallTests(InitAgentTestCase):
         mcp = (root / "docs" / "mcp.md").read_text(encoding="utf-8")
         skill = (root / "init_agent" / "resources" / "skills" / "init-agent-orientation" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("repo_session_close", commands)
+        self.assertIn("Recommended Daily Workflow", commands)
         self.assertIn("repo_task_add", commands)
         self.assertIn("repo_reading_plan_finish", commands)
         self.assertIn("repo_reading_plan_read", commands)

@@ -1,10 +1,24 @@
 # Command Reference
 
-Most users can start with `init-agent run`. The lower-level commands are
-available when you want more control.
+Most users should start with a small workflow and only reach for lower-level
+commands when they need more control.
 
 Quoted queries are recommended for shell clarity, but `run`, `context`, `query`
 and `estimate` also accept unquoted multi-word text.
+
+## Recommended Daily Workflow
+
+| Step | Command | Use when |
+|---|---|---|
+| Orient | `init-agent overview` | You are new to the repository or want a broad map. |
+| Plan | `init-agent plan "<task>" --read 3` | You are about to inspect, debug or change code. |
+| Record reads | `init-agent plan read --id <id> --file <path>` | You opened a planned or unplanned file. |
+| Finish plan | `init-agent plan finish --id <id> ...` | You verified useful, noisy or missing files. |
+| Handoff | `init-agent session close` | You are wrapping up and want a checklist. |
+| Observe | `init-agent web` | You want a read-only browser view of local agent metadata. |
+
+Everything below is still supported. Treat it as the reference surface for
+scripts, MCP clients and targeted follow-up.
 
 ## Summary
 
