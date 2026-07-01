@@ -370,6 +370,8 @@ See [docs/security.md](docs/security.md) for details.
 
 ## Roadmap
 
+- A more detailed implementation backlog is tracked in
+  [docs/roadmap.md](docs/roadmap.md).
 - More precise entrypoint classification for frontend, deploy, docs and custom PHP projects.
 - Better filtering of barrel/type/schema files from runtime entrypoint results.
 - MCP and skill installers for additional agent runtimes after their formats are verified.
@@ -405,5 +407,6 @@ More documentation:
 - [Scoring](docs/scoring.md)
 - [Feedback](docs/feedback.md)
 - [Memory workflows](docs/memory-workflows.md)
+- [Roadmap notes](docs/roadmap.md)
 - [Validation experiments](docs/experiments.md)
 - [Security and privacy](docs/security.md)
