@@ -54,35 +54,24 @@ For context savings:
 init-agent estimate "debug login session redirect"
 ```
 
-For structured agent integrations:
+For structured agent integrations, use the `tool repo_*` commands or the MCP
+tools directly. The most common groups are:
 
-```bash
-init-agent tool repo_graph_search --query "debug login session redirect" --json
-init-agent tool repo_reading_plan --query "debug login session redirect" --read 3 --json
-init-agent tool repo_reading_plan_read --id 7 --path src/auth/session.py --note "Opened session file." --json
-init-agent tool repo_reading_plan_diff --id 7 --json
-init-agent tool repo_reading_plan_finish --id 7 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
-init-agent tool repo_reading_plan_stats --json
-init-agent scorecard
-init-agent tool repo_overview --json
-init-agent tool repo_entrypoints --json
-init-agent tool repo_related_file --path src/auth/session.py --json
-init-agent tool repo_symbol_callers --symbol validateSession --json
-init-agent tool repo_feedback_add --query "debug login session redirect" --path src/auth/session.py --rating useful --reason "verified session flow" --json
-init-agent tool repo_feedback_explain --query "debug login session redirect" --json
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
-init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
-init-agent tool repo_memory_search --query "login session validation" --json
-init-agent tool repo_memory_audit --json
-init-agent tool repo_memory_topics --topic "login session" --json
-init-agent tool repo_flow_topics --tag login --json
-init-agent tool repo_memory_list --stale --json
-init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
-```
+- orientation: `repo_graph_search`, `repo_overview`, `repo_entrypoints`,
+  `repo_related_file`, `repo_symbol_callers`;
+- plans: `repo_reading_plan`, `repo_reading_plan_read`,
+  `repo_reading_plan_diff`, `repo_reading_plan_finish`,
+  `repo_reading_plan_stats`;
+- feedback: `repo_feedback_add`, `repo_feedback_explain`;
+- memory: `repo_memory_add`, `repo_memory_search`, `repo_memory_audit`,
+  `repo_memory_topics`, `repo_flow_topics`, `repo_memory_list`,
+  `repo_memory_update`;
+- tasks and handoff: `repo_task_add`, `repo_task_note`, `repo_task_close`,
+  `repo_session_close`.
 
-These commands return stable JSON contracts with candidate files, symbols,
-file neighborhoods, callers, commits, follow-up commands, optional local
-feedback, local file notes and safety warnings.
+These commands return stable JSON contracts with candidate files, symbols, file
+neighborhoods, callers, commits, follow-up commands, optional feedback, local
+notes and safety warnings.
 
 Use `repo_reading_plan` when local memory exists or when the task is broad
 enough that graph ranking alone may be noisy. It combines graph search, trace
@@ -176,16 +165,8 @@ Or point it at a root explicitly:
 init-agent-mcp --root /path/to/repository
 ```
 
-The MCP server exposes the same tools: `repo_graph_search`, `repo_trace`,
-`repo_reading_plan`, `repo_reading_plan_read`, `repo_reading_plan_diff`,
-`repo_overview`, `repo_entrypoints`,
-`repo_related_file`, `repo_symbol_callers`, `repo_feedback_add`,
-`repo_feedback_explain`, `repo_reading_plan_finish`,
-`repo_reading_plan_stats`, `repo_memory_add`,
-`repo_memory_audit`, `repo_memory_list`, `repo_memory_search`,
-`repo_session_summary`, `repo_session_close`, `repo_memory_topics`,
-`repo_memory_update`, `repo_memory_delete`, `repo_flow_topics` and
-`repo_file_notes`.
+The MCP server exposes the same `repo_*` tool contracts as the CLI. See
+[commands.md](commands.md) for the complete list.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

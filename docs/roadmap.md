@@ -1,109 +1,89 @@
-# Roadmap Notes
+# Roadmap
 
-This document tracks near-term product work that should make init-agent easier
-to explain, evaluate and use in real agent sessions.
+This page tracks product directions that should make `init-agent` easier to
+explain, evaluate and use in real agent sessions.
 
-## Priority Backlog
+The roadmap is intentionally conservative: features should reduce orientation
+work or make agent behavior easier to inspect. Avoid adding commands only
+because they are possible.
 
-### 1. Repeatable Demo
+## Near-Term Priorities
 
-Build one clear end-to-end demo on a medium or large repository.
+### 1. Clearer Evaluation
 
-The demo should compare a normal agent run with an init-agent-assisted run on
-the same task. Track simple, visible metrics:
+Keep improving small, repeatable experiments that measure orientation quality:
 
-- files opened before the useful file was found
-- exploratory commands run
-- estimated elapsed time from logs
-- whether the targeted test passed
-- whether feedback or memory improved the next similar run
+- whether useful files appear in the top 1, 3 or 5 suggestions;
+- how often important files were missing from the initial plan;
+- how much noise appears in planned reads;
+- how many files the agent reads before finding a useful one.
 
-Success means the project can show one concrete story instead of only a feature
-list.
+These metrics should stay separate from broad claims about agent speed or patch
+quality.
 
-### 2. Credible Benchmark Set
+### 2. Better Agent Workflow
 
-Expand the current experiments into a small benchmark suite with real tasks and
-repositories.
-
-Suggested first metrics:
-
-- top-1 and top-3 useful-file hit rate
-- files read before fix or answer
-- exploratory command count
-- test result
-- ranking improvement after feedback
-
-Keep the benchmark small enough to run locally and explain in a README.
-
-### 3. Shorter Happy Path
-
-The current workflow is powerful but requires several explicit commands:
-`plan`, `plan read`, `plan diff`, `plan finish`, feedback and memory.
-
-Explore a higher-level command such as:
+Make the recommended agent loop easier to follow:
 
 ```bash
-init-agent work "fix login bug" --read 3
+init-agent plan "<task>" --read 3
+init-agent plan read --id <id> --file <path>
+init-agent plan finish --id <id> ...
+init-agent session close
 ```
 
-The command should guide the user or agent through the recommended next step
-without hiding the underlying plan, read tracking and finish semantics.
+Future work may add a higher-level helper around this loop, but the underlying
+plan/read/finish metadata should remain inspectable.
 
-### 4. More Invisible Agent Integration
+### 3. More Useful Dashboard
 
-Make MCP and bundled skills use reading plans naturally:
+Keep the dashboard read-only, but improve how it explains local agent behavior:
 
-- create a plan at the beginning of broad work
-- record files that were actually opened
-- close the plan with useful, noisy or missing outcomes
-- suggest memory only when stable facts were verified
-- surface unfinished plans during session close
+- recent useful and noisy files;
+- scorecard trends over time;
+- stale memory needing review;
+- recurring topics, tags and flow groups;
+- optional lightweight graph views.
 
-Success means the user does not need to micromanage the orientation loop.
+The dashboard should help humans understand what the agent did without turning
+into a project management system.
 
-### 5. Lightweight Visualization
+### 4. Ranking And Memory Quality
 
-Add a simple visual output before building a full UI.
+Validate that feedback, memory and tags make later orientation better:
 
-Possible shape:
+- useful files should move earlier for similar tasks;
+- noisy files should move down;
+- missing files should become visible in future plans;
+- stale or low-quality notes should be easy to audit.
 
-```bash
-init-agent graph --html
-```
+The scorecard should stay honest about weak areas instead of hiding them.
 
-The first version can be a static HTML report showing trace paths, suggested
-files, local memory, feedback and topic/flow groups.
-
-### 6. Ranking Improvement Story
-
-Demonstrate that feedback and memory improve later orientation.
-
-The important claim to validate is:
-
-> init-agent gets better as agents verify work.
-
-Track whether repeated or similar tasks move verified useful files earlier and
-push noisy files down.
-
-### 7. Focused Language And Framework Depth
+### 5. Focused Language And Framework Depth
 
 Prefer depth over broad shallow support.
 
 Initial focus areas:
 
-- Python
-- JavaScript/TypeScript
-- PHP legacy projects
+- Python;
+- JavaScript and TypeScript;
+- PHP legacy projects.
 
 Improve entrypoint detection, relation extraction and noisy-file filtering in
 these ecosystems before expanding broadly.
 
+## Longer-Term Ideas
+
+- Dependency-aware incremental refresh.
+- Optional static HTML graph exports.
+- More agent-install helpers after each client format is verified.
+- Broader optional tree-sitter support where it provides clear value.
+- Structured experiment archives for paired agent runs.
+
 ## Positioning
 
-init-agent should not claim to invent codebase context or agent memory. The
+`init-agent` should not claim to invent codebase context or agent memory. The
 stronger, more accurate positioning is:
 
 > init-agent makes repository orientation local, agent-agnostic, inspectable
 > and improvable through verified feedback.
-

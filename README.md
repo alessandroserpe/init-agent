@@ -4,58 +4,32 @@
 
 **Give your coding agent a map before it touches your code.**
 
-`init-agent` is a local CLI that creates compact orientation packs for AI
-coding agents. Instead of asking an agent to inspect an entire repository
-blindly, it builds a local SQLite map of files, symbols, lightweight relations
-and Git history, then suggests where the agent should start reading.
+`init-agent` is a local CLI, SQLite index and MCP server for repository
+orientation. It helps coding agents decide where to start reading, remember
+verified local context, and leave an inspectable trail of what was useful,
+noisy or missing.
 
-It does not call an LLM. It does not modify your source code. It uses Python
-3.11+ and has no required external dependencies. Python files are parsed with
-the standard-library `ast` module; PHP can optionally use tree-sitter for a
-more precise graph.
+It does not call an LLM. It does not edit source code. It stores local metadata
+under `.agent/` and keeps source contents out of the SQLite index.
 
 ## Why
 
-Large repositories quickly become expensive and noisy for coding agents. Even
-before editing code, an agent often needs to know which files are worth reading
-first.
+Coding agents often spend a lot of context just finding the right files. In a
+large or legacy repository, the first problem is not always "write the patch";
+it is "where does this behavior live?"
 
-`init-agent` builds a local Project Orientation Layer so an agent can start
-from a small, explainable context pack instead of reading the whole repo.
+`init-agent` gives the agent a local Project Orientation Layer:
 
-It also includes a local read-only dashboard for humans. While agents use the
-CLI/MCP tools, you can run `init-agent web` to inspect the same local metadata:
-recent memories, feedback, open tasks, reading plans and the files that keep
-coming up during work.
+- a compact repository overview;
+- task-specific context packs;
+- reading plans with a bounded first-read budget;
+- feedback for verified useful, noisy or missing files;
+- short local memory notes with stale checks;
+- local task/session handoff metadata;
+- a read-only dashboard for humans.
 
-On a private PHP codebase with 274 indexed readable files:
-
-- Full indexed project estimate: ~350,876 tokens
-- Context pack for `login sessione admin`: ~839 tokens
-- Estimated context pack + suggested first reads: ~3,050 tokens
-- Estimated initial context reduction: ~99.1%
-
-Token estimates use a simple `ceil(characters / 4)` heuristic.
-
-## Real-World Comparison
-
-An observed hidden-cause Django experiment compared two fresh agents on the same
-task: one using normal repository exploration, one required to start with
-`init-agent`.
-
-Both agents passed the targeted test. On a 7,018-file Django checkout, the
-init-agent-assisted run used fewer exploratory commands and less estimated
-wall-clock time in the agent logs:
-
-| Metric | Baseline | With init-agent |
-|---|---:|---:|
-| Approx logged wall-clock | ~8 min | ~1.5 min |
-| Logged files read | 7 | 6 |
-| Logged commands | 22 | 11 plus 5 init-agent commands |
-
-This is an observed run, not a scientific benchmark. See
-[experiments/django-hidden-cause](experiments/django-hidden-cause/) for the
-task, prompts, logs and results.
+The output is orientation material, not source of truth. Agents should still
+read and verify files before changing code.
 
 ## Install
 
@@ -63,12 +37,14 @@ Recommended install from GitHub:
 
 ```bash
 pipx install git+https://github.com/alessandroserpe/init-agent.git
+init-agent --version
 ```
 
-Then run:
+If you do not have `pipx`:
 
 ```bash
-init-agent --version
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
 ```
 
 Optional PHP parsing upgrade:
@@ -77,47 +53,37 @@ Optional PHP parsing upgrade:
 pipx inject init-agent tree-sitter tree-sitter-php
 ```
 
-With the optional extra installed, PHP mapping uses tree-sitter when available
-and automatically falls back to the built-in parser when it is not.
-
-If you do not have `pipx` installed:
-
-```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-```
+With the optional packages installed, PHP mapping uses tree-sitter when
+available and falls back to the built-in parser otherwise. Python parsing uses
+the standard-library `ast` module.
 
 ## Quick Start
 
-Run it from the root of the project you want to orient:
+Run from the root of the project you want to inspect:
 
 ```bash
-cd your-project
 init-agent run --overview --markdown
 init-agent run "fix login session bug" --markdown
 ```
 
-`run` automatically initializes `.agent/`, maps or refreshes the index, imports
-Git metadata when available, and prints a compact context pack.
-
-For day-to-day agent work, use the smaller loop:
+For day-to-day agent work, prefer the smaller loop:
 
 ```bash
 init-agent plan "fix login session bug" --read 3
 # read and verify the suggested files
+init-agent plan read --id <id> --file <path> --note "opened while investigating"
 init-agent plan finish --id <id> --read-file <path> --verified <path> --useful <path> --summary "short outcome"
 init-agent session close
 ```
 
-Use `init-agent web` in another terminal when you want a read-only view of
-memory, feedback, open tasks, reading plans and recurring files while the agent
-works.
-
-For a token estimate:
+For a human-readable local dashboard:
 
 ```bash
-init-agent estimate "fix login session bug"
+init-agent web
 ```
+
+The dashboard is read-only and shows local memory, feedback, open tasks,
+reading plans, orientation scorecard metrics and recurring files.
 
 ## Example Output
 
@@ -138,17 +104,37 @@ Query: fix login session bug
    - filename matches "login"
    - calls "createSession"
 
-## Related symbols
-- `createSession` function in `src/auth/session.py:14`
-- `loginUser` function in `src/auth/login.py:32`
-
 ## Useful follow-up commands
 - `init-agent related src/auth/session.py`
 - `init-agent callers createSession`
 ```
 
-The output is orientation material. The agent should still read and verify the
-suggested files before changing code.
+## Core Workflow
+
+You do not need to remember every command. The recommended daily workflow is:
+
+| Step | Command | Use when |
+|---|---|---|
+| Orient | `init-agent overview` | You are new to a repository. |
+| Plan | `init-agent plan "<task>" --read 3` | You are about to inspect or change code. |
+| Verify | read files directly | The context pack only suggests where to look. |
+| Close loop | `init-agent plan finish --id <id> ...` | You know what was useful, noisy or missing. |
+| Handoff | `init-agent session close` | You are wrapping up work. |
+| Observe | `init-agent web` | A human wants a local dashboard. |
+
+Useful follow-ups:
+
+- `init-agent trace "<task>"` for runtime paths and entrypoint flows.
+- `init-agent related <path>` for a file neighborhood.
+- `init-agent symbol <name>` and `init-agent callers <name>` for symbols.
+- `init-agent scorecard` for local orientation quality metrics.
+- `init-agent estimate "<task>"` for rough context-size estimates.
+
+See [docs/commands.md](docs/commands.md) for the full command reference.
+
+For MCP and scripted integrations, the same loop is available through JSON
+tools such as `repo_reading_plan_read`, `repo_reading_plan_diff`,
+`repo_reading_plan_finish`, `repo_task_note` and `repo_task_close`.
 
 ## Use With Codex
 
@@ -161,231 +147,46 @@ init-agent mcp install-codex
 
 This registers `init-agent` as a general Codex MCP server. It uses the current
 Codex session working directory, so you do not need to reinstall it for every
-repository. Use `--root /path/to/repo` only when you intentionally want to pin
-the server to one repository.
+repository.
 
-You can also install the bundled Codex skill, which teaches Codex when to call
-the CLI/MCP tools and how to verify the suggested files:
+You can also install the bundled Codex skill:
 
 ```bash
 init-agent install-skill codex
 ```
 
-Then open Codex from any repository and ask:
+Then open Codex from a repository and ask:
 
 ```text
 Use the init-agent-orientation skill to orient yourself in this repository.
 ```
 
-See [docs/mcp.md](docs/mcp.md) for MCP setup and
-[skills/README.md](skills/README.md) for skill details and troubleshooting.
+See [docs/mcp.md](docs/mcp.md), [docs/agent-usage.md](docs/agent-usage.md) and
+[skills/README.md](skills/README.md) for details.
 
-## Other Coding Agents
+## Memory, Feedback And Tasks
 
-For Claude Code, Aider, OpenCode, Cursor-style terminals or other coding
-agents, use the CLI directly and paste the Markdown output into the agent:
+`init-agent` can store optional local metadata after verification:
 
-```bash
-init-agent run --overview --markdown
-init-agent run "your task or bug report" --markdown
-```
+- feedback: a file was useful, noisy or missing for a task;
+- memory: a short fact about a file or repository decision;
+- tasks: lightweight local session items and handoff notes;
+- plan events: what the agent planned, read and verified.
 
-Dedicated installers for other agents may be added after their instruction
-formats and install locations are verified.
+These records stay in `.agent/graph.sqlite`. They are not training data and do
+not replace direct file reads. File-scoped memory stores hashes so stale notes
+can be detected after code changes.
 
-## What It Does
+See:
 
-- Initializes a local `.agent/` workspace.
-- Stores an interrogable SQLite index.
-- Scans project files while skipping heavy directories, generated files and binaries.
-- Detects likely language and file role.
-- Extracts basic symbols from Python, PHP, JavaScript, TypeScript, Go and Rust.
-- Extracts lightweight documentation, config and route signals.
-- Records simple relations such as imports/includes, PHP function calls, file language and file role.
-- Reads Git branch, status and recent commit timeline without modifying the repository.
-- Produces terminal, JSON and Markdown context packs.
-- Estimates token savings.
-
-## What init-agent Is Not
-
-- Not a coding agent.
-- Not an LLM wrapper.
-- Not a replacement for Codex, Claude Code, Aider, OpenCode or Pi.
-- Not a semantic code analyzer.
-- Not a documentation ingester that stores full prose.
-- Not a tool that modifies your source code.
-
-It is a local orientation layer that helps those tools start from better
-context.
-
-## Commands
-
-You do not need to remember every command. The recommended daily workflow is:
-
-| Step | Command | Use when |
-|---|---|---|
-| Orient | `init-agent overview` | You are new to the repository. |
-| Plan | `init-agent plan "<task>" --read 3` | You are about to inspect or change code. |
-| Close loop | `init-agent plan finish --id <id> ...` | You verified which files were useful, noisy or missing. |
-| Handoff | `init-agent session close` | You are wrapping up work or handing context to a future session. |
-| Score | `init-agent scorecard` | You want to see whether recent real plans oriented the agent well. |
-| Observe | `init-agent web` | A human wants to inspect local memory, tasks, plans and file activity. |
-
-The full command surface remains available for scripts, MCP clients and
-advanced follow-up.
-
-| Command | Purpose |
-|---|---|
-| `init-agent run --overview --markdown` | Prepare and print a broad repository overview. |
-| `init-agent run "<task>" --markdown` | Prepare and print a task-specific context pack. |
-| `init-agent trace "<task>"` | Trace likely investigation paths from entry points through local graph relations. |
-| `init-agent plan "<task>" --read 3` | Build a memory-, feedback-, tag- and stale-aware reading plan with a bounded first-read budget. |
-| `init-agent plan read --id <id> --file <path>` | Record a file the agent actually opened while following a saved plan. |
-| `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
-| `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
-| `init-agent plan mark --id <id> --kind smoke` | Mark smoke, experiment, planning, diagnostic or docs-only plans out of the default scorecard. |
-| `init-agent scorecard` | Show local orientation scorecard metrics for recent real reading plans. |
-| `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
-| `init-agent tool repo_trace --query "<task>" --json` | Agent-facing JSON investigation-path trace contract. |
-| `init-agent tool repo_reading_plan --query "<task>" --json` | Agent-facing JSON reading plan that combines graph, trace, memory, feedback and tags. |
-| `init-agent tool repo_reading_plan_read --id <id> --path <path> --json` | Record opened files for a saved reading plan. |
-| `init-agent tool repo_reading_plan_diff --id <id> --json` | Show what was planned, read, skipped or left without outcome. |
-| `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record what the agent read, verified, found useful/noisy or found missing. |
-| `init-agent tool repo_flow_topics --json` | Summarize memory/tag/flow aggregates for recurring areas. |
-| `init-agent tool repo_overview --json` | Agent-facing JSON repository overview contract. |
-| `init-agent tool repo_entrypoints --json` | Agent-facing JSON entry-point discovery contract. |
-| `init-agent tool repo_related_file --path <path> --json` | Agent-facing JSON file-neighborhood contract. |
-| `init-agent tool repo_symbol_callers --symbol <name> --json` | Agent-facing JSON symbol caller contract. |
-| `init-agent tool repo_feedback_add --query "<task>" --path <path> --rating useful --json` | Record optional local feedback after verification. |
-| `init-agent tool repo_memory_add --path <path> --note "..." --json` | Record an optional local note about a verified file. |
-| `init-agent tool repo_memory_add --scope repo --note "..." --json` | Record an optional repo-wide project note. |
-| `init-agent tool repo_memory_audit --json` | Audit local memory quality. |
-| `init-agent tool repo_session_summary --json` | Summarize local handoff metadata after an agent session. |
-| `init-agent session close` | Print an end-of-session checklist for handoff. |
-| `init-agent tool repo_memory_topics --json` | Summarize local memory by topic/area. |
-| `init-agent tool repo_memory_update --id <id> --note "..." --json` | Refresh or replace an existing local note. |
-| `init-agent tool repo_memory_list --stale --json` | Audit local notes, including stale notes. |
-| `init-agent tool repo_task_add --title "..." --json` | Track an open local task/session item linked to files and checks. |
-| `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a local task. |
-| `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
-| `init-agent web` | Serve a local read-only dashboard for memory, feedback, tasks, plans and file activity. |
-| `init-agent mcp` | Run the local MCP stdio wrapper for repo tool contracts. |
-| `init-agent mcp install-codex` | Register init-agent MCP with Codex through `codex mcp add`. |
-| `init-agent mcp uninstall-codex` | Remove init-agent MCP from Codex through `codex mcp remove`. |
-| `init-agent estimate "<task>"` | Estimate context savings. |
-| `init-agent export --json` | Export the local graph metadata for external tools. |
-| `init-agent doctor` | Check local index health. |
-| `init-agent symbol <name>` | Show symbol definitions, callers and candidate files. |
-| `init-agent callers <name>` | Show files that call a symbol/function. |
-| `init-agent related <path>` | Show symbols, relations and commits around one file. |
-| `init-agent feedback add ...` | Store local ranking feedback after verification. |
-
-See [docs/commands.md](docs/commands.md) for the full command reference.
-
-See [docs/mcp.md](docs/mcp.md) for MCP setup and Codex configuration examples.
-See [docs/memory-workflows.md](docs/memory-workflows.md) for decision-log and
-area-map memory patterns.
-See [docs/parsing.md](docs/parsing.md) for Python AST parsing and optional PHP
-tree-sitter setup.
-
-## Feedback
-
-Agents can record local feedback after verifying files:
-
-```bash
-init-agent feedback add "fix login session bug" src/auth/session.py --rating useful --source agent
-init-agent feedback explain "fix login session bug"
-```
-
-Feedback stays local in `.agent/graph.sqlite`. It is a bounded ranking signal,
-not training data and not a source of truth.
-
-MCP-capable agents can also use `repo_feedback_add` and
-`repo_feedback_explain` directly after verifying files. This lets an agent
-record that a file was useful, noisy, or missing from the initial pack without
-making feedback mandatory.
-
-See [docs/feedback.md](docs/feedback.md) for details.
-
-Agents can also store short local file notes after understanding code:
-
-```bash
-init-agent tool repo_memory_add --path src/auth/session.py --topic "login session" --tag login_session --evidence read_full_file --note "Session validation lives here; verified during redirect debugging." --json
-init-agent tool repo_memory_add --scope repo --topic "architecture" --evidence user_decision --note "Use a local-only CLI with SQLite storage." --json
-init-agent tool repo_memory_search --query "login session validation" --json
-init-agent tool repo_reading_plan --query "debug login session redirect" --read 3 --json
-init-agent tool repo_reading_plan_read --id 1 --path src/auth/session.py --note "Opened session file." --json
-init-agent tool repo_reading_plan_diff --id 1 --json
-init-agent tool repo_reading_plan_finish --id 1 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
-init-agent tool repo_memory_audit --json
-init-agent tool repo_memory_topics --topic "login session" --json
-init-agent tool repo_flow_topics --tag login --json
-init-agent tool repo_memory_list --stale --json
-init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
-```
-
-This is local working memory, not model training and not a replacement for
-reading files before editing. Memory results include a stale flag when the
-indexed file hash changed after the note was recorded. Notes also include an
-evidence field so agents can distinguish full-file reads, excerpts, manifest
-checks, graph-only inferences, user decisions, implementation notes and
-planning notes. Notes can also carry structured tags; if tags are omitted,
-init-agent derives lightweight tags from the path, topic, query and note.
-Repo-wide memories are not tied to a file hash and report stale status as not
-applicable. They can be recorded before the first `init-agent map` when a
-project starts from an empty directory; keep them small and factual.
-For practical decision-log and area-map patterns, see
-[docs/memory-workflows.md](docs/memory-workflows.md).
-
-Reading plans are durable local metadata. `--read N` limits the number of files
-the agent should open immediately; other candidates stay as `read_if_needed` or
-context-only hints. `repo_reading_plan_read` records files actually opened while
-working, and `repo_reading_plan_diff` shows what was suggested but not read,
-what was read outside the plan and what still has no useful/noisy/missing
-outcome. After verification, `repo_reading_plan_finish` can record which files
-were read, useful, noisy or missing. `session close` then surfaces unfinished
-plans and suggests feedback or memory when verified files look worth
-remembering. This tracking is explicit metadata, not automatic editor
-telemetry.
-
-For longer work, agents can also track a local task/session item:
-
-```bash
-init-agent tool repo_task_add --title "Fix login redirect" --topic auth --file src/auth/session.py --status in_progress --json
-init-agent tool repo_task_note --id 1 --note "Verified session handling; redirect smoke check remains." --file src/auth/login.py --test "python -m unittest discover -s tests" --remaining "Run manual redirect smoke check." --json
-init-agent tool repo_task_close --id 1 --summary "Login redirect task completed." --json
-```
-
-Tasks are local operational memory. They are useful for handoff and session
-continuity, but they are not a replacement for GitHub Issues or project
-management tools.
-
-To inspect this metadata as a human, run:
-
-```bash
-init-agent web
-```
-
-The local read-only dashboard shows project counts, recent memories, feedback,
-open tasks, reading plans, orientation scorecard metrics and file activity from
-`.agent/graph.sqlite`. It is organized into tabs with a client-side search box,
-so it stays usable on larger repositories where a single long metadata page
-would become hard to scan.
-
-Use `init-agent web --snapshot-json` when you want the same data as JSON without
-starting the HTTP server.
-
-The scorecard is a local self-audit, not a benchmark claim. It reports whether
-files later marked useful or missing appeared early in recent reading plans, how
-often important files were missing, how noisy planned files were and how quickly
-the explicit read ledger reached a useful file. Mark test, smoke or experiment
-plans with `init-agent plan mark --id <id> --kind <kind>` so routine metrics
-focus on real work.
+- [docs/feedback.md](docs/feedback.md)
+- [docs/memory-workflows.md](docs/memory-workflows.md)
+- [docs/agent-usage.md](docs/agent-usage.md)
+- [docs/parsing.md](docs/parsing.md)
 
 ## Validation
 
-This repository includes unit tests and a local experiment runner covering
-multiple real-world repositories and counter-cases:
+The repository includes tests and an orientation benchmark runner:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -395,9 +196,12 @@ python experiments/plot_results.py experiments/results/results.csv
 ```
 
 The deterministic benchmark measures repository-orientation quality: whether
-expected useful files appear early in the generated context pack. It can write
-JSON, CSV and Markdown summaries, plus optional charts. See
-[docs/experiments.md](docs/experiments.md) for benchmark setup and output.
+expected useful files appear early in the generated context pack. It is not an
+end-to-end benchmark of agent speed or patch quality.
+
+Observed paired agent runs, including a Django hidden-cause experiment, live in
+the `experiments/` directory. They are useful workflow evidence, not broad
+performance claims. See [docs/experiments.md](docs/experiments.md).
 
 ## Security And Privacy
 
@@ -410,34 +214,17 @@ JSON, CSV and Markdown summaries, plus optional charts. See
 File contents may be read locally during mapping, refresh and token estimation
 to extract lightweight metadata, symbols, hashes and character counts.
 
-See [docs/security.md](docs/security.md) for details.
+See [docs/security.md](docs/security.md).
 
 ## Current Limits
 
-- Symbol extraction is intentionally shallow. Python uses `ast`; PHP uses an
-  optional tree-sitter parser when installed, otherwise it falls back to the
-  built-in regex parser.
+- Ranking is heuristic and may surface relevant-looking but non-essential files.
+- Symbol and relation extraction are intentionally lightweight.
 - Import/include resolution is best-effort.
-- Context ranking is heuristic and may surface relevant-looking but non-essential files.
-- Entrypoint discovery is heuristic and may miss custom boot files or include support files.
-- Context packs are a starting point, not a source of truth.
-- Refresh is incremental by file hash, but it does not yet do dependency-aware cascading updates.
+- Entrypoint discovery may miss custom boot files.
+- Refresh is incremental by file hash, but not dependency-aware.
 - No built-in LLM execution.
 - The web dashboard does not yet render an interactive symbol/relation graph.
-
-## Roadmap
-
-- A more detailed implementation backlog is tracked in
-  [docs/roadmap.md](docs/roadmap.md).
-- More precise entrypoint classification for frontend, deploy, docs and custom PHP projects.
-- Better filtering of barrel/type/schema files from runtime entrypoint results.
-- MCP and skill installers for additional agent runtimes after their formats are verified.
-- Link chat and agent sessions to repository context packs.
-- Dependency-aware incremental updates.
-- Graph visualization.
-- Language and framework plugin support.
-- Broader optional tree-sitter support for languages where the standard library
-  does not provide a reliable parser.
 
 ## Development
 
@@ -460,10 +247,11 @@ More documentation:
 
 - [Agent usage](docs/agent-usage.md)
 - [Command reference](docs/commands.md)
+- [MCP integration](docs/mcp.md)
 - [Parsing and optional tree-sitter](docs/parsing.md)
 - [Scoring](docs/scoring.md)
 - [Feedback](docs/feedback.md)
 - [Memory workflows](docs/memory-workflows.md)
-- [Roadmap notes](docs/roadmap.md)
 - [Validation experiments](docs/experiments.md)
+- [Roadmap](docs/roadmap.md)
 - [Security and privacy](docs/security.md)
