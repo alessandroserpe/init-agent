@@ -24,6 +24,7 @@ from .agent_tools import (
     repo_reading_plan,
     repo_reading_plan_diff,
     repo_reading_plan_finish,
+    repo_reading_plan_mark,
     repo_reading_plan_read,
     repo_reading_plan_stats,
     repo_related_file,
@@ -65,7 +66,8 @@ def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str
         raise ValueError("repo_reading_plan requires query")
     limit = int(arguments.get("limit") or 10)
     read_budget = int(arguments.get("read_budget") or arguments.get("read") or 3)
-    return repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False)
+    kind = str(arguments.get("kind") or "real")
+    return repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False, kind=kind)
 
 
 def _handle_repo_reading_plan_read(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -107,11 +109,26 @@ def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> d
         missing=_string_list(arguments.get("missing")),
         summary=str(arguments.get("summary") or ""),
         source=str(arguments.get("source") or "agent"),
+        kind=str(arguments["kind"]) if arguments.get("kind") else None,
     )
 
 
+def _handle_repo_reading_plan_mark(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    if plan_id <= 0:
+        raise ValueError("repo_reading_plan_mark requires positive id")
+    kind = str(arguments.get("kind") or "").strip()
+    if not kind:
+        raise ValueError("repo_reading_plan_mark requires kind")
+    return repo_reading_plan_mark(root, plan_id, kind)
+
+
 def _handle_repo_reading_plan_stats(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
-    return repo_reading_plan_stats(root)
+    return repo_reading_plan_stats(
+        root,
+        limit=int(arguments.get("limit") or 20),
+        include_all=bool(arguments.get("include_all") or arguments.get("all") or False),
+    )
 
 
 def _handle_repo_overview(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -360,6 +377,7 @@ MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "repo_reading_plan_read": _handle_repo_reading_plan_read,
     "repo_reading_plan_diff": _handle_repo_reading_plan_diff,
     "repo_reading_plan_finish": _handle_repo_reading_plan_finish,
+    "repo_reading_plan_mark": _handle_repo_reading_plan_mark,
     "repo_reading_plan_stats": _handle_repo_reading_plan_stats,
     "repo_entrypoints": _handle_repo_entrypoints,
     "repo_feedback_add": _handle_repo_feedback_add,
@@ -424,6 +442,12 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                     "query": {"type": "string", "description": "Free-text task or question."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
                     "read_budget": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
+                        "default": "real",
+                        "description": "Plan kind for scorecard filtering.",
+                    },
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -470,15 +494,44 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                     "missing": {"type": "array", "items": {"type": "string"}, "description": "Important files missing from the plan."},
                     "summary": {"type": "string", "description": "Short closing summary."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
+                        "description": "Optional replacement plan kind for scorecard filtering.",
+                    },
                 },
                 "required": ["id"],
                 "additionalProperties": False,
             },
         },
         {
+            "name": "repo_reading_plan_mark",
+            "description": "Mark a reading plan as real, smoke, experiment, planning, diagnostic or docs for scorecard filtering.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
+                        "description": "Plan kind.",
+                    },
+                },
+                "required": ["id", "kind"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "repo_reading_plan_stats",
-            "description": "Return optional local metrics about persisted reading-plan usage.",
-            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "description": "Return local orientation scorecard metrics about persisted reading-plan usage.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                    "include_all": {"type": "boolean", "default": False},
+                },
+                "additionalProperties": False,
+            },
         },
         {
             "name": "repo_overview",
@@ -814,5 +867,3 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
             },
         },
     ]
-
-

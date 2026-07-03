@@ -11,6 +11,7 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_reading_plan_read`
 - `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
+- `repo_reading_plan_mark`
 - `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`
@@ -120,6 +121,7 @@ include:
 - `repo_reading_plan_read`
 - `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
+- `repo_reading_plan_mark`
 - `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`

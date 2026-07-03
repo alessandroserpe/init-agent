@@ -539,6 +539,94 @@ class CliToolsTests(InitAgentTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_scorecard_excludes_marked_smoke_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                real_output = StringIO()
+                with redirect_stdout(real_output):
+                    self.assertEqual(main(["tool", "repo_reading_plan", "--query", "debug login session", "--read", "1", "--json"]), 0)
+                real_plan = json.loads(real_output.getvalue())
+                session_path = real_plan["plan_items"][0]["path"]
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_reading_plan_finish",
+                                "--id",
+                                str(real_plan["id"]),
+                                "--read",
+                                session_path,
+                                "--verified",
+                                session_path,
+                                "--useful",
+                                session_path,
+                                "--summary",
+                                "real plan outcome",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+
+                smoke_output = StringIO()
+                with redirect_stdout(smoke_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_reading_plan",
+                                "--query",
+                                "smoke reading plan",
+                                "--kind",
+                                "smoke",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                smoke_plan = json.loads(smoke_output.getvalue())
+                self.assertEqual(smoke_plan["kind"], "smoke")
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(main(["tool", "repo_reading_plan_mark", "--id", str(smoke_plan["id"]), "--kind", "smoke", "--json"]), 0)
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_reading_plan_finish",
+                                "--id",
+                                str(smoke_plan["id"]),
+                                "--summary",
+                                "smoke plan only",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+
+                score_output = StringIO()
+                with redirect_stdout(score_output):
+                    self.assertEqual(main(["scorecard", "--json"]), 0)
+                stats = json.loads(score_output.getvalue())["stats"]
+                self.assertEqual(stats["scorecard_included_plan_count"], 1)
+                self.assertEqual(stats["scorecard_excluded_by_kind"], {"smoke": 1})
+                self.assertEqual(stats["scorecard_evaluable_plan_count"], 1)
+                self.assertEqual(stats["top1_hit_rate"], 1.0)
+
+                all_output = StringIO()
+                with redirect_stdout(all_output):
+                    self.assertEqual(main(["scorecard", "--all", "--json"]), 0)
+                all_stats = json.loads(all_output.getvalue())["stats"]
+                self.assertEqual(all_stats["scorecard_included_plan_count"], 2)
+                self.assertEqual(all_stats["scorecard_excluded_plan_count"], 0)
+            finally:
+                os.chdir(previous)
+
     def test_tool_repo_memory_supports_repo_scope_without_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))

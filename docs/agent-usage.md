@@ -63,6 +63,7 @@ init-agent tool repo_reading_plan_read --id 7 --path src/auth/session.py --note 
 init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path." --json
 init-agent tool repo_reading_plan_stats --json
+init-agent scorecard
 init-agent tool repo_overview --json
 init-agent tool repo_entrypoints --json
 init-agent tool repo_related_file --path src/auth/session.py --json
@@ -99,8 +100,14 @@ After verification, call `repo_reading_plan_finish` with the plan id and the
 actual outcome: files read, verified, useful, noisy or missing. This creates a
 small feedback loop without asking the agent to remember every opened file in
 chat. The read ledger is explicit metadata, not automatic editor telemetry.
-Use `repo_reading_plan_stats` only when local metrics are useful; it is optional
-and should not be treated as proof of agent speed.
+Use `repo_reading_plan_stats` or `init-agent scorecard` only when local metrics
+are useful. They measure orientation quality: whether useful files appeared
+early in saved reading plans, how often important files were missing, how often
+planned files were noisy, and how quickly the read ledger reached a useful
+file. They should not be treated as proof of agent speed or task success.
+Mark smoke, experiment, planning, diagnostic or docs-only plans with
+`init-agent plan mark --id <id> --kind <kind>` or
+`repo_reading_plan_mark` so the default scorecard focuses on real work.
 
 Context packs also include a confidence diagnostic and suggested next agent
 actions. If confidence is low or medium, agents should follow those actions

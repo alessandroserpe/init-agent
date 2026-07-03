@@ -19,6 +19,7 @@ class McpTests(InitAgentTestCase):
                     "repo_reading_plan_read",
                     "repo_reading_plan_diff",
                     "repo_reading_plan_finish",
+                    "repo_reading_plan_mark",
                     "repo_reading_plan_stats",
                     "repo_trace",
                     "repo_entrypoints",

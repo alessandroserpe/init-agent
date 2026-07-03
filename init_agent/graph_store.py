@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS reading_plans (
     query_tokens_json TEXT NOT NULL,
     read_budget INTEGER NOT NULL,
     source TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'real',
     summary TEXT,
     finished_at TEXT,
     created_at TEXT NOT NULL
@@ -216,12 +217,17 @@ class GraphStore:
         self._ensure_column("agent_notes", "evidence", "TEXT")
         self._ensure_column("agent_notes", "scope", "TEXT")
         self._ensure_column("agent_notes", "tags_json", "TEXT")
+        self._ensure_column("reading_plans", "kind", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
         existing = {str(row["name"]) for row in rows}
         if column not in existing:
-            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+            try:
+                self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
 
     def set_meta(self, key: str, value: Any) -> None:
         stored = value if isinstance(value, str) else json.dumps(value, sort_keys=True)

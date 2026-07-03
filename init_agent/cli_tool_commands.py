@@ -52,6 +52,7 @@ from .agent_tools import (
     repo_reading_plan,
     repo_reading_plan_diff,
     repo_reading_plan_finish,
+    repo_reading_plan_mark,
     repo_reading_plan_read,
     repo_reading_plan_stats,
     repo_related_file,
@@ -86,6 +87,7 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_reading_plan_parser.add_argument("--query", required=True, help="Free-text task or question.")
     repo_reading_plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
     repo_reading_plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
+    repo_reading_plan_parser.add_argument("--kind", default="real", choices=["real", "smoke", "experiment", "planning", "diagnostic", "docs"], help="Plan kind for scorecard filtering.")
     repo_reading_plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_parser.set_defaults(handler=cmd_tool_repo_reading_plan)
 
@@ -97,9 +99,16 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_reading_plan_finish_parser.add_argument("--noisy", action="append", default=[], help="File verified noisy. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--missing", action="append", default=[], help="Important missing file. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--summary", default="", help="Short closing summary.")
+    repo_reading_plan_finish_parser.add_argument("--kind", choices=["real", "smoke", "experiment", "planning", "diagnostic", "docs"], help="Optional replacement plan kind.")
     repo_reading_plan_finish_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan finish source.")
     repo_reading_plan_finish_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_finish_parser.set_defaults(handler=cmd_tool_repo_reading_plan_finish)
+
+    repo_reading_plan_mark_parser = tool_subparsers.add_parser("repo_reading_plan_mark", help="Mark a reading plan kind for scorecard filtering.")
+    repo_reading_plan_mark_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_reading_plan_mark_parser.add_argument("--kind", required=True, choices=["real", "smoke", "experiment", "planning", "diagnostic", "docs"], help="Plan kind.")
+    repo_reading_plan_mark_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_reading_plan_mark_parser.set_defaults(handler=cmd_tool_repo_reading_plan_mark)
 
     repo_reading_plan_read_parser = tool_subparsers.add_parser("repo_reading_plan_read", help="Record files opened while following a reading plan.")
     repo_reading_plan_read_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
@@ -115,6 +124,8 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_reading_plan_diff_parser.set_defaults(handler=cmd_tool_repo_reading_plan_diff)
 
     repo_reading_plan_stats_parser = tool_subparsers.add_parser("repo_reading_plan_stats", help="Show optional local reading-plan metrics.")
+    repo_reading_plan_stats_parser.add_argument("--limit", type=int, default=20, help="Maximum recent finished plans to score.")
+    repo_reading_plan_stats_parser.add_argument("--all", action="store_true", help="Include smoke, experiment, planning, diagnostic and docs plans.")
     repo_reading_plan_stats_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_stats_parser.set_defaults(handler=cmd_tool_repo_reading_plan_stats)
 
@@ -334,7 +345,7 @@ def cmd_tool_repo_trace(args: argparse.Namespace) -> int:
 
 def cmd_tool_repo_reading_plan(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_reading_plan(root, args.query, limit=args.limit, read_budget=args.read)
+    result = repo_reading_plan(root, args.query, limit=args.limit, read_budget=args.read, kind=args.kind)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -354,11 +365,22 @@ def cmd_tool_repo_reading_plan_finish(args: argparse.Namespace) -> int:
         missing=args.missing,
         summary=args.summary,
         source=args.source,
+        kind=args.kind,
     )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_reading_plan_finish_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_reading_plan_mark(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_mark(root, args.id, args.kind)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Init Agent Tool: repo_reading_plan_mark\n\nPlan id: {result.get('id')}\nUpdated: {'yes' if result.get('updated') else 'no'}\nKind: {result.get('kind')}")
     return 0 if result.get("updated") else 1
 
 
@@ -384,7 +406,7 @@ def cmd_tool_repo_reading_plan_diff(args: argparse.Namespace) -> int:
 
 def cmd_tool_repo_reading_plan_stats(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_reading_plan_stats(root)
+    result = repo_reading_plan_stats(root, limit=args.limit, include_all=args.all)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -698,5 +720,4 @@ def cmd_tool_repo_task_close(args: argparse.Namespace) -> int:
 def _memory_tool_exit_code(result: dict[str, Any]) -> int:
     warnings = [str(warning) for warning in result.get("warnings", [])]
     return 1 if any("memory store could not be read" in warning for warning in warnings) else 0
-
 

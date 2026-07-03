@@ -54,6 +54,7 @@ from .agent_tools import (
     repo_flow_topics,
     repo_reading_plan_diff,
     repo_reading_plan_finish,
+    repo_reading_plan_mark,
     repo_reading_plan_read,
     repo_reading_plan_stats,
     repo_reading_plan,
@@ -162,9 +163,21 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--noisy", action="append", default=[], help="For `plan finish`: file verified noisy.")
     plan_parser.add_argument("--missing", action="append", default=[], help="For `plan finish`: important missing file.")
     plan_parser.add_argument("--summary", default="", help="For `plan finish`: closing summary.")
+    plan_parser.add_argument(
+        "--kind",
+        default=None,
+        choices=["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
+        help="Plan kind for scorecard filtering.",
+    )
     plan_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan source.")
     plan_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     plan_parser.set_defaults(handler=cmd_plan)
+
+    scorecard_parser = subparsers.add_parser("scorecard", help="Show local orientation scorecard metrics for reading plans.")
+    scorecard_parser.add_argument("--limit", type=int, default=20, help="Maximum recent finished plans to score.")
+    scorecard_parser.add_argument("--all", action="store_true", help="Include smoke, experiment, planning, diagnostic and docs plans.")
+    scorecard_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    scorecard_parser.set_defaults(handler=cmd_scorecard)
 
     overview_parser = subparsers.add_parser("overview", help="Show a broad repository orientation pack.")
     overview_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
@@ -507,11 +520,23 @@ def cmd_plan(args: argparse.Namespace) -> int:
             missing=args.missing,
             summary=args.summary,
             source=args.source,
+            kind=args.kind,
         )
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
         else:
             print(render_repo_reading_plan_finish_text(result))
+        return 0 if result.get("updated") else 1
+    if mode == "mark":
+        if not args.id:
+            raise SystemExit("init-agent plan mark requires --id")
+        if not args.kind:
+            raise SystemExit("init-agent plan mark requires --kind")
+        result = repo_reading_plan_mark(root, args.id, args.kind)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Init Agent Tool: repo_reading_plan_mark\n\nPlan id: {result.get('id')}\nUpdated: {'yes' if result.get('updated') else 'no'}\nKind: {result.get('kind')}")
         return 0 if result.get("updated") else 1
     if mode == "read":
         if not args.id:
@@ -540,12 +565,29 @@ def cmd_plan(args: argparse.Namespace) -> int:
         else:
             print(render_repo_reading_plan_stats_text(result))
         return 0
-    result = repo_reading_plan(root, _text_arg(args.text), limit=args.limit, read_budget=args.read, source=args.source)
+    result = repo_reading_plan(
+        root,
+        _text_arg(args.text),
+        limit=args.limit,
+        read_budget=args.read,
+        source=args.source,
+        kind=args.kind or "real",
+    )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_reading_plan_text(result))
     return 1 if result.get("preparation", {}).get("map") == "failed" else 0
+
+
+def cmd_scorecard(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_reading_plan_stats(root, limit=args.limit, include_all=args.all)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_reading_plan_stats_text(result))
+    return 0
 
 
 def cmd_export(args: argparse.Namespace) -> int:

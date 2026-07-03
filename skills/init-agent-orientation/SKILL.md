@@ -106,6 +106,13 @@ outcomes. Use `--noisy` for irrelevant candidates and `--missing` for important
 files absent from the plan. The read ledger is explicit metadata, not automatic
 editor telemetry.
 
+Use `init-agent plan mark --id <plan-id> --kind smoke|experiment|planning|diagnostic|docs`
+for plans created only for smoke tests, exploratory experiments, roadmap
+planning or documentation checks. This keeps `init-agent scorecard` focused on
+real orientation work. The scorecard is a local self-audit of Top-1/Top-3/Top-5
+useful hits, missing rate, noise rate and first useful read position; it is not
+a benchmark of agent speed or task success.
+
 ## Targeted Follow-Up
 
 Use more specific commands when the question shape suggests them.

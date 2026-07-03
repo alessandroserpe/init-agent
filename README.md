@@ -228,6 +228,7 @@ You do not need to remember every command. The recommended daily workflow is:
 | Plan | `init-agent plan "<task>" --read 3` | You are about to inspect or change code. |
 | Close loop | `init-agent plan finish --id <id> ...` | You verified which files were useful, noisy or missing. |
 | Handoff | `init-agent session close` | You are wrapping up work or handing context to a future session. |
+| Score | `init-agent scorecard` | You want to see whether recent real plans oriented the agent well. |
 | Observe | `init-agent web` | A human wants to inspect local memory, tasks, plans and file activity. |
 
 The full command surface remains available for scripts, MCP clients and
@@ -242,6 +243,8 @@ advanced follow-up.
 | `init-agent plan read --id <id> --file <path>` | Record a file the agent actually opened while following a saved plan. |
 | `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
 | `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
+| `init-agent plan mark --id <id> --kind smoke` | Mark smoke, experiment, planning, diagnostic or docs-only plans out of the default scorecard. |
+| `init-agent scorecard` | Show local orientation scorecard metrics for recent real reading plans. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Agent-facing JSON search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Agent-facing JSON investigation-path trace contract. |
 | `init-agent tool repo_reading_plan --query "<task>" --json` | Agent-facing JSON reading plan that combines graph, trace, memory, feedback and tags. |
@@ -364,12 +367,20 @@ init-agent web
 ```
 
 The local read-only dashboard shows project counts, recent memories, feedback,
-open tasks, reading plans and file activity from `.agent/graph.sqlite`. It is
-organized into tabs with a client-side search box, so it stays usable on larger
-repositories where a single long metadata page would become hard to scan.
+open tasks, reading plans, orientation scorecard metrics and file activity from
+`.agent/graph.sqlite`. It is organized into tabs with a client-side search box,
+so it stays usable on larger repositories where a single long metadata page
+would become hard to scan.
 
 Use `init-agent web --snapshot-json` when you want the same data as JSON without
 starting the HTTP server.
+
+The scorecard is a local self-audit, not a benchmark claim. It reports whether
+files later marked useful or missing appeared early in recent reading plans, how
+often important files were missing, how noisy planned files were and how quickly
+the explicit read ledger reached a useful file. Mark test, smoke or experiment
+plans with `init-agent plan mark --id <id> --kind <kind>` so routine metrics
+focus on real work.
 
 ## Validation
 

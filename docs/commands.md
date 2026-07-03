@@ -15,6 +15,7 @@ and `estimate` also accept unquoted multi-word text.
 | Record reads | `init-agent plan read --id <id> --file <path>` | You opened a planned or unplanned file. |
 | Finish plan | `init-agent plan finish --id <id> ...` | You verified useful, noisy or missing files. |
 | Handoff | `init-agent session close` | You are wrapping up and want a checklist. |
+| Score | `init-agent scorecard` | You want to see whether recent reading plans oriented the agent well. |
 | Observe | `init-agent web` | You want a read-only browser view of local agent metadata. |
 
 Everything below is still supported. Treat it as the reference surface for
@@ -38,13 +39,16 @@ scripts, MCP clients and targeted follow-up.
 | `init-agent plan read --id <id> --file <path>` | Record a file opened while following a saved reading plan. |
 | `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
 | `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
+| `init-agent plan mark --id <id> --kind smoke` | Mark a plan as real, smoke, experiment, planning, diagnostic or docs for scorecard filtering. |
 | `init-agent plan stats` | Summarize reading-plan usefulness/noise metrics. |
+| `init-agent scorecard` | Show local orientation scorecard metrics for recent real reading plans. |
 | `init-agent tool repo_graph_search --query "<task>" --json` | Return an agent-facing graph search contract. |
 | `init-agent tool repo_trace --query "<task>" --json` | Return an agent-facing investigation-path trace contract. |
 | `init-agent tool repo_reading_plan --query "<task>" --read 3 --json` | Return an agent-facing reading plan contract. |
 | `init-agent tool repo_reading_plan_read --id <id> --path <path> --json` | Record files opened while following a reading plan. |
 | `init-agent tool repo_reading_plan_diff --id <id> --json` | Return the gap between a plan and recorded activity. |
 | `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record reading-plan outcomes after verification. |
+| `init-agent tool repo_reading_plan_mark --id <id> --kind experiment --json` | Mark non-real plans so scorecards can exclude smoke/test/experiment data. |
 | `init-agent tool repo_reading_plan_stats --json` | Return aggregate reading-plan outcome metrics. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
 | `init-agent tool repo_entrypoints --json` | Return an agent-facing entry-point discovery contract. |
@@ -320,6 +324,7 @@ init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3
 init-agent tool repo_reading_plan_read --id 7 --path init_agent/mcp_server.py --note "Opened MCP server implementation." --json
 init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path." --json
+init-agent tool repo_reading_plan_mark --id 7 --kind smoke --json
 init-agent tool repo_reading_plan_stats --json
 ```
 
@@ -329,10 +334,13 @@ action, confidence, signal sources, tags, compact memory notes and feedback
 signals. Saved plans include an `id` so agents can finish the loop after
 reading files. `repo_reading_plan_read` records files opened during the session,
 and `repo_reading_plan_diff` highlights unread suggestions, unplanned reads and
-opened files that still need an outcome. `repo_reading_plan_stats` reports
-aggregate plan counts, useful hits by rank, noisy hits by rank and missing
-counts; it is optional and meant for local self-audit, not for user-facing
-claims.
+opened files that still need an outcome. `repo_reading_plan_mark` labels smoke,
+experiment, planning, diagnostic or docs-only plans so they do not pollute the
+default scorecard. `repo_reading_plan_stats` and `init-agent scorecard` report
+orientation metrics such as Top-1/Top-3/Top-5 useful hit rate, missing rate,
+noise rate and first useful read position. These metrics are local self-audit
+signals about repository orientation quality, not claims about agent speed or
+task success.
 
 ## `init-agent tool repo_flow_topics`
 

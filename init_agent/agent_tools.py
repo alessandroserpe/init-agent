@@ -16,6 +16,7 @@ from .overview import build_overview_pack
 from .plan_feedback import (
     finish_reading_plan,
     list_reading_plans,
+    mark_reading_plan_kind,
     reading_plan_diff,
     reading_plan_stats,
     record_reading_plan_read,
@@ -268,7 +269,15 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
     }
 
 
-def repo_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int = 3, prepare: bool = True, source: str = "agent") -> dict[str, Any]:
+def repo_reading_plan(
+    root: Path,
+    query: str,
+    limit: int = 10,
+    read_budget: int = 3,
+    prepare: bool = True,
+    source: str = "agent",
+    kind: str = "real",
+) -> dict[str, Any]:
     """Return a reading plan composed from graph, trace, memory, feedback and tags."""
 
     bounded_limit = max(1, min(limit, 30))
@@ -292,7 +301,14 @@ def repo_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int 
     }
     if prepare or readiness["ready"]:
         plan = build_reading_plan(root, query, limit=bounded_limit, read_budget=bounded_read_budget)
-        saved_plan = save_reading_plan(root, query, plan.get("plan_items", []), bounded_read_budget, source=source)
+        saved_plan = save_reading_plan(
+            root,
+            query,
+            plan.get("plan_items", []),
+            bounded_read_budget,
+            source=source,
+            kind=kind,
+        )
     else:
         saved_plan = None
     return {
@@ -300,6 +316,7 @@ def repo_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int 
         "contract": TOOL_CONTRACT_VERSION,
         "id": saved_plan["id"] if saved_plan else None,
         "query": query,
+        "kind": saved_plan["kind"] if saved_plan else kind,
         "preparation": preparation,
         "read_budget": bounded_read_budget,
         "query_tokens": plan.get("query_tokens", []),
@@ -321,6 +338,7 @@ def repo_reading_plan_finish(
     missing: list[str] | None = None,
     summary: str = "",
     source: str = "agent",
+    kind: str | None = None,
 ) -> dict[str, Any]:
     """Record how a reading plan performed after files were verified."""
 
@@ -337,6 +355,7 @@ def repo_reading_plan_finish(
             missing=missing or [],
             summary=summary,
             source=source,
+            kind=kind,
         )
         if readiness["ready"]
         else {"updated": False, "id": plan_id, "plan": None, "events": [], "feedback": [], "suggested_memory": []}
@@ -349,6 +368,28 @@ def repo_reading_plan_finish(
         "safety": [
             "finish a reading plan only after actually reading or verifying files",
             "feedback is created only for explicit useful, noisy and missing paths",
+        ],
+    }
+
+
+def repo_reading_plan_mark(root: Path, plan_id: int, kind: str) -> dict[str, Any]:
+    """Update the scorecard kind for a saved reading plan."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    marked = (
+        mark_reading_plan_kind(root, plan_id, kind)
+        if readiness["ready"]
+        else {"updated": False, "id": plan_id, "kind": kind, "plan": None}
+    )
+    return {
+        "tool": "repo_reading_plan_mark",
+        "contract": TOOL_CONTRACT_VERSION,
+        **marked,
+        "warnings": warnings,
+        "safety": [
+            "plan kind controls scorecard inclusion only; it does not modify source files",
+            "use smoke/experiment/planning/diagnostic/docs for non-production orientation plans",
         ],
     }
 
@@ -399,12 +440,12 @@ def repo_reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
     }
 
 
-def repo_reading_plan_stats(root: Path) -> dict[str, Any]:
+def repo_reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -> dict[str, Any]:
     """Return optional local metrics for persisted reading plans."""
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    stats = reading_plan_stats(root) if readiness["ready"] else {}
+    stats = reading_plan_stats(root, limit=limit, include_all=include_all) if readiness["ready"] else {}
     return {
         "tool": "repo_reading_plan_stats",
         "contract": TOOL_CONTRACT_VERSION,

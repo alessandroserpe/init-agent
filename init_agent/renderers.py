@@ -216,16 +216,44 @@ def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
 def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
     stats = result.get("stats") or {}
     lines = [
-        "Init Agent Tool: repo_reading_plan_stats",
+        "Init Agent Orientation Scorecard",
         "",
         f"Plans: {stats.get('plan_count', 0)}",
         f"Finished: {stats.get('finished_plan_count', 0)}",
         f"Unfinished: {stats.get('unfinished_plan_count', 0)}",
-        f"Average files read per finished plan: {stats.get('average_files_read_per_finished_plan', 0)}",
-        f"Top-1 useful rate: {stats.get('top1_verified_useful_rate', 0)}",
-        f"Top-3 useful rate: {stats.get('top3_verified_useful_rate', 0)}",
-        f"Missing count: {stats.get('missing_count', 0)}",
+        f"Scorecard window: last {stats.get('scorecard_limit', 0)} finished plans",
+        f"Included: {stats.get('scorecard_included_plan_count', 0)}",
+        f"Excluded: {stats.get('scorecard_excluded_plan_count', 0)}",
+        f"Evaluable: {stats.get('scorecard_evaluable_plan_count', 0)}",
+        f"Not evaluable: {stats.get('scorecard_not_evaluable_plan_count', 0)}",
+        "",
+        "Hit rates:",
+        f"- Top-1 useful/missing hit rate: {_percent(stats.get('top1_hit_rate', 0))}",
+        f"- Top-3 useful/missing hit rate: {_percent(stats.get('top3_hit_rate', 0))}",
+        f"- Top-5 useful/missing hit rate: {_percent(stats.get('top5_hit_rate', 0))}",
+        "",
+        "Read behavior:",
+        f"- Average first useful read position: {stats.get('average_first_useful_read_position', 0)}",
+        f"- Average files read per included finished plan: {stats.get('average_files_read_per_finished_plan', 0)}",
+        f"- Average extra files read outside plan: {stats.get('average_extra_files_read_per_finished_plan', 0)}",
+        f"- Missing rate: {_percent(stats.get('missing_rate', 0))}",
+        f"- Noise rate: {_percent(stats.get('noise_rate', 0))}",
     ]
+    excluded = stats.get("scorecard_excluded_by_kind") or {}
+    if excluded:
+        lines.extend(["", "Excluded by kind:"])
+        for kind, count in excluded.items():
+            lines.append(f"- {kind}: {count}")
+    plans = list(stats.get("plans") or [])
+    if plans:
+        lines.extend(["", "Recent included plans:"])
+        for plan in plans[:10]:
+            label = "evaluable" if plan.get("evaluable") else "not evaluable"
+            lines.append(
+                f"- #{plan.get('id')} [{plan.get('kind')}; {label}] "
+                f"top3={plan.get('top3_hit')} missing={plan.get('missing_count')} "
+                f"extra={plan.get('extra_read_count')} :: {plan.get('query')}"
+            )
     _append_warnings(lines, result.get("warnings", []))
     return "\n".join(lines)
 
@@ -873,3 +901,8 @@ def _append_warnings(lines: list[str], warnings: list[str]) -> None:
             lines.append(f"- {warning}")
 
 
+def _percent(value: Any) -> str:
+    try:
+        return f"{100 * float(value):.0f}%"
+    except (TypeError, ValueError):
+        return "0%"
