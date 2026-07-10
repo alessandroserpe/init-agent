@@ -12,7 +12,8 @@ The scorer considers:
 - symbol names
 - file roles and languages
 - Git commit messages and changed files, when imported
-- simple graph relations such as imports/includes and PHP function calls
+- raw and resolved graph relations such as imports, includes, calls, routes and
+  template rendering
 - local orientation feedback, when present
 
 ## Token Weighting
@@ -74,6 +75,22 @@ Context packs return at most:
 
 Each recent commit includes at most 10 changed files in output. Large commits
 include `total_files` and `files_truncated`.
+
+## Reading Plan Signal Diagnostics
+
+Reading plans persist two rankings for each returned candidate:
+
+- `base_rank`: graph and trace signals only;
+- `rank`: graph and trace plus matching memory, feedback and tags.
+
+They also store the rank change observed when memory, feedback or tags are
+removed individually. The scorecard aggregates these observations after a
+file is marked central/useful. This is diagnostic evidence, not proof that one
+signal caused task success.
+
+Automatic tag contributions are weighted by repository specificity. A tag
+present on most files contributes less than a rare task-specific tag without
+requiring a hardcoded stop-list.
 
 ## Limits
 

@@ -13,7 +13,7 @@ init-agent plan "why does the login session expire after redirect" --read 3
 # read and verify the suggested files
 init-agent plan read --id <id> --file src/auth/session.py --note "Opened session flow."
 init-agent plan diff --id <id>
-init-agent plan finish --id <id> --read-file src/auth/session.py --verified src/auth/session.py --useful src/auth/session.py --summary "Verified session path."
+init-agent plan finish --id <id> --read-file src/auth/session.py --verified src/auth/session.py --central src/auth/session.py --support tests/test_session.py --summary "Verified session path."
 init-agent session close
 ```
 
@@ -86,14 +86,16 @@ opening files, call `repo_reading_plan_read` so the plan has an explicit read
 ledger. Use `repo_reading_plan_diff` before finishing when you need to see
 unread suggestions, unplanned reads or opened files that still need an outcome.
 After verification, call `repo_reading_plan_finish` with the plan id and the
-actual outcome: files read, verified, useful, noisy or missing. This creates a
-small feedback loop without asking the agent to remember every opened file in
-chat. The read ledger is explicit metadata, not automatic editor telemetry.
-Use `repo_reading_plan_stats` or `init-agent scorecard` only when local metrics
-are useful. They measure orientation quality: whether useful files appeared
-early in saved reading plans, how often important files were missing, how often
-planned files were noisy, and how quickly the read ledger reached a useful
-file. They should not be treated as proof of agent speed or task success.
+actual outcome: files read, verified, central, supporting, created,
+verification-only, noisy or missing. This creates a small feedback loop without
+asking the agent to remember every opened file in chat. The read ledger is
+explicit metadata, not automatic editor telemetry. Use
+`repo_reading_plan_stats` or `init-agent scorecard` only when local metrics are
+useful. They measure orientation quality: whether central files appeared early,
+how often important pre-existing files were missing, and how quickly the read
+ledger reached a central file. Support, created and verification files are
+reported separately. The scorecard also reports observed rank lift from
+memory, feedback and tags. It is not proof of agent speed or task success.
 Mark smoke, experiment, planning, diagnostic or docs-only plans with
 `init-agent plan mark --id <id> --kind <kind>` or
 `repo_reading_plan_mark` so the default scorecard focuses on real work.

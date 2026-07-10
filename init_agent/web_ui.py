@@ -378,9 +378,21 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
             "scorecard_not_evaluable_plan_count": 0,
             "plans": [],
         }
-    item_rows = [dict(row) for row in conn.execute("SELECT plan_id, path, rank FROM reading_plan_items").fetchall()]
+    has_ranking_diagnostics = _has_column(conn, "reading_plan_items", "signal_contributions_json")
+    diagnostic_select = (
+        "base_rank, signal_contributions_json"
+        if has_ranking_diagnostics
+        else "0 AS base_rank, '{}' AS signal_contributions_json"
+    )
+    item_rows = [
+        dict(row)
+        for row in conn.execute(
+            f"SELECT plan_id, path, rank, {diagnostic_select} FROM reading_plan_items"
+        ).fetchall()
+    ]
     event_rows = [dict(row) for row in conn.execute("SELECT plan_id, event, path FROM reading_plan_events ORDER BY id").fetchall()]
     rank_by_plan_path = {(int(row["plan_id"]), str(row["path"])): int(row["rank"] or 0) for row in item_rows}
+    item_by_plan_path = {(int(row["plan_id"]), str(row["path"])): row for row in item_rows}
     planned = {}
     for row in item_rows:
         planned.setdefault(int(row["plan_id"]), set()).add(str(row["path"]))
@@ -400,17 +412,23 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
     read_counts = []
     outcome_coverages = []
     verified_coverages = []
+    base_rank_lifts = []
+    signal_lifts = {"memory": [], "feedback": [], "tags": []}
     explicitly_tracked_plans = 0
     for plan in included:
         plan_id = int(plan["id"])
         by_event = events.get(plan_id, {})
         useful = _unique(by_event.get("useful", []))
+        central = _unique(by_event.get("central", []))
+        support = _unique(by_event.get("support", []))
+        created = _unique(by_event.get("created", []))
+        verification = _unique(by_event.get("verification", []))
         missing = _unique(by_event.get("missing", []))
         noisy = _unique(by_event.get("noisy", []))
         opened = _unique(by_event.get("opened", []))
         verified = _unique(by_event.get("verified", []))
         read = _unique([*by_event.get("opened", []), *by_event.get("read", [])])
-        expected = _unique([*useful, *missing])
+        expected = _unique([*(central or useful), *missing])
         evaluable = bool(expected or noisy)
         if evaluable:
             evaluable_count += 1
@@ -424,18 +442,37 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
             missing_rates.append(len(missing) / len(expected))
         if planned.get(plan_id):
             noise_rates.append(len(noisy) / len(planned[plan_id]))
-        extra_count = len([path for path in read if path not in planned.get(plan_id, set())])
+        orientation_read = read[:first_position] if first_position else read
+        extra_count = len([path for path in orientation_read if path not in planned.get(plan_id, set())])
         extra_reads.append(extra_count)
         read_counts.append(len(read))
         if opened:
             explicitly_tracked_plans += 1
-        classified = set([*useful, *noisy, *missing])
+        classified = set([*useful, *central, *support, *created, *verification, *noisy, *missing])
         outcome_coverage = len(set(read).intersection(classified)) / len(read) if read else None
         verified_coverage = len(set(read).intersection(verified)) / len(read) if read else None
         if outcome_coverage is not None:
             outcome_coverages.append(outcome_coverage)
         if verified_coverage is not None:
             verified_coverages.append(verified_coverage)
+        for path in central or useful:
+            item = item_by_plan_path.get((plan_id, path))
+            if not item:
+                continue
+            rank = int(item.get("rank") or 0)
+            base_rank = int(item.get("base_rank") or 0)
+            if rank and base_rank:
+                base_rank_lifts.append(base_rank - rank)
+            try:
+                contributions = json.loads(item.get("signal_contributions_json") or "{}")
+            except json.JSONDecodeError:
+                contributions = {}
+            scores = dict(contributions.get("scores") or {})
+            lifts = dict(contributions.get("signal_rank_lift") or {})
+            for signal in signal_lifts:
+                lift = int(lifts.get(signal) or 0)
+                if abs(float(scores.get(signal) or 0.0)) > 0.0 or lift != 0:
+                    signal_lifts[signal].append(lift)
         plan_rows.append(
             {
                 "id": plan_id,
@@ -446,6 +483,10 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
                 "top3_hit": bool(expected and any(0 < rank_by_plan_path.get((plan_id, path), 0) <= 3 for path in expected)),
                 "top5_hit": bool(expected and any(0 < rank_by_plan_path.get((plan_id, path), 0) <= 5 for path in expected)),
                 "first_useful_read_position": first_position,
+                "central_count": len(central),
+                "support_count": len(support),
+                "created_count": len(created),
+                "verification_count": len(verification),
                 "missing_count": len(missing),
                 "noisy_count": len(noisy),
                 "extra_read_count": extra_count,
@@ -476,6 +517,17 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
         "top3_hit_rate": _rate(top_hits[3], evaluable_count),
         "top5_hit_rate": _rate(top_hits[5], evaluable_count),
         "average_first_useful_read_position": _avg(first_positions),
+        "average_base_to_assisted_rank_lift": _avg(base_rank_lifts),
+        "signal_impact": {
+            signal: {
+                "observed_useful_files": len(values),
+                "average_rank_lift": _avg(values),
+                "promoted": sum(1 for value in values if value > 0),
+                "unchanged": sum(1 for value in values if value == 0),
+                "demoted": sum(1 for value in values if value < 0),
+            }
+            for signal, values in signal_lifts.items()
+        },
         "average_files_read_per_finished_plan": _avg(read_counts),
         "average_extra_files_read_per_finished_plan": _avg(extra_reads),
         "explicit_read_tracking_rate": explicit_tracking_rate,
@@ -625,17 +677,23 @@ def _scorecard_block(scorecard: dict[str, Any]) -> str:
         ("Outcomes", _percent(scorecard.get("average_read_outcome_coverage", 0))),
         ("Missing", _percent(scorecard.get("missing_rate", 0))),
         ("Noise", _percent(scorecard.get("noise_rate", 0))),
-        ("First useful", scorecard.get("average_first_useful_read_position", 0)),
+        ("First central", scorecard.get("average_first_useful_read_position", 0)),
+        ("Assisted lift", scorecard.get("average_base_to_assisted_rank_lift", 0)),
     ]
     cards = "".join(f"<div><strong>{_e(value)}</strong><span>{_e(label)}</span></div>" for label, value in metrics)
     excluded = scorecard.get("scorecard_excluded_by_kind") or {}
     excluded_text = ", ".join(f"{kind}: {count}" for kind, count in excluded.items()) or "none"
     confidence_text = "; ".join(scorecard.get("scorecard_confidence_reasons") or []) or "insufficient evidence"
+    signal_text = "; ".join(
+        f"{signal}: {item.get('average_rank_lift', 0)} avg lift over {item.get('observed_useful_files', 0)} central/useful files"
+        for signal, item in (scorecard.get("signal_impact") or {}).items()
+    ) or "no assisted-ranking observations yet"
     return (
         '<section class="panel scorecard-panel">'
         "<h2>Orientation Scorecard</h2>"
         f'<div class="metrics mini-metrics">{cards}</div>'
         f'<p class="muted">Evidence quality: {_e(confidence_text)}</p>'
+        f'<p class="muted">Ranking signals: {_e(signal_text)}</p>'
         f'<p class="muted">Excluded from default scorecard: {_e(excluded_text)}</p>'
         "</section>"
     )

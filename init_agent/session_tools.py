@@ -52,6 +52,10 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
         "read_count": 0,
         "verified_count": 0,
         "useful_count": 0,
+        "central_count": 0,
+        "support_count": 0,
+        "created_count": 0,
+        "verification_count": 0,
         "noisy_count": 0,
         "missing_count": 0,
     }
@@ -342,7 +346,11 @@ def _recent_plan_activity(root: Path, limit: int) -> dict[str, Any]:
         "event_count": len(events),
         "read_count": sum(1 for event in events if event.get("event") == "read"),
         "verified_count": sum(1 for event in events if event.get("event") == "verified"),
-        "useful_count": sum(1 for event in events if event.get("event") == "useful"),
+        "useful_count": sum(1 for event in events if event.get("event") in {"useful", "central", "support"}),
+        "central_count": sum(1 for event in events if event.get("event") == "central"),
+        "support_count": sum(1 for event in events if event.get("event") == "support"),
+        "created_count": sum(1 for event in events if event.get("event") == "created"),
+        "verification_count": sum(1 for event in events if event.get("event") == "verification"),
         "noisy_count": sum(1 for event in events if event.get("event") == "noisy"),
         "missing_count": sum(1 for event in events if event.get("event") == "missing"),
     }
@@ -356,17 +364,21 @@ def _session_suggestions(summary: dict[str, Any], plan_activity: dict[str, Any])
             {
                 "kind": "finish_plan",
                 "command": f"init-agent plan finish --id {plan['id']} --summary <summary>",
-                "reason": "reading plan was created but not finalized with read/verified/useful/noisy/missing signals",
+                "reason": "reading plan was created but not finalized with read, verification and outcome signals",
             }
         )
     for plan in plan_activity.get("finished_plans", [])[:5]:
-        useful_paths = [event["path"] for event in plan.get("events", []) if event.get("event") == "useful"]
+        useful_paths = [
+            event["path"]
+            for event in plan.get("events", [])
+            if event.get("event") in {"central", "useful"}
+        ]
         for path in useful_paths[:3]:
             memory.append(
                 {
                     "kind": "memory_for_useful_file",
                     "command": f"init-agent tool repo_memory_add --path {_shell_double_quote(path)} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
-                    "reason": "file was marked useful in a finalized reading plan; add memory only if stable behavior was verified",
+                    "reason": "file was marked central/useful in a finalized reading plan; add memory only if stable behavior was verified",
                 }
             )
     for note in summary.get("recent_memory", []):

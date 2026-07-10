@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sqlite3
 import tempfile
@@ -18,6 +19,8 @@ import sys
 sys.path.insert(0, str(ROOT))
 
 from init_agent.graph_store import GraphStore  # noqa: E402
+from init_agent.reading_plan import build_reading_plan  # noqa: E402
+from init_agent.relation_resolver import rebuild_resolved_relations  # noqa: E402
 from init_agent.scanner import scan_project  # noqa: E402
 from init_agent.utils import ensure_agent_dir  # noqa: E402
 
@@ -28,9 +31,16 @@ class FlowCase:
     description: str
     files: dict[str, str]
     expectations: list[dict[str, Any]]
+    ranking_query: str = ""
+    ranking_expected: tuple[str, ...] = ()
+    ranking_allowed: tuple[str, ...] = ()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Evaluate extracted and resolved runtime-flow graph edges.")
+    parser.add_argument("--strict", action="store_true", help="Fail when extraction/resolution guards are not met.")
+    parser.add_argument("--min-resolution-rate", type=float, default=1.0)
+    args = parser.parse_args(argv)
     results = [evaluate_case(case) for case in cases()]
     report = {
         "summary": summarize(results),
@@ -40,6 +50,20 @@ def main() -> int:
     (RESULTS_DIR / "results.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (RESULTS_DIR / "results.md").write_text(render_markdown(report), encoding="utf-8")
     print(json.dumps(report, indent=2, sort_keys=True))
+    if args.strict:
+        summary = report["summary"]
+        if summary["extraction_pass_rate"] < 1.0:
+            return 1
+        if summary["resolution_pass_rate"] < args.min_resolution_rate:
+            return 1
+        if summary["negative_passed"] != summary["negative_total"]:
+            return 1
+        if summary["ranking_regressions"]:
+            return 1
+        if summary["ranking_noise_regressions"]:
+            return 1
+        if summary["ranking_top3_hits"] != summary["ranking_case_count"]:
+            return 1
     return 0
 
 
@@ -52,9 +76,11 @@ def evaluate_case(case: FlowCase) -> dict[str, Any]:
             store.initialize()
             stats = scan_project(root, store)
             graph = load_graph(store.connection)
+            ranking = evaluate_ranking(root, store, case)
         expectations = [evaluate_expectation(graph, expectation) for expectation in case.expectations]
     present = [item for item in expectations if item["mode"] == "present"]
     limitations = [item for item in expectations if item["mode"] == "limitation"]
+    negative = [item for item in expectations if item["mode"] == "absent"]
     return {
         "name": case.name,
         "description": case.description,
@@ -63,6 +89,9 @@ def evaluate_case(case: FlowCase) -> dict[str, Any]:
         "present_total": len(present),
         "limitation_confirmed": sum(1 for item in limitations if item["passed"]),
         "limitation_total": len(limitations),
+        "negative_passed": sum(1 for item in negative if item["passed"]),
+        "negative_total": len(negative),
+        "ranking": ranking,
         "expectations": expectations,
     }
 
@@ -87,43 +116,95 @@ def load_graph(connection: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def evaluate_ranking(root: Path, store: GraphStore, case: FlowCase) -> dict[str, Any] | None:
+    if not case.ranking_query or not case.ranking_expected:
+        return None
+    assisted = build_reading_plan(root, case.ranking_query, limit=10, read_budget=3)
+    store.connection.execute("DELETE FROM relations WHERE target_type = 'resolved_file'")
+    store.connection.commit()
+    baseline = build_reading_plan(root, case.ranking_query, limit=10, read_budget=3)
+    rebuild_resolved_relations(store)
+    store.connection.commit()
+    assisted_rank = _first_expected_rank(assisted.get("plan_items", []), case.ranking_expected)
+    baseline_rank = _first_expected_rank(baseline.get("plan_items", []), case.ranking_expected)
+    baseline_top5 = [str(item["path"]) for item in baseline.get("plan_items", [])[:5]]
+    assisted_top5 = [str(item["path"]) for item in assisted.get("plan_items", [])[:5]]
+    allowed = set(case.ranking_allowed)
+    baseline_noise = len([path for path in baseline_top5 if path not in allowed]) if allowed else None
+    resolved_noise = len([path for path in assisted_top5 if path not in allowed]) if allowed else None
+    return {
+        "query": case.ranking_query,
+        "expected": list(case.ranking_expected),
+        "baseline_rank": baseline_rank,
+        "resolved_rank": assisted_rank,
+        "rank_lift": (baseline_rank or 11) - (assisted_rank or 11),
+        "top3_hit": bool(assisted_rank and assisted_rank <= 3),
+        "regressed": bool(baseline_rank and assisted_rank and assisted_rank > baseline_rank),
+        "baseline_top5": baseline_top5,
+        "resolved_top5": assisted_top5,
+        "baseline_noise": baseline_noise,
+        "resolved_noise": resolved_noise,
+        "noise_reduction": (baseline_noise - resolved_noise) if baseline_noise is not None and resolved_noise is not None else None,
+    }
+
+
+def _first_expected_rank(items: list[dict[str, Any]], expected: tuple[str, ...]) -> int | None:
+    ranks = [int(item["rank"]) for item in items if str(item.get("path") or "") in expected]
+    return min(ranks) if ranks else None
+
+
 def evaluate_expectation(graph: dict[str, Any], expectation: dict[str, Any]) -> dict[str, Any]:
     mode = expectation.get("mode", "present")
     kind = expectation["kind"]
+    resolved: bool | None = None
     if kind == "file_relation":
-        passed = has_file_relation(graph, expectation["source"], expectation["relation"], expectation["target"])
+        extracted = has_file_relation(graph, expectation["source"], expectation["relation"])
+        resolved = has_resolved_file_relation(graph, expectation["source"], expectation["relation"], expectation["target"])
     elif kind == "import":
-        passed = has_import(graph, expectation["source"], expectation["module"], expectation.get("target"))
+        extracted = has_import(graph, expectation["source"], expectation["module"])
+        if expectation.get("target"):
+            resolved = has_resolved_file_relation(graph, expectation["source"], "imports", expectation["target"])
     elif kind == "call":
-        passed = has_call(graph, expectation["source"], expectation["symbol"], expectation.get("target"))
+        extracted = has_call(graph, expectation["source"], expectation["symbol"])
+        if expectation.get("target"):
+            resolved = has_resolved_file_relation(graph, expectation["source"], "calls", expectation["target"])
     elif kind == "route":
-        passed = has_route(graph, expectation["source"], expectation["route"], expectation.get("handler"), expectation.get("target"))
+        extracted = has_route(graph, expectation["source"], expectation["route"], expectation.get("handler"))
+        if expectation.get("target"):
+            resolved = has_resolved_file_relation(graph, expectation["source"], "route_to_handler", expectation["target"])
     elif kind == "symbol":
-        passed = has_symbol(graph, expectation["source"], expectation["symbol"], expectation.get("symbol_kind"))
+        extracted = has_symbol(graph, expectation["source"], expectation["symbol"], expectation.get("symbol_kind"))
     elif kind == "sql_table":
-        passed = has_sql_table(graph, expectation["source"], expectation["table"])
+        extracted = has_sql_table(graph, expectation["source"], expectation["table"])
     elif kind == "template":
-        passed = has_template(graph, expectation["source"], expectation["template"], expectation.get("target"))
+        extracted = has_template(graph, expectation["source"], expectation["template"])
+        if expectation.get("target"):
+            resolved = has_resolved_file_relation(graph, expectation["source"], "renders_template", expectation["target"])
+    elif kind == "unresolved_call":
+        extracted = has_call(graph, expectation["source"], expectation["symbol"])
+        resolved = not has_any_resolved_relation(graph, expectation["source"], "calls", expectation.get("target"))
     elif kind == "unsupported":
-        passed = not unsupported_feature_present(graph, expectation)
+        extracted = not unsupported_feature_present(graph, expectation)
     else:
         raise ValueError(f"unknown expectation kind: {kind}")
+    passed = bool(extracted and resolved is not False)
     return {
         **expectation,
         "mode": mode,
+        "extracted": bool(extracted),
+        "resolved": resolved,
         "passed": bool(passed),
     }
 
 
-def has_file_relation(graph: dict[str, Any], source: str, relation: str, target: str) -> bool:
+def has_file_relation(graph: dict[str, Any], source: str, relation: str) -> bool:
     source_id = graph["path_to_id"].get(source)
     if source_id is None:
         return False
     for item in graph["relations"]:
         if int(item["source_id"]) != source_id or item["relation"] != relation or item["target_type"] != "file":
             continue
-        if resolve_file_target(source, str(item["target_id"]), graph["path_to_id"]) == target:
-            return True
+        return True
     return False
 
 
@@ -136,9 +217,7 @@ def has_import(graph: dict[str, Any], source: str, module: str, target: str | No
             continue
         if item["target_id"] != module:
             continue
-        if not target:
-            return True
-        return resolve_module_target(module, graph["path_to_id"]) == target
+        return True
     return False
 
 
@@ -155,9 +234,7 @@ def has_call(graph: dict[str, Any], source: str, symbol: str, target: str | None
     )
     if not found_call:
         return False
-    if not target:
-        return True
-    return any(item["name"] == symbol and graph["files"][int(item["file_id"])]["path"] == target for item in graph["symbols"])
+    return True
 
 
 def has_route(graph: dict[str, Any], source: str, route: str, handler: str | None = None, target: str | None = None) -> bool:
@@ -181,9 +258,7 @@ def has_route(graph: dict[str, Any], source: str, route: str, handler: str | Non
     )
     if not handler_relation:
         return False
-    if not target:
-        return True
-    return any(item["name"] == handler and graph["files"][int(item["file_id"])]["path"] == target for item in graph["symbols"])
+    return True
 
 
 def has_symbol(graph: dict[str, Any], source: str, symbol: str, symbol_kind: str | None = None) -> bool:
@@ -224,9 +299,33 @@ def has_template(graph: dict[str, Any], source: str, template: str, target: str 
     )
     if not found:
         return False
-    if not target:
-        return True
-    return resolve_template_target(template, graph["path_to_id"]) == target
+    return True
+
+
+def has_resolved_file_relation(graph: dict[str, Any], source: str, relation: str, target: str) -> bool:
+    source_id = graph["path_to_id"].get(source)
+    if source_id is None:
+        return False
+    return any(
+        int(item["source_id"]) == source_id
+        and item["relation"] == relation
+        and item["target_type"] == "resolved_file"
+        and item["target_id"] == target
+        for item in graph["relations"]
+    )
+
+
+def has_any_resolved_relation(graph: dict[str, Any], source: str, relation: str, target: str | None = None) -> bool:
+    source_id = graph["path_to_id"].get(source)
+    if source_id is None:
+        return False
+    return any(
+        int(item["source_id"]) == source_id
+        and item["relation"] == relation
+        and item["target_type"] == "resolved_file"
+        and (target is None or item["target_id"] == target)
+        for item in graph["relations"]
+    )
 
 
 def unsupported_feature_present(graph: dict[str, Any], expectation: dict[str, Any]) -> bool:
@@ -243,53 +342,46 @@ def unsupported_feature_present(graph: dict[str, Any], expectation: dict[str, An
     raise ValueError(f"unknown unsupported feature: {feature}")
 
 
-def resolve_file_target(source: str, raw_target: str, path_to_id: dict[str, int]) -> str | None:
-    normalized = raw_target.lstrip("/")
-    source_dir = Path(source).parent
-    candidates = [
-        normalized,
-        (source_dir / normalized).as_posix(),
-        (source_dir / Path(normalized).name).as_posix(),
-    ]
-    for candidate in candidates:
-        clean = Path(candidate).as_posix().lstrip("./")
-        if clean in path_to_id:
-            return clean
-    return None
-
-
-def resolve_module_target(module: str, path_to_id: dict[str, int]) -> str | None:
-    base = module.replace(".", "/")
-    for candidate in (f"{base}.py", f"{base}/__init__.py", f"src/{base}.py", f"src/{base}/__init__.py"):
-        if candidate in path_to_id:
-            return candidate
-    return None
-
-
-def resolve_template_target(template: str, path_to_id: dict[str, int]) -> str | None:
-    candidates = [template, f"templates/{template}"]
-    if "/" in template:
-        app, rest = template.split("/", 1)
-        candidates.append(f"{app}/templates/{app}/{rest}")
-    for candidate in candidates:
-        if candidate in path_to_id:
-            return candidate
-    for path in path_to_id:
-        if path.endswith(f"/templates/{template}"):
-            return path
-    return None
-
-
 def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     present_passed = sum(item["present_passed"] for item in results)
     present_total = sum(item["present_total"] for item in results)
     limitations = sum(item["limitation_total"] for item in results)
+    expectations = [
+        expectation
+        for result in results
+        for expectation in result["expectations"]
+        if expectation["mode"] == "present"
+    ]
+    extraction_total = len(expectations)
+    extraction_passed = sum(1 for item in expectations if item["extracted"])
+    resolution_items = [item for item in expectations if item["resolved"] is not None]
+    resolution_passed = sum(1 for item in resolution_items if item["resolved"])
+    negative_total = sum(item["negative_total"] for item in results)
+    negative_passed = sum(item["negative_passed"] for item in results)
+    ranking = [item["ranking"] for item in results if item.get("ranking")]
+    noise_cases = [item for item in ranking if item.get("noise_reduction") is not None]
     return {
         "case_count": len(results),
         "present_passed": present_passed,
         "present_total": present_total,
         "present_pass_rate": round(present_passed / present_total, 3) if present_total else None,
         "limitation_count": limitations,
+        "extraction_passed": extraction_passed,
+        "extraction_total": extraction_total,
+        "extraction_pass_rate": round(extraction_passed / extraction_total, 3) if extraction_total else None,
+        "resolution_passed": resolution_passed,
+        "resolution_total": len(resolution_items),
+        "resolution_pass_rate": round(resolution_passed / len(resolution_items), 3) if resolution_items else None,
+        "negative_passed": negative_passed,
+        "negative_total": negative_total,
+        "ranking_case_count": len(ranking),
+        "ranking_top3_hits": sum(1 for item in ranking if item["top3_hit"]),
+        "ranking_improved": sum(1 for item in ranking if item["rank_lift"] > 0),
+        "ranking_unchanged": sum(1 for item in ranking if item["rank_lift"] == 0),
+        "ranking_regressions": sum(1 for item in ranking if item["regressed"]),
+        "ranking_noise_cases": len(noise_cases),
+        "ranking_noise_reduction": sum(int(item["noise_reduction"]) for item in noise_cases),
+        "ranking_noise_regressions": sum(1 for item in noise_cases if int(item["noise_reduction"]) < 0),
     }
 
 
@@ -304,6 +396,13 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Cases: {report['summary']['case_count']}",
         f"- Present expectations: {report['summary']['present_passed']}/{report['summary']['present_total']}",
         f"- Pass rate: {report['summary']['present_pass_rate']}",
+        f"- Extraction: {report['summary']['extraction_passed']}/{report['summary']['extraction_total']}",
+        f"- Resolution: {report['summary']['resolution_passed']}/{report['summary']['resolution_total']}",
+        f"- Resolution pass rate: {report['summary']['resolution_pass_rate']}",
+        f"- Negative ambiguity guards: {report['summary']['negative_passed']}/{report['summary']['negative_total']}",
+        f"- Ranking Top-3 with resolved graph: {report['summary']['ranking_top3_hits']}/{report['summary']['ranking_case_count']}",
+        f"- Ranking improved/unchanged/regressed: {report['summary']['ranking_improved']}/{report['summary']['ranking_unchanged']}/{report['summary']['ranking_regressions']}",
+        f"- Ranking noise reduction: {report['summary']['ranking_noise_reduction']} across {report['summary']['ranking_noise_cases']} scoped cases",
         f"- Documented limitations: {report['summary']['limitation_count']}",
         "",
         "## Cases",
@@ -321,13 +420,24 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"- Relations: {result['stats']['relations']}",
                 f"- Present expectations: {result['present_passed']}/{result['present_total']}",
                 "",
-                "| Mode | Status | Kind | Description |",
-                "| --- | --- | --- | --- |",
+                "| Mode | Status | Extracted | Resolved | Kind | Description |",
+                "| --- | --- | --- | --- | --- | --- |",
             ]
         )
         for expectation in result["expectations"]:
             status = "PASS" if expectation["passed"] else "FAIL"
-            lines.append(f"| {expectation['mode']} | {status} | {expectation['kind']} | {expectation['description']} |")
+            resolved = "n/a" if expectation["resolved"] is None else ("yes" if expectation["resolved"] else "no")
+            lines.append(
+                f"| {expectation['mode']} | {status} | {'yes' if expectation['extracted'] else 'no'} | "
+                f"{resolved} | {expectation['kind']} | {expectation['description']} |"
+            )
+        if result.get("ranking"):
+            ranking = result["ranking"]
+            lines.append("")
+            lines.append(
+                f"Ranking: baseline={ranking['baseline_rank']} resolved={ranking['resolved_rank']} "
+                f"lift={ranking['rank_lift']} query=`{ranking['query']}`"
+            )
         lines.append("")
     return "\n".join(lines)
 
@@ -346,8 +456,8 @@ def cases() -> list[FlowCase]:
                 """,
                 "include/bootstrap.php": """
                     <?php
-                    require_once 'db.php';
-                    require_once 'functions.php';
+                    require_once __DIR__ . '/db.php';
+                    require_once __DIR__ . '/functions.php';
                     ?>
                 """,
                 "include/db.php": """
@@ -383,6 +493,8 @@ def cases() -> list[FlowCase]:
                 present("call", "renderPageTitle calls fetchPageTitle in same file", source="include/functions.php", symbol="fetchPageTitle", target="include/functions.php"),
                 present("sql_table", "functions.php records pages table usage", source="include/functions.php", table="pages"),
             ],
+            ranking_query="render page title from request",
+            ranking_expected=("include/page.php", "include/functions.php"),
         ),
         FlowCase(
             name="fastapi_flow",
@@ -437,6 +549,8 @@ def cases() -> list[FlowCase]:
                 present("call", "service calls save_item repository function", source="src/shop/services/items.py", symbol="save_item", target="src/shop/repositories/items.py"),
                 present("import", "repository imports model module", source="src/shop/repositories/items.py", module="shop.models", target="src/shop/models.py"),
             ],
+            ranking_query="create item route service repository",
+            ranking_expected=("src/shop/routers/items.py", "src/shop/services/items.py", "src/shop/repositories/items.py"),
         ),
         FlowCase(
             name="django_flow",
@@ -472,6 +586,8 @@ def cases() -> list[FlowCase]:
                 present("import", "relative import from .models resolves to blog/models.py", source="blog/views.py", module="blog.models", target="blog/models.py"),
                 present("template", "view render target resolves to template file", source="blog/views.py", template="blog/detail.html", target="blog/templates/blog/detail.html"),
             ],
+            ranking_query="render blog detail template for post",
+            ranking_expected=("blog/views.py", "blog/templates/blog/detail.html"),
         ),
         FlowCase(
             name="react_flow",
@@ -505,11 +621,75 @@ def cases() -> list[FlowCase]:
                 """,
             },
             expectations=[
-                present("import", "main.tsx records local App import", source="src/main.tsx", module="./App"),
-                present("import", "App.tsx records local TaskList import", source="src/App.tsx", module="./components/TaskList"),
-                present("import", "TaskList.tsx records local API import", source="src/components/TaskList.tsx", module="../api/tasks"),
+                present("import", "main.tsx resolves local App import", source="src/main.tsx", module="./App", target="src/App.tsx"),
+                present("import", "App.tsx resolves local TaskList import", source="src/App.tsx", module="./components/TaskList", target="src/components/TaskList.tsx"),
+                present("import", "TaskList.tsx resolves local API import", source="src/components/TaskList.tsx", module="../api/tasks", target="src/api/tasks.ts"),
                 present("call", "TaskList calls listTasks", source="src/components/TaskList.tsx", symbol="listTasks", target="src/api/tasks.ts"),
-                limitation("unsupported", "relative TS imports are not resolved to file nodes", feature="relative_import_resolution", target="src/App.tsx"),
+            ],
+            ranking_query="task list loads api tasks",
+            ranking_expected=("src/components/TaskList.tsx", "src/api/tasks.ts"),
+        ),
+        FlowCase(
+            name="scoped_call_ranking",
+            description="Imported call bindings should avoid unrelated duplicate definitions during trace ranking.",
+            files={
+                "main.py": """
+                    from app.runner import run
+
+                    if __name__ == '__main__':
+                        run()
+                """,
+                "app/runner.py": """
+                    from app.service import process
+
+                    def run():
+                        return process()
+                """,
+                "app/service.py": """
+                    def process():
+                        return 'ok'
+                """,
+                "noise/legacy.py": """
+                    def process():
+                        return 'legacy'
+                """,
+                "noise/example.py": """
+                    def process():
+                        return 'example'
+                """,
+            },
+            expectations=[
+                present("call", "main resolves run to app runner", source="main.py", symbol="run", target="app/runner.py"),
+                present("call", "runner resolves process to app service", source="app/runner.py", symbol="process", target="app/service.py"),
+            ],
+            ranking_query="startup request lifecycle",
+            ranking_expected=("app/runner.py", "app/service.py"),
+            ranking_allowed=("main.py", "app/runner.py", "app/service.py"),
+        ),
+        FlowCase(
+            name="ambiguous_symbol_guard",
+            description="An unscoped duplicate function name must remain unresolved instead of creating noisy file edges.",
+            files={
+                "app.py": """
+                    def run(value):
+                        return save(value)
+                """,
+                "left.py": """
+                    def save(value):
+                        return value
+                """,
+                "right.py": """
+                    def save(value):
+                        return value
+                """,
+            },
+            expectations=[
+                absent(
+                    "unresolved_call",
+                    "ambiguous save call is extracted but not linked to either definition",
+                    source="app.py",
+                    symbol="save",
+                ),
             ],
         ),
     ]
@@ -521,6 +701,10 @@ def present(kind: str, description: str, **kwargs: Any) -> dict[str, Any]:
 
 def limitation(kind: str, description: str, **kwargs: Any) -> dict[str, Any]:
     return {"mode": "limitation", "kind": kind, "description": description, **kwargs}
+
+
+def absent(kind: str, description: str, **kwargs: Any) -> dict[str, Any]:
+    return {"mode": "absent", "kind": kind, "description": description, **kwargs}
 
 
 if __name__ == "__main__":

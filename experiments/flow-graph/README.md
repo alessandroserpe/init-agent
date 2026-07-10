@@ -1,7 +1,7 @@
 # Flow Graph Diagnostic Experiment
 
-This experiment checks whether the current init-agent graph contains the
-runtime-flow edges an agent would need before ranking or embeddings are added.
+This experiment checks whether the current init-agent graph extracts runtime
+relations and persists unambiguous targets as concrete `resolved_file` edges.
 
 It is intentionally not an agent benchmark. It asks a lower-level question:
 
@@ -14,6 +14,7 @@ From the repository root:
 
 ```bash
 python3 experiments/flow-graph/evaluate.py
+python3 experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
 ```
 
 The script builds temporary fixture repositories, runs the current scanner and
@@ -30,15 +31,19 @@ writes:
 - `django_flow`: Django-style URL config, view, model and template.
 - `react_flow`: React/Vite-style main file, app component, child component and
   API client.
+- `scoped_call_ranking`: imported calls competing with unrelated duplicate
+  definitions.
+- `ambiguous_symbol_guard`: an unscoped duplicate name that must remain
+  unresolved.
 
 ## How To Read It
 
-`present` expectations are edges that should be visible in the graph today.
-`limitation` expectations document runtime-flow facts that are intentionally or
-currently not represented, such as SQL table usage, template rendering targets
-or unresolved relative imports.
+`present` expectations report extraction and resolution separately. A target
+expectation passes only when SQLite contains the concrete `resolved_file`
+edge; the evaluator no longer resolves the target on behalf of the graph.
+`absent` expectations are precision guards: ambiguous names must not create
+file edges.
 
-If a `present` expectation fails, the graph is missing a basic edge. If many
-`limitation` expectations are important for real tasks, init-agent needs a more
-semantic flow extractor before ranking can reliably improve.
-
+Ranking diagnostics compare the same fixture with and without resolved edges.
+They report Top-3 coverage, rank regressions and scoped noise reduction. This
+is a deterministic graph/ranking diagnostic, not an agent-speed benchmark.

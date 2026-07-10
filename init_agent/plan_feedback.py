@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import zlib
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 from .feedback import add_feedback
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, normalize_repo_path, utc_now
+from .utils import ensure_agent_dir, iter_indexable_files, normalize_repo_path, relative_path, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
@@ -32,10 +33,16 @@ def save_reading_plan(
     with GraphStore(root) as store:
         store.initialize()
         created_at = utc_now()
+        file_manifest = _encode_file_manifest(
+            [str(row["path"]) for row in store.connection.execute("SELECT path FROM files ORDER BY path")]
+        )
         cursor = store.connection.execute(
             """
-            INSERT INTO reading_plans(query, query_tokens_json, read_budget, source, kind, summary, finished_at, created_at)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO reading_plans(
+                query, query_tokens_json, read_budget, source, kind, summary,
+                file_manifest_blob, finished_at, created_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 query.strip(),
@@ -44,6 +51,7 @@ def save_reading_plan(
                 normalized_source,
                 normalized_kind,
                 "",
+                file_manifest,
                 None,
                 created_at,
             ),
@@ -53,9 +61,10 @@ def save_reading_plan(
             """
             INSERT INTO reading_plan_items(
                 plan_id, path, rank, score, action, read_priority, read_budget_rank,
-                confidence, sources_json, tags_json, reason
+                confidence, base_rank, base_score, rank_lift, signal_contributions_json,
+                sources_json, tags_json, reason
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -67,6 +76,16 @@ def save_reading_plan(
                     str(item.get("read_priority") or ""),
                     item.get("read_budget_rank"),
                     str(item.get("confidence") or ""),
+                    int(item.get("base_rank") or 0),
+                    float(item.get("base_score") or 0.0),
+                    int(item.get("rank_lift") or 0),
+                    json.dumps(
+                        {
+                            "scores": dict(item.get("score_components") or {}),
+                            "signal_rank_lift": dict(item.get("signal_rank_lift") or {}),
+                        },
+                        sort_keys=True,
+                    ),
                     json.dumps(list(item.get("sources") or []), sort_keys=True),
                     json.dumps(list(item.get("tags") or []), sort_keys=True),
                     str(item.get("reason") or ""),
@@ -90,6 +109,10 @@ def finish_reading_plan(
     read: list[str] | None = None,
     verified: list[str] | None = None,
     useful: list[str] | None = None,
+    central: list[str] | None = None,
+    support: list[str] | None = None,
+    created: list[str] | None = None,
+    verification: list[str] | None = None,
     noisy: list[str] | None = None,
     missing: list[str] | None = None,
     summary: str = "",
@@ -100,10 +123,14 @@ def finish_reading_plan(
         raise ValueError("plan id must be positive")
     normalized_source = _source(source)
     normalized_kind = _plan_kind(kind) if kind is not None else None
-    event_paths = {
+    event_paths: dict[str, list[str]] = {
         "read": _paths(read),
         "verified": _paths(verified),
         "useful": _paths(useful),
+        "central": _paths(central),
+        "support": _paths(support),
+        "created": _paths(created),
+        "verification": _paths(verification),
         "noisy": _paths(noisy),
         "missing": _paths(missing),
     }
@@ -114,14 +141,28 @@ def finish_reading_plan(
         if plan_row is None:
             return {"updated": False, "id": plan_id, "plan": None, "events": [], "feedback": [], "suggested_memory": []}
         query = str(plan_row["query"])
+        known_paths = _decode_file_manifest(plan_row["file_manifest_blob"])
+    if known_paths is not None:
+        current_paths = {
+            relative_path(path, root)
+            for path in iter_indexable_files(root)
+        }
+        inferred_created = [
+            path
+            for path in event_paths["missing"]
+            if path not in known_paths and path in current_paths
+        ]
+        event_paths["missing"] = [path for path in event_paths["missing"] if path not in inferred_created]
+        event_paths["created"] = _unique([*event_paths["created"], *inferred_created])
     event_records: list[dict[str, Any]] = []
     feedback: list[dict[str, Any]] = []
     for event, paths in event_paths.items():
         for path in paths:
             feedback_id = None
-            if event in {"useful", "noisy", "missing"}:
+            if event in {"useful", "central", "support", "noisy", "missing"}:
                 reason = _feedback_reason(event, path)
-                record = add_feedback(root, query, path, event, reason=reason, source=normalized_source)
+                rating = "crucial" if event == "central" else "useful" if event == "support" else event
+                record = add_feedback(root, query, path, rating, reason=reason, source=normalized_source)
                 feedback_id = int(record["id"])
                 feedback.append(record)
             event_records.append({"event": event, "path": path, "feedback_id": feedback_id})
@@ -227,11 +268,15 @@ def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
     read_events = _event_paths(events, {"opened", "read"})
     verified_paths = _event_paths(events, {"verified"})
     useful_paths = _event_paths(events, {"useful"})
+    central_paths = _event_paths(events, {"central"})
+    support_paths = _event_paths(events, {"support"})
+    created_paths = _event_paths(events, {"created"})
+    verification_paths = _event_paths(events, {"verification"})
     noisy_paths = _event_paths(events, {"noisy"})
     missing_paths = _event_paths(events, {"missing"})
     planned_set = set(planned_paths)
     read_set = set(read_events)
-    useful_set = set(useful_paths)
+    useful_set = set([*useful_paths, *central_paths, *support_paths])
     noisy_set = set(noisy_paths)
     missing_set = set(missing_paths)
     return {
@@ -244,12 +289,20 @@ def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
             "read_paths": read_events,
             "verified_paths": verified_paths,
             "useful_paths": useful_paths,
+            "central_paths": central_paths,
+            "support_paths": support_paths,
+            "created_paths": created_paths,
+            "verification_paths": verification_paths,
             "noisy_paths": noisy_paths,
             "missing_paths": missing_paths,
             "suggested_not_read": [path for path in planned_paths if path not in read_set],
             "read_not_planned": [path for path in read_events if path not in planned_set],
             "read_now_not_read": [path for path in read_now_paths if path not in read_set],
-            "read_without_outcome": [path for path in read_events if path not in useful_set | noisy_set | missing_set],
+            "read_without_outcome": [
+                path
+                for path in read_events
+                if path not in useful_set | noisy_set | missing_set | set(created_paths) | set(verification_paths)
+            ],
         },
     }
 
@@ -330,6 +383,7 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
     finished_ids = {int(plan["id"]) for plan in included_plans}
     all_finished_ids = {int(plan["id"]) for plan in finished_plans}
     rank_by_plan_path = {(int(item["plan_id"]), str(item["path"])): int(item["rank"] or 0) for item in items}
+    item_by_plan_path = {(int(item["plan_id"]), str(item["path"])): item for item in items}
     planned_paths = defaultdict(set)
     for item in items:
         planned_paths[int(item["plan_id"])].add(str(item["path"]))
@@ -343,20 +397,10 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         if plan_id in finished_ids and path:
             event_paths[plan_id][event_name].append(path)
         rank = rank_by_plan_path.get((plan_id, str(event["path"])), 0)
-        if plan_id in finished_ids and event_name == "useful" and rank:
+        if plan_id in finished_ids and event_name in {"useful", "central"} and rank:
             useful_by_rank[rank] += 1
         if plan_id in finished_ids and event_name == "noisy" and rank:
             noisy_by_rank[rank] += 1
-    useful_plan_ranks = [
-        (int(event["plan_id"]), rank_by_plan_path.get((int(event["plan_id"]), str(event["path"])), 0))
-        for event in events
-        if int(event["plan_id"]) in finished_ids and str(event["event"]) == "useful"
-    ]
-    expected_plan_ranks = [
-        (int(event["plan_id"]), rank_by_plan_path.get((int(event["plan_id"]), str(event["path"])), 0))
-        for event in events
-        if int(event["plan_id"]) in finished_ids and str(event["event"]) in {"useful", "missing"}
-    ]
     plan_rows = []
     evaluable_ids = set()
     first_useful_positions: list[int] = []
@@ -364,22 +408,30 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
     noise_rates: list[float] = []
     outcome_coverages: list[float] = []
     verified_coverages: list[float] = []
+    base_rank_lifts: list[int] = []
+    signal_lifts: dict[str, list[int]] = defaultdict(list)
+    signal_observations: Counter[str] = Counter()
     explicitly_tracked_plans = 0
     for plan in included_plans:
         plan_id = int(plan["id"])
         paths_by_event = event_paths.get(plan_id, {})
         useful = _unique(paths_by_event.get("useful", []))
+        central = _unique(paths_by_event.get("central", []))
+        support = _unique(paths_by_event.get("support", []))
+        created = _unique(paths_by_event.get("created", []))
+        verification = _unique(paths_by_event.get("verification", []))
         missing = _unique(paths_by_event.get("missing", []))
         noisy = _unique(paths_by_event.get("noisy", []))
         opened = _unique(paths_by_event.get("opened", []))
         verified = _unique(paths_by_event.get("verified", []))
         read = _unique([*paths_by_event.get("opened", []), *paths_by_event.get("read", [])])
-        extra_read_count = len([path for path in read if path not in planned_paths.get(plan_id, set())])
-        expected = _unique([*useful, *missing])
+        expected = _unique([*(central or useful), *missing])
         is_evaluable = bool(expected or noisy)
         if is_evaluable:
             evaluable_ids.add(plan_id)
         first_position = _first_matching_position(read, expected)
+        orientation_read = read[:first_position] if first_position else read
+        extra_read_count = len([path for path in orientation_read if path not in planned_paths.get(plan_id, set())])
         if first_position:
             first_useful_positions.append(first_position)
         if expected:
@@ -388,13 +440,32 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
             noise_rates.append(round(len(noisy) / len(planned_paths[plan_id]), 4))
         if opened:
             explicitly_tracked_plans += 1
-        classified = set([*useful, *noisy, *missing])
+        classified = set([*useful, *central, *support, *created, *verification, *noisy, *missing])
         outcome_coverage = round(len(set(read).intersection(classified)) / len(read), 4) if read else None
         verified_coverage = round(len(set(read).intersection(verified)) / len(read), 4) if read else None
         if outcome_coverage is not None:
             outcome_coverages.append(outcome_coverage)
         if verified_coverage is not None:
             verified_coverages.append(verified_coverage)
+        for path in central or useful:
+            item = item_by_plan_path.get((plan_id, path))
+            if not item:
+                continue
+            base_rank = int(item.get("base_rank") or 0)
+            rank = int(item.get("rank") or 0)
+            if base_rank and rank:
+                base_rank_lifts.append(base_rank - rank)
+            try:
+                contributions = json.loads(item.get("signal_contributions_json") or "{}")
+            except json.JSONDecodeError:
+                contributions = {}
+            scores = dict(contributions.get("scores") or {})
+            lifts = dict(contributions.get("signal_rank_lift") or {})
+            for signal in ("memory", "feedback", "tags"):
+                lift = int(lifts.get(signal) or 0)
+                if abs(float(scores.get(signal) or 0.0)) > 0.0 or lift != 0:
+                    signal_observations[signal] += 1
+                    signal_lifts[signal].append(lift)
         plan_rows.append(
             {
                 "id": plan_id,
@@ -407,8 +478,13 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
                 "first_useful_read_position": first_position,
                 "planned_file_count": len(planned_paths.get(plan_id, set())),
                 "read_file_count": len(read),
+                "orientation_read_count": len(orientation_read),
                 "extra_read_count": extra_read_count,
                 "useful_count": len(useful),
+                "central_count": len(central),
+                "support_count": len(support),
+                "created_count": len(created),
+                "verification_count": len(verification),
                 "missing_count": len(missing),
                 "noisy_count": len(noisy),
                 "explicit_read_tracking": bool(opened),
@@ -426,6 +502,16 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         explicit_tracking_rate,
         outcome_coverage,
     )
+    signal_impact = {
+        signal: {
+            "observed_useful_files": int(signal_observations[signal]),
+            "average_rank_lift": _average(signal_lifts.get(signal, [])),
+            "promoted": sum(1 for value in signal_lifts.get(signal, []) if value > 0),
+            "unchanged": sum(1 for value in signal_lifts.get(signal, []) if value == 0),
+            "demoted": sum(1 for value in signal_lifts.get(signal, []) if value < 0),
+        }
+        for signal in ("memory", "feedback", "tags")
+    }
     return {
         "plan_count": len(plans),
         "finished_plan_count": len(all_finished_ids),
@@ -441,6 +527,8 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         "average_files_read_per_finished_plan": _average([int(plan["read_file_count"]) for plan in plan_rows]),
         "average_extra_files_read_per_finished_plan": _average([int(plan["extra_read_count"]) for plan in plan_rows]),
         "average_first_useful_read_position": _average(first_useful_positions),
+        "average_base_to_assisted_rank_lift": _average(base_rank_lifts),
+        "signal_impact": signal_impact,
         "explicit_read_tracking_rate": explicit_tracking_rate,
         "average_read_outcome_coverage": outcome_coverage,
         "average_verified_read_coverage": _float_average(verified_coverages),
@@ -448,16 +536,24 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         "scorecard_confidence_reasons": confidence_reasons,
         "missing_rate": _float_average(missing_rates),
         "noise_rate": _float_average(noise_rates),
-        "top1_verified_useful_rate": _rank_rate(useful_plan_ranks, 1, max(1, len(finished_ids))),
-        "top3_verified_useful_rate": _rank_rate(useful_plan_ranks, 3, max(1, len(finished_ids))),
-        "top1_hit_rate": _rank_rate(expected_plan_ranks, 1, evaluable_count),
-        "top3_hit_rate": _rank_rate(expected_plan_ranks, 3, evaluable_count),
-        "top5_hit_rate": _rank_rate(expected_plan_ranks, 5, evaluable_count),
+        "top1_verified_useful_rate": _plan_boolean_rate(plan_rows, "top1_hit"),
+        "top3_verified_useful_rate": _plan_boolean_rate(plan_rows, "top3_hit"),
+        "top1_hit_rate": _plan_boolean_rate([plan for plan in plan_rows if plan["evaluable"]], "top1_hit"),
+        "top3_hit_rate": _plan_boolean_rate([plan for plan in plan_rows if plan["evaluable"]], "top3_hit"),
+        "top5_hit_rate": _plan_boolean_rate([plan for plan in plan_rows if plan["evaluable"]], "top5_hit"),
         "useful_hits_by_rank": dict(sorted(useful_by_rank.items())),
         "noisy_hits_by_rank": dict(sorted(noisy_by_rank.items())),
         "missing_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "missing"),
         "noisy_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "noisy"),
-        "useful_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "useful"),
+        "useful_count": sum(
+            1
+            for event in events
+            if int(event["plan_id"]) in finished_ids and str(event["event"]) in {"useful", "central", "support"}
+        ),
+        "central_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "central"),
+        "support_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "support"),
+        "created_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "created"),
+        "verification_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "verification"),
         "plans": plan_rows,
     }
 
@@ -465,7 +561,7 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
 def scorecard_evidence_confidence(evaluable_count: int, explicit_tracking_rate: float, outcome_coverage: float) -> tuple[str, list[str]]:
     reasons = [f"{evaluable_count} evaluable real plans"]
     reasons.append(f"{explicit_tracking_rate * 100:.0f}% used explicit plan-read tracking")
-    reasons.append(f"{outcome_coverage * 100:.0f}% of read files received useful/noisy/missing outcomes")
+    reasons.append(f"{outcome_coverage * 100:.0f}% of read files received classified outcomes")
     if evaluable_count >= 20 and explicit_tracking_rate >= 0.8 and outcome_coverage >= 0.6:
         return "high", reasons
     if evaluable_count >= 5 and explicit_tracking_rate >= 0.5 and outcome_coverage >= 0.4:
@@ -490,6 +586,7 @@ def _plan(row: Any, items: list[dict[str, Any]], events: list[dict[str, Any]]) -
 
 
 def _item(row: Any) -> dict[str, Any]:
+    contributions = json.loads(row["signal_contributions_json"] or "{}")
     return {
         "path": str(row["path"]),
         "rank": int(row["rank"] or 0),
@@ -498,6 +595,11 @@ def _item(row: Any) -> dict[str, Any]:
         "read_priority": str(row["read_priority"] or ""),
         "read_budget_rank": row["read_budget_rank"],
         "confidence": str(row["confidence"] or ""),
+        "base_rank": int(row["base_rank"] or 0),
+        "base_score": float(row["base_score"] or 0.0),
+        "rank_lift": int(row["rank_lift"] or 0),
+        "score_components": dict(contributions.get("scores") or {}),
+        "signal_rank_lift": dict(contributions.get("signal_rank_lift") or {}),
         "sources": json.loads(row["sources_json"] or "[]"),
         "tags": json.loads(row["tags_json"] or "[]"),
         "reason": str(row["reason"] or ""),
@@ -566,6 +668,10 @@ def _feedback_reason(event: str, path: str) -> str:
         return f"verified important file absent from the reading plan: {path}"
     if event == "noisy":
         return f"verified reading-plan candidate was not useful: {path}"
+    if event == "central":
+        return f"verified central orientation target for the reading plan: {path}"
+    if event == "support":
+        return f"verified supporting file after the central area was found: {path}"
     return f"verified reading-plan candidate was useful: {path}"
 
 
@@ -585,7 +691,7 @@ def _event_paths(events: list[dict[str, Any]], event_names: set[str]) -> list[st
 def _suggested_memory_commands(plan: dict[str, Any] | None) -> list[dict[str, str]]:
     if not plan:
         return []
-    useful = [event["path"] for event in plan.get("events", []) if event.get("event") == "useful"]
+    useful = [event["path"] for event in plan.get("events", []) if event.get("event") in {"central", "useful"}]
     return [
         {
             "path": path,
@@ -615,6 +721,12 @@ def _rank_rate(plan_ranks: list[tuple[int, int]], max_rank: int, denominator: in
     return round(len(matching_plans) / denominator, 4)
 
 
+def _plan_boolean_rate(plans: list[dict[str, Any]], key: str) -> float:
+    if not plans:
+        return 0.0
+    return round(sum(1 for plan in plans if plan.get(key)) / len(plans), 4)
+
+
 def _unique(paths: list[str]) -> list[str]:
     result = []
     seen = set()
@@ -637,3 +749,19 @@ def _first_matching_position(read_paths: list[str], expected_paths: list[str]) -
 
 def _has_rank_hit(paths: list[str], ranks: dict[tuple[int, str], int], plan_id: int, max_rank: int) -> bool:
     return any(0 < ranks.get((plan_id, path), 0) <= max_rank for path in paths)
+
+
+def _encode_file_manifest(paths: list[str]) -> bytes:
+    payload = json.dumps(sorted(set(paths)), separators=(",", ":")).encode("utf-8")
+    return zlib.compress(payload, level=9)
+
+
+def _decode_file_manifest(value: Any) -> set[str] | None:
+    if value in (None, b"", ""):
+        return None
+    try:
+        raw = bytes(value) if not isinstance(value, str) else value.encode("latin-1")
+        decoded = json.loads(zlib.decompress(raw).decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return {str(path) for path in decoded} if isinstance(decoded, list) else None

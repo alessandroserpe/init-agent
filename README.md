@@ -21,6 +21,7 @@ it is "where does this behavior live?"
 `init-agent` gives the agent a local Project Orientation Layer:
 
 - a compact repository overview;
+- resolved runtime-flow edges for imports, includes, calls, routes and templates;
 - task-specific context packs;
 - reading plans with a bounded first-read budget;
 - feedback for verified useful, noisy or missing files;
@@ -72,7 +73,7 @@ For day-to-day agent work, prefer the smaller loop:
 init-agent plan "fix login session bug" --read 3
 # read and verify the suggested files
 init-agent plan read --id <id> --file <path> --note "opened while investigating"
-init-agent plan finish --id <id> --read-file <path> --verified <path> --useful <path> --summary "short outcome"
+init-agent plan finish --id <id> --read-file <path> --verified <path> --central <path> --support <path> --summary "short outcome"
 init-agent session close
 ```
 
@@ -191,13 +192,16 @@ The repository includes tests and an orientation benchmark runner:
 ```bash
 python -m unittest discover -s tests -v
 python experiments/evaluate.py --strict --min-cases 4
+python experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
 python experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
 python experiments/plot_results.py experiments/results/results.csv
 ```
 
-The deterministic benchmark measures repository-orientation quality: whether
-expected useful files appear early in the generated context pack. It is not an
-end-to-end benchmark of agent speed or patch quality.
+The deterministic benchmarks measure repository-orientation quality and graph
+quality separately: whether expected files appear early, whether extracted
+runtime relations resolve to real repository files, and whether resolution
+adds ranking noise. They are not end-to-end benchmarks of agent speed or patch
+quality.
 
 Observed paired agent runs, including a Django hidden-cause experiment, live in
 the `experiments/` directory. They are useful workflow evidence, not broad
@@ -219,8 +223,9 @@ See [docs/security.md](docs/security.md).
 ## Current Limits
 
 - Ranking is heuristic and may surface relevant-looking but non-essential files.
-- Symbol and relation extraction are intentionally lightweight.
-- Import/include resolution is best-effort.
+- Symbol extraction remains intentionally lightweight and local.
+- Raw relations are preserved; imports, includes, calls, routes and templates
+  are resolved to concrete files only when the target is unambiguous.
 - Entrypoint discovery may miss custom boot files.
 - Refresh is incremental by file hash, but not dependency-aware.
 - No built-in LLM execution.

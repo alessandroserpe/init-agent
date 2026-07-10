@@ -275,6 +275,9 @@ class McpTests(InitAgentTestCase):
             self.assertIsInstance(plan_data["id"], int)
             by_path = {item["path"]: item for item in plan_data["plan_items"]}
             self.assertEqual(by_path["src/auth/session.py"]["read_priority"], "read_now")
+            self.assertIn("base_rank", by_path["src/auth/session.py"])
+            self.assertIn("rank_lift", by_path["src/auth/session.py"])
+            self.assertIn("signal_rank_lift", by_path["src/auth/session.py"])
 
             read = server.handle(
                 {
@@ -320,7 +323,7 @@ class McpTests(InitAgentTestCase):
                             "id": plan_data["id"],
                             "read": ["src/auth/session.py"],
                             "verified": ["src/auth/session.py"],
-                            "useful": ["src/auth/session.py"],
+                            "central": ["src/auth/session.py"],
                             "summary": "verified session path",
                         },
                     },
@@ -349,10 +352,11 @@ class McpTests(InitAgentTestCase):
             self.assertEqual(finished_data["tool"], "repo_reading_plan_finish")
             self.assertTrue(finished_data["updated"])
             self.assertNotIn("events", finished_data["plan"])
-            self.assertEqual(finished_data["feedback"][0]["rating"], "useful")
+            self.assertEqual(finished_data["feedback"][0]["rating"], "crucial")
             stats_data = stats["result"]["structuredContent"]
             self.assertEqual(stats_data["tool"], "repo_reading_plan_stats")
             self.assertEqual(stats_data["stats"]["finished_plan_count"], 1)
+            self.assertEqual(stats_data["stats"]["central_count"], 1)
             flows_data = flows["result"]["structuredContent"]
             self.assertEqual(flows_data["tool"], "repo_flow_topics")
             self.assertTrue(flows_data["flows"]["flows"])

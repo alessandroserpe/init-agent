@@ -334,6 +334,10 @@ def repo_reading_plan_finish(
     read: list[str] | None = None,
     verified: list[str] | None = None,
     useful: list[str] | None = None,
+    central: list[str] | None = None,
+    support: list[str] | None = None,
+    created: list[str] | None = None,
+    verification: list[str] | None = None,
     noisy: list[str] | None = None,
     missing: list[str] | None = None,
     summary: str = "",
@@ -351,6 +355,10 @@ def repo_reading_plan_finish(
             read=read or [],
             verified=verified or [],
             useful=useful or [],
+            central=central or [],
+            support=support or [],
+            created=created or [],
+            verification=verification or [],
             noisy=noisy or [],
             missing=missing or [],
             summary=summary,
@@ -367,7 +375,7 @@ def repo_reading_plan_finish(
         "warnings": warnings,
         "safety": [
             "finish a reading plan only after actually reading or verifying files",
-            "feedback is created only for explicit useful, noisy and missing paths",
+            "feedback is created only for classified central, support, useful, noisy and missing paths",
         ],
     }
 

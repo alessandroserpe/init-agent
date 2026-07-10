@@ -58,6 +58,7 @@ python3 experiments/evaluate.py --strict --min-cases 4
 python3 experiments/evaluate.py --strict --min-cases 4 --rebuild-index
 python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
 python3 experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
+python3 experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
 ```
 
 ## What It Reports
@@ -91,6 +92,12 @@ Four self-hosted cases always run against the current init-agent checkout. Use
 `--min-cases 4` for the local/CI guard so strict mode cannot pass after silently
 skipping every external repository. A broader local benchmark can declare a
 higher minimum after the optional target repositories are installed.
+
+The separate flow-graph guard checks the lower graph layer: raw extraction,
+resolution to concrete repository files, ambiguity precision guards and
+rank/noise changes with resolved edges enabled. Expected targets are declared
+in fixture cases before execution; the evaluator does not resolve targets on
+behalf of the graph.
 
 Use `--case <name>` to isolate one query and `--rebuild-index` after changing
 scanner, symbol extraction, role detection or scoring code.

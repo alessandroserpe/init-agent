@@ -132,6 +132,50 @@ def callers_for_symbol(root: Path, symbol_name: str, limit: int = 50) -> dict[st
 
 
 def _resolved_calls(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
+    has_resolved = conn.execute(
+        "SELECT 1 FROM relations WHERE target_type = 'resolved_file' LIMIT 1"
+    ).fetchone()
+    if has_resolved:
+        rows = conn.execute(
+            """
+            SELECT
+              json_extract(r.metadata_json, '$.raw_target_id') AS name,
+              COALESCE(
+                json_extract(r.metadata_json, '$.resolved_symbol_name'),
+                json_extract(r.metadata_json, '$.raw_target_id')
+              ) AS resolved_name,
+              r.target_id AS path,
+              MAX(r.confidence) AS confidence
+            FROM relations r
+            WHERE r.source_type = 'file'
+              AND r.source_id = ?
+              AND r.relation = 'calls'
+              AND r.target_type = 'resolved_file'
+            GROUP BY name, resolved_name, r.target_id
+            ORDER BY name, r.target_id
+            """,
+            (file_id,),
+        ).fetchall()
+        return [
+            {
+                "name": row["name"],
+                "confidence": row["confidence"],
+                "definitions": [
+                    dict(item)
+                    for item in conn.execute(
+                        """
+                        SELECT s.name, s.kind, s.line, f.path
+                        FROM symbols s
+                        JOIN files f ON f.id = s.file_id
+                        WHERE f.path = ? AND lower(s.name) = lower(?)
+                        ORDER BY s.line
+                        """,
+                        (row["path"], row["resolved_name"]),
+                    ).fetchall()
+                ],
+            }
+            for row in rows
+        ]
     source_row = conn.execute("SELECT language FROM files WHERE id = ?", (file_id,)).fetchone()
     source_language = str(source_row["language"] or "") if source_row else ""
     rows = conn.execute(
@@ -176,6 +220,37 @@ def _definition_rows_for_call(conn: sqlite3.Connection, name: str, source_langua
 
 
 def _callers_for_file_symbols(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
+    target = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,)).fetchone()
+    has_resolved = conn.execute(
+        "SELECT 1 FROM relations WHERE target_type = 'resolved_file' LIMIT 1"
+    ).fetchone()
+    if target is not None and has_resolved:
+        return [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT
+                  f.path,
+                  f.language,
+                  f.role,
+                  json_extract(r.metadata_json, '$.raw_target_id') AS name,
+                  MAX(r.confidence) AS confidence,
+                  COUNT(*) AS call_count,
+                  MIN(json_extract(r.metadata_json, '$.line')) AS first_line
+                FROM relations r
+                JOIN files f ON f.id = r.source_id
+                WHERE r.source_type = 'file'
+                  AND r.relation = 'calls'
+                  AND r.target_type = 'resolved_file'
+                  AND r.target_id = ?
+                  AND f.id != ?
+                GROUP BY f.id, name
+                ORDER BY call_count DESC, f.path
+                LIMIT 20
+                """,
+                (target["path"], file_id),
+            ).fetchall()
+        ]
     symbols = conn.execute("SELECT name FROM symbols WHERE file_id = ? ORDER BY name", (file_id,)).fetchall()
     callers: list[dict[str, object]] = []
     for symbol in symbols:

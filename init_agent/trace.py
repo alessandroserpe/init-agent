@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+import json
 import sqlite3
-from collections import deque
+from collections import defaultdict, deque
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,14 @@ STRUCTURAL_FILE_RELATIONS = {
     "include_once",
     "require",
     "require_once",
+}
+RUNTIME_FILE_RELATIONS = {
+    *STRUCTURAL_FILE_RELATIONS,
+    "imports",
+    "imports_symbol",
+    "calls",
+    "route_to_handler",
+    "renders_template",
 }
 RENDER_TOKENS = {
     "frontend",
@@ -150,17 +159,33 @@ def _build_graph(
     path_to_id: dict[str, int],
     symbols: dict[str, set[int]],
 ) -> dict[int, list[dict[str, Any]]]:
-    graph: dict[int, list[dict[str, Any]]] = {}
-    for row in conn.execute(
-        "SELECT source_id, relation, target_type, target_id, confidence "
+    graph_items: dict[int, dict[tuple[int, str], dict[str, Any]]] = defaultdict(dict)
+    rows = list(conn.execute(
+        "SELECT id, source_id, relation, target_type, target_id, confidence, metadata_json "
         "FROM relations WHERE source_type = 'file'"
-    ):
+    ))
+    resolved_raw_ids = {
+        int(metadata["raw_relation_id"])
+        for row in rows
+        if str(row["target_type"]) == "resolved_file"
+        if (metadata := _relation_metadata(row)).get("raw_relation_id") is not None
+    }
+    strict_resolution = any(str(row["target_type"]) == "resolved_file" for row in rows)
+    for row in rows:
         source = int(row["source_id"])
         relation = str(row["relation"])
         target_type = str(row["target_type"])
         target_id = str(row["target_id"])
         targets: set[int] = set()
-        if target_type == "file" and relation in STRUCTURAL_FILE_RELATIONS:
+        if target_type == "resolved_file" and relation in RUNTIME_FILE_RELATIONS:
+            resolved = path_to_id.get(target_id)
+            if resolved is not None:
+                targets.add(resolved)
+        elif int(row["id"]) in resolved_raw_ids:
+            continue
+        elif strict_resolution and relation in RUNTIME_FILE_RELATIONS:
+            continue
+        elif target_type == "file" and relation in STRUCTURAL_FILE_RELATIONS:
             resolved = _resolve_path(str(files[source]["path"]), target_id, path_to_id)
             if resolved is not None:
                 targets.add(resolved)
@@ -176,15 +201,29 @@ def _build_graph(
             targets.update(symbols.get(target_id.lower(), set()))
         for target in targets:
             if target != source:
-                graph.setdefault(source, []).append(
-                    {
-                        "target": target,
-                        "relation": relation,
-                        "target_id": target_id,
-                        "confidence": float(row["confidence"] or 0.0),
-                    }
-                )
-    return graph
+                item = {
+                    "target": target,
+                    "relation": relation,
+                    "target_id": target_id,
+                    "confidence": float(row["confidence"] or 0.0),
+                    "resolved": target_type == "resolved_file",
+                }
+                key = (target, relation)
+                existing = graph_items[source].get(key)
+                if existing is None or (item["resolved"], item["confidence"]) > (
+                    bool(existing.get("resolved")),
+                    float(existing.get("confidence") or 0.0),
+                ):
+                    graph_items[source][key] = item
+    return {source: list(items.values()) for source, items in graph_items.items()}
+
+
+def _relation_metadata(row: sqlite3.Row) -> dict[str, Any]:
+    try:
+        value = json.loads(str(row["metadata_json"] or "{}"))
+    except json.JSONDecodeError:
+        return {}
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _resolve_path(source_path: str, target: str, path_to_id: dict[str, int]) -> int | None:
@@ -360,7 +399,8 @@ def _bounded_neighbors(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def weight(edge: dict[str, Any]) -> float:
         relation = str(edge["relation"])
         base = 4.0 if relation in STRUCTURAL_FILE_RELATIONS else 2.0 if relation == "imports" else 1.0
-        return base + float(edge.get("confidence") or 0.0)
+        resolved_bonus = 1.5 if edge.get("resolved") else 0.0
+        return base + resolved_bonus + float(edge.get("confidence") or 0.0)
 
     return sorted(edges, key=weight, reverse=True)[:25]
 
@@ -373,7 +413,8 @@ def _edge_details(source: dict[str, Any], target: dict[str, Any], edge: dict[str
         "to": str(target["path"]),
         "relation": relation,
         "confidence": round(float(edge.get("confidence") or 0.0), 3),
-        "reason": f"followed {relation} relation to {target_id}",
+        "resolved": bool(edge.get("resolved")),
+        "reason": f"followed {'resolved ' if edge.get('resolved') else ''}{relation} relation to {target_id}",
     }
 
 

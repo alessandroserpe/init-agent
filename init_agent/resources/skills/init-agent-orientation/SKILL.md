@@ -33,7 +33,7 @@ Default to the smallest useful loop:
 init-agent overview
 init-agent plan "<user task>" --read 3
 # read and verify files directly
-init-agent plan finish --id <plan-id> --read-file <path> --verified <path> --useful <path> --summary "short factual outcome"
+init-agent plan finish --id <plan-id> --read-file <path> --verified <path> --central <path> --support <path> --summary "short factual outcome"
 init-agent session close
 ```
 
@@ -96,7 +96,7 @@ If you used a saved reading plan, close the loop after verification:
 ```bash
 init-agent plan read --id <plan-id> --file path/to/read-file --note "opened while investigating"
 init-agent plan diff --id <plan-id>
-init-agent plan finish --id <plan-id> --read-file path/to/read-file --verified path/to/verified-file --useful path/to/useful-file --summary "short factual outcome"
+init-agent plan finish --id <plan-id> --read-file path/to/read-file --verified path/to/verified-file --central path/to/central-file --support path/to/support-file --summary "short factual outcome"
 ```
 
 For MCP-capable agents, use `repo_reading_plan_read` after opening planned or
@@ -105,6 +105,13 @@ obvious, and `repo_reading_plan_finish` after verification. Mark only verified
 outcomes. Use `--noisy` for irrelevant candidates and `--missing` for important
 files absent from the plan. The read ledger is explicit metadata, not automatic
 editor telemetry.
+
+When closing a non-trivial plan, prefer semantic outcomes: `central` for the
+file that located or owned the primary behavior, `support` for files needed
+after orientation, `created` for new implementation files and `verification`
+for tests or documentation. Keep `missing` for important pre-existing files
+that were absent from the plan. This keeps scorecard orientation metrics from
+counting implementation and verification work as search churn.
 
 Use `init-agent plan mark --id <plan-id> --kind smoke|experiment|planning|diagnostic|docs`
 for plans created only for smoke tests, exploratory experiments, roadmap

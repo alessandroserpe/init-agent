@@ -32,3 +32,6 @@ jobs:
 
       - name: Run local benchmark guard
         run: python experiments/evaluate.py --strict --min-cases 4
+
+      - name: Run graph quality guard
+        run: python experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0

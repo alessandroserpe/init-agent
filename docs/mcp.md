@@ -49,8 +49,9 @@ stale, vague or duplicate notes. Use `repo_memory_topics` and
 opening files. Use `repo_memory_update` after re-reading a stale note to
 refresh it without creating duplicates. Reading-plan tools let agents create a
 bounded `read_now` list, record files actually opened, inspect the diff between
-planned and actual reads, and later record which candidates were useful, noisy
-or missing. This is explicit local metadata, not automatic editor telemetry.
+planned and actual reads, and later classify central, supporting, created,
+verification, noisy or missing files. `useful` remains available for backward
+compatibility. This is explicit local metadata, not automatic editor telemetry.
 Use task tools to keep an operational thread for longer work: open
 task title, linked files, verification performed and remaining follow-up. Open
 tasks and unfinished reading plans are included in `repo_session_summary` and

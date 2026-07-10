@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
     context = build_context_pack(root, query)
     trace = trace_query(root, query, limit=bounded_limit, max_depth=4)
     file_tags = _file_tags(root)
+    tag_document_counts = _tag_document_counts(file_tags)
     indexed_paths = set(file_tags)
     feedback = feedback_signals(root, query_tokens, indexed_paths)
     notes = list_notes(root, limit=500)
@@ -71,7 +73,7 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
         entry["feedback"] = _compact_feedback_signal(signal)
 
     for path, tags in file_tags.items():
-        tag_score = _tag_score(query_tokens, tags)
+        tag_score = _tag_score(query_tokens, tags, tag_document_counts, len(file_tags))
         if tag_score <= 0:
             continue
         entry = candidates.setdefault(path, _empty_candidate(path))
@@ -83,7 +85,8 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
         path_notes = sorted(notes_by_path.get(path, []), key=lambda item: -int(item["id"]))[:3]
         matching_notes = [note for note in path_notes if int(note["id"]) in entry["matching_memory_ids"]]
         tags = _combined_tags(file_tags.get(path, []), path_notes)
-        score = _combined_score(entry, matching_notes)
+        components = _score_components(entry, matching_notes)
+        score = sum(components.values())
         action = _action(entry, matching_notes)
         confidence, confidence_evidence = _confidence(entry, matching_notes)
         plan_items.append(
@@ -91,6 +94,8 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
                 "path": path,
                 "rank": 0,
                 "score": round(score, 4),
+                "base_score": round(components["graph"] + components["trace"], 4),
+                "score_components": {key: round(value, 4) for key, value in components.items()},
                 "action": action,
                 "confidence": confidence,
                 "confidence_evidence": confidence_evidence,
@@ -102,10 +107,9 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
                 "reason": _reason(entry, matching_notes, action),
             }
         )
-    plan_items.sort(key=lambda item: (-float(item["score"]), str(item["path"])))
+    _assign_ranking_diagnostics(plan_items)
+    plan_items.sort(key=lambda item: int(item["rank"]))
     plan_items = plan_items[:bounded_limit]
-    for index, item in enumerate(plan_items, start=1):
-        item["rank"] = index
     _assign_read_priorities(plan_items, bounded_read_budget)
 
     return {
@@ -158,14 +162,32 @@ def _file_tags(root: Path) -> dict[str, list[dict[str, Any]]]:
     return dict(grouped)
 
 
-def _tag_score(query_tokens: list[str], tags: list[dict[str, Any]]) -> float:
+def _tag_document_counts(file_tags: dict[str, list[dict[str, Any]]]) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for tags in file_tags.values():
+        for tag in {str(item["tag"]) for item in tags}:
+            counts[tag] += 1
+    return dict(counts)
+
+
+def _tag_score(
+    query_tokens: list[str],
+    tags: list[dict[str, Any]],
+    document_counts: dict[str, int],
+    file_count: int,
+) -> float:
     if not query_tokens:
         return 0.0
     query_set = set(query_tokens)
     score = 0.0
     for item in tags:
-        if str(item["tag"]) in query_set:
-            score += float(item.get("weight") or 1.0)
+        tag = str(item["tag"])
+        if tag in query_set:
+            document_count = max(1, int(document_counts.get(tag) or 1))
+            denominator = math.log(max(2, file_count + 1))
+            specificity = math.log((file_count + 1) / document_count) / denominator
+            multiplier = 0.25 + 0.75 * max(0.0, min(1.0, specificity))
+            score += float(item.get("weight") or 1.0) * multiplier
     return min(score, 8.0)
 
 
@@ -187,20 +209,46 @@ def _combined_tags(file_tags: list[dict[str, Any]], notes: list[dict[str, Any]])
     return result[:16]
 
 
-def _combined_score(entry: dict[str, Any], notes: list[dict[str, Any]]) -> float:
-    score = 0.0
-    score += 10.0 * float(entry.get("graph_score") or 0.0)
-    score += 0.35 * float(entry.get("trace_score") or 0.0)
-    score += 5.0 * float(entry.get("memory_score") or 0.0)
-    score += 1.5 * float(entry.get("tag_score") or 0.0)
+def _score_components(entry: dict[str, Any], notes: list[dict[str, Any]]) -> dict[str, float]:
     feedback = entry.get("feedback") or {}
-    score += float(feedback.get("boost") or 0.0) * 0.4
-    score += float(feedback.get("penalty") or 0.0) * 0.8
+    memory = 5.0 * float(entry.get("memory_score") or 0.0)
     if any(note.get("stale") is False for note in notes):
-        score += 3.0
+        memory += 3.0
     if any(note.get("stale") is True for note in notes):
-        score += 1.0
-    return score
+        memory += 1.0
+    return {
+        "graph": 10.0 * float(entry.get("graph_score") or 0.0),
+        "trace": 0.35 * float(entry.get("trace_score") or 0.0),
+        "memory": memory,
+        "feedback": float(feedback.get("boost") or 0.0) * 0.4 + float(feedback.get("penalty") or 0.0) * 0.8,
+        "tags": 1.5 * float(entry.get("tag_score") or 0.0),
+    }
+
+
+def _assign_ranking_diagnostics(plan_items: list[dict[str, Any]]) -> None:
+    assisted = _ranks_for(plan_items, lambda item: float(item["score"]))
+    baseline = _ranks_for(plan_items, lambda item: float(item["base_score"]))
+    without_signal = {
+        signal: _ranks_for(
+            plan_items,
+            lambda item, key=signal: float(item["score"]) - float(item["score_components"].get(key) or 0.0),
+        )
+        for signal in ("memory", "feedback", "tags")
+    }
+    for item in plan_items:
+        path = str(item["path"])
+        item["rank"] = assisted[path]
+        item["base_rank"] = baseline[path]
+        item["rank_lift"] = baseline[path] - assisted[path]
+        item["signal_rank_lift"] = {
+            signal: ranks[path] - assisted[path]
+            for signal, ranks in without_signal.items()
+        }
+
+
+def _ranks_for(plan_items: list[dict[str, Any]], score: Any) -> dict[str, int]:
+    ordered = sorted(plan_items, key=lambda item: (-float(score(item)), str(item["path"])))
+    return {str(item["path"]): index for index, item in enumerate(ordered, start=1)}
 
 
 def _action(entry: dict[str, Any], notes: list[dict[str, Any]]) -> str:

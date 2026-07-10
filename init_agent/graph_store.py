@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS reading_plans (
     source TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'real',
     summary TEXT,
+    file_manifest_blob BLOB,
     finished_at TEXT,
     created_at TEXT NOT NULL
 );
@@ -171,6 +172,10 @@ CREATE TABLE IF NOT EXISTS reading_plan_items (
     read_priority TEXT,
     read_budget_rank INTEGER,
     confidence TEXT,
+    base_rank INTEGER,
+    base_score REAL,
+    rank_lift INTEGER,
+    signal_contributions_json TEXT,
     sources_json TEXT NOT NULL,
     tags_json TEXT NOT NULL,
     reason TEXT,
@@ -218,6 +223,11 @@ class GraphStore:
         self._ensure_column("agent_notes", "scope", "TEXT")
         self._ensure_column("agent_notes", "tags_json", "TEXT")
         self._ensure_column("reading_plans", "kind", "TEXT")
+        self._ensure_column("reading_plans", "file_manifest_blob", "BLOB")
+        self._ensure_column("reading_plan_items", "base_rank", "INTEGER")
+        self._ensure_column("reading_plan_items", "base_score", "REAL")
+        self._ensure_column("reading_plan_items", "rank_lift", "INTEGER")
+        self._ensure_column("reading_plan_items", "signal_contributions_json", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -379,6 +389,7 @@ class GraphStore:
         ]
         self.connection.execute("DELETE FROM relations WHERE source_type = 'file' AND source_id = ?", (file_id,))
         self.connection.execute("DELETE FROM relations WHERE target_type = 'file' AND target_id = ?", (path,))
+        self.connection.execute("DELETE FROM relations WHERE target_type = 'resolved_file' AND target_id = ?", (path,))
         self.connection.execute("DELETE FROM file_tags WHERE file_id = ?", (file_id,))
         if symbol_ids:
             placeholders = ",".join("?" for _ in symbol_ids)

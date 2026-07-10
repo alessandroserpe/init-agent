@@ -114,6 +114,10 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
         lines.append("-")
     for item in read_now[:10]:
         lines.append(f"{item['rank']}. {item['path']} score {item['score']:.2f}")
+        if item.get("base_rank"):
+            lines.append(
+                f"   base_rank: {item.get('base_rank')} assisted_lift: {int(item.get('rank_lift') or 0):+d}"
+            )
         lines.append(f"   action: {item.get('action', '-')}")
         if item.get("read_budget_rank"):
             lines.append(f"   read_budget_rank: {item.get('read_budget_rank')}")
@@ -207,6 +211,10 @@ def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
     _append_plain_list(lines, diff.get("read_without_outcome", []))
     lines.extend(["", "Outcomes:"])
     lines.append(f"- useful: {len(diff.get('useful_paths', []))}")
+    lines.append(f"- central: {len(diff.get('central_paths', []))}")
+    lines.append(f"- support: {len(diff.get('support_paths', []))}")
+    lines.append(f"- created: {len(diff.get('created_paths', []))}")
+    lines.append(f"- verification: {len(diff.get('verification_paths', []))}")
     lines.append(f"- noisy: {len(diff.get('noisy_paths', []))}")
     lines.append(f"- missing: {len(diff.get('missing_paths', []))}")
     _append_warnings(lines, result.get("warnings", []))
@@ -229,20 +237,35 @@ def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
         f"Evidence confidence: {stats.get('scorecard_confidence', 'low')}",
         "",
         "Hit rates:",
-        f"- Top-1 useful/missing hit rate: {_percent(stats.get('top1_hit_rate', 0))}",
-        f"- Top-3 useful/missing hit rate: {_percent(stats.get('top3_hit_rate', 0))}",
-        f"- Top-5 useful/missing hit rate: {_percent(stats.get('top5_hit_rate', 0))}",
+        f"- Top-1 central/missing hit rate: {_percent(stats.get('top1_hit_rate', 0))}",
+        f"- Top-3 central/missing hit rate: {_percent(stats.get('top3_hit_rate', 0))}",
+        f"- Top-5 central/missing hit rate: {_percent(stats.get('top5_hit_rate', 0))}",
         "",
         "Read behavior:",
-        f"- Average first useful read position: {stats.get('average_first_useful_read_position', 0)}",
+        f"- Average first central/useful read position: {stats.get('average_first_useful_read_position', 0)}",
         f"- Average files read per included finished plan: {stats.get('average_files_read_per_finished_plan', 0)}",
-        f"- Average extra files read outside plan: {stats.get('average_extra_files_read_per_finished_plan', 0)}",
+        f"- Average orientation reads outside plan: {stats.get('average_extra_files_read_per_finished_plan', 0)}",
         f"- Missing rate: {_percent(stats.get('missing_rate', 0))}",
         f"- Noise rate: {_percent(stats.get('noise_rate', 0))}",
         f"- Explicit plan-read tracking: {_percent(stats.get('explicit_read_tracking_rate', 0))}",
-        f"- Read files with useful/noisy/missing outcome: {_percent(stats.get('average_read_outcome_coverage', 0))}",
+        f"- Read files with classified outcome: {_percent(stats.get('average_read_outcome_coverage', 0))}",
         f"- Read files explicitly verified: {_percent(stats.get('average_verified_read_coverage', 0))}",
     ]
+    signal_impact = stats.get("signal_impact") or {}
+    lines.extend(
+        [
+            "",
+            "Ranking contribution:",
+            f"- Average base-to-assisted rank lift: {stats.get('average_base_to_assisted_rank_lift', 0)}",
+        ]
+    )
+    for signal in ("memory", "feedback", "tags"):
+        item = signal_impact.get(signal) or {}
+        lines.append(
+            f"- {signal}: observed={item.get('observed_useful_files', 0)} "
+            f"avg_lift={item.get('average_rank_lift', 0)} promoted={item.get('promoted', 0)} "
+            f"unchanged={item.get('unchanged', 0)} demoted={item.get('demoted', 0)}"
+        )
     confidence_reasons = list(stats.get("scorecard_confidence_reasons") or [])
     if confidence_reasons:
         lines.extend(["", "Evidence quality:"])

@@ -96,6 +96,10 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_reading_plan_finish_parser.add_argument("--read", action="append", default=[], help="File that was read. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--verified", action="append", default=[], help="File that was verified. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--useful", action="append", default=[], help="File verified useful. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--central", action="append", default=[], help="Central orientation target. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--support", action="append", default=[], help="Supporting file used after orientation. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--created", action="append", default=[], help="File created during the task. Can be repeated.")
+    repo_reading_plan_finish_parser.add_argument("--verification", action="append", default=[], help="Test or documentation verification file. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--noisy", action="append", default=[], help="File verified noisy. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--missing", action="append", default=[], help="Important missing file. Can be repeated.")
     repo_reading_plan_finish_parser.add_argument("--summary", default="", help="Short closing summary.")
@@ -361,6 +365,10 @@ def cmd_tool_repo_reading_plan_finish(args: argparse.Namespace) -> int:
         read=args.read,
         verified=args.verified,
         useful=args.useful,
+        central=args.central,
+        support=args.support,
+        created=args.created,
+        verification=args.verification,
         noisy=args.noisy,
         missing=args.missing,
         summary=args.summary,
@@ -720,4 +728,3 @@ def cmd_tool_repo_task_close(args: argparse.Namespace) -> int:
 def _memory_tool_exit_code(result: dict[str, Any]) -> int:
     warnings = [str(warning) for warning in result.get("warnings", [])]
     return 1 if any("memory store could not be read" in warning for warning in warnings) else 0
-

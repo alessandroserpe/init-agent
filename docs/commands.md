@@ -232,7 +232,7 @@ init-agent plan "installare server mcp codex" --read 3
 init-agent plan "installare server mcp codex" --json
 init-agent plan read --id 7 --file init_agent/mcp_server.py --note "Opened MCP server implementation."
 init-agent plan diff --id 7
-init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path."
+init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path."
 init-agent plan stats
 ```
 
@@ -257,16 +257,26 @@ plan. `plan diff` compares the saved plan with recorded activity:
 - `read_now_not_read`: high-priority suggestions not yet opened
 - `suggested_not_read`: any planned file that has not been opened
 - `read_not_planned`: files opened outside the plan
-- `read_without_outcome`: opened files that have not been marked useful, noisy
-  or missing yet
+- `read_without_outcome`: opened files that have not received a classified
+  outcome yet
 
 This is explicit agent metadata, not automatic editor telemetry.
 
 `plan finish` records the agent's verified outcome for a saved plan. Use
-`--read-file` for files actually opened, `--verified` for files whose role was
-confirmed, `--useful` for central files, `--noisy` for irrelevant candidates
-and `--missing` for important files absent from the plan. Useful/noisy/missing
-entries are also stored as local feedback. The command may suggest memory
+`--read-file` for files actually opened and `--verified` for files whose role
+was confirmed. Prefer the more precise outcomes:
+
+- `--central`: file that located or owned the primary behavior;
+- `--support`: file needed after the central area was found;
+- `--created`: file created during implementation;
+- `--verification`: test or documentation file used for verification;
+- `--noisy`: irrelevant candidate;
+- `--missing`: important pre-existing file absent from the plan.
+
+`--useful` remains supported for older integrations. If a path passed as
+`--missing` did not exist in the plan's compressed file manifest, it is
+automatically recorded as `created` instead. Central/support/useful, noisy and
+missing outcomes also create local feedback. The command may suggest memory
 notes, but it does not write memory automatically.
 
 ## `init-agent tool repo_graph_search`
@@ -323,24 +333,26 @@ Returns the reading plan as a stable JSON contract:
 init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3 --json
 init-agent tool repo_reading_plan_read --id 7 --path init_agent/mcp_server.py --note "Opened MCP server implementation." --json
 init-agent tool repo_reading_plan_diff --id 7 --json
-init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --useful init_agent/mcp_server.py --summary "Verified MCP startup path." --json
+init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path." --json
 init-agent tool repo_reading_plan_mark --id 7 --kind smoke --json
 init-agent tool repo_reading_plan_stats --json
 ```
 
 The response includes query tokens, plan items, memory matches, repo-wide
 memory context, recommended actions and warnings. Each plan item includes an
-action, confidence, signal sources, tags, compact memory notes and feedback
-signals. Saved plans include an `id` so agents can finish the loop after
+action, confidence, base and assisted ranks, signal rank lift, tags, compact
+memory notes and feedback signals. Saved plans include an `id` so agents can finish the loop after
 reading files. `repo_reading_plan_read` records files opened during the session,
 and `repo_reading_plan_diff` highlights unread suggestions, unplanned reads and
 opened files that still need an outcome. `repo_reading_plan_mark` labels smoke,
 experiment, planning, diagnostic or docs-only plans so they do not pollute the
 default scorecard. `repo_reading_plan_stats` and `init-agent scorecard` report
-orientation metrics such as Top-1/Top-3/Top-5 useful hit rate, missing rate,
-noise rate and first useful read position. The scorecard also reports evidence
-confidence, explicit plan-read tracking and outcome/verification coverage so a
-small or incompletely labelled sample is visible. These metrics are local self-audit
+orientation metrics such as Top-1/Top-3/Top-5 central-file hit rate, missing
+rate, noise rate and first central read position. It separates orientation
+reads from support, created and verification files, and reports the observed
+rank lift from memory, feedback and tags. Evidence confidence, explicit
+plan-read tracking and outcome/verification coverage keep a small or
+incompletely labelled sample visible. These metrics are local self-audit
 signals about repository orientation quality, not claims about agent speed or
 task success.
 

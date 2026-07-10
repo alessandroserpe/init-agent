@@ -25,6 +25,7 @@ class ExtractedRelation:
     target: str
     line: int
     confidence: float = 0.75
+    metadata: dict[str, object] | None = None
 
 
 PY_DEF_RE = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -439,13 +440,40 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
 
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
-                relations.append(ExtractedRelation("imports", "module", alias.name, node.lineno, 0.65))
+                local_name = alias.asname or alias.name.split(".")[0]
+                relations.append(
+                    ExtractedRelation(
+                        "imports",
+                        "module",
+                        alias.name,
+                        node.lineno,
+                        0.65,
+                        {"local_name": local_name},
+                    )
+                )
             self.generic_visit(node)
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-            if node.module:
-                module = _python_import_module(path, node.module, node.level)
+            module = _python_import_module(path, node.module or "", node.level)
+            if module:
                 relations.append(ExtractedRelation("imports", "module", module, node.lineno, 0.75))
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+                    relations.append(
+                        ExtractedRelation(
+                            "imports_symbol",
+                            "symbol_name",
+                            alias.name,
+                            node.lineno,
+                            0.8,
+                            {
+                                "module": module,
+                                "imported_name": alias.name,
+                                "local_name": alias.asname or alias.name,
+                            },
+                        )
+                    )
             self.generic_visit(node)
 
         def visit_Call(self, node: ast.Call) -> None:
@@ -453,10 +481,29 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                 route_path, handler, line_no, signature = route
                 symbols.append(ExtractedSymbol(route_path, "route", line_no, signature))
                 if handler:
-                    relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler, line_no, 0.65))
+                    qualified = _python_dotted_name(node.args[1]) if len(node.args) >= 2 else handler
+                    relations.append(
+                        ExtractedRelation(
+                            "route_to_handler",
+                            "symbol_name",
+                            handler,
+                            line_no,
+                            0.65,
+                            {"qualified_name": qualified},
+                        )
+                    )
             if call_name := _python_call_name(node.func):
                 if call_name not in PY_CALL_EXCLUDES:
-                    relations.append(ExtractedRelation("calls", "symbol_name", call_name, node.lineno, 0.45))
+                    relations.append(
+                        ExtractedRelation(
+                            "calls",
+                            "symbol_name",
+                            call_name,
+                            node.lineno,
+                            0.45,
+                            {"qualified_name": _python_dotted_name(node.func)},
+                        )
+                    )
             if template := _python_render_template(node):
                 relations.append(ExtractedRelation("renders_template", "template", template, node.lineno, 0.7))
             self.generic_visit(node)
@@ -492,9 +539,24 @@ def _extract_python_regex(content: str, path: str | None = None) -> tuple[list[E
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, stripped))
         if match := PY_IMPORT_RE.match(line):
             for module in _split_imports(match.group(1)):
-                relations.append(ExtractedRelation("imports", "module", module, line_no, 0.65))
+                clean_module, local_name = _python_regex_import_binding(module)
+                relations.append(
+                    ExtractedRelation("imports", "module", clean_module, line_no, 0.65, {"local_name": local_name})
+                )
         if match := PY_FROM_RE.match(line):
-            relations.append(ExtractedRelation("imports", "module", _python_import_module_from_string(path, match.group(1)), line_no, 0.75))
+            module = _python_import_module_from_string(path, match.group(1))
+            relations.append(ExtractedRelation("imports", "module", module, line_no, 0.75))
+            for imported_name, local_name in _python_regex_imported_names(match.group(2)):
+                relations.append(
+                    ExtractedRelation(
+                        "imports_symbol",
+                        "symbol_name",
+                        imported_name,
+                        line_no,
+                        0.8,
+                        {"module": module, "imported_name": imported_name, "local_name": local_name},
+                    )
+                )
         if match := DJANGO_PATH_RE.match(line):
             route = _normalize_route_path("/" + match.group("path").strip("/"))
             symbols.append(ExtractedSymbol(route, "route", line_no, stripped))
@@ -615,7 +677,11 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
     relations = _dedupe_relations(
         [
             *ts_relations,
-            *(relation for relation in regex_relations if relation.relation == "route_to_handler"),
+            *(
+                relation
+                for relation in regex_relations
+                if relation.relation in {"route_to_handler", "include", "include_once", "require", "require_once"}
+            ),
         ]
     )
     return symbols, relations
@@ -639,8 +705,8 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, line.strip()))
         if match := PHP_DEFINE_RE.search(line):
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, line.strip()))
-        if match := PHP_INCLUDE_RE.search(line):
-            relations.append(ExtractedRelation(match.group(1).lower(), "file", match.group(2), line_no, 0.8))
+        for relation, target, metadata in _php_includes_in_line(line):
+            relations.append(ExtractedRelation(relation, "file", target, line_no, 0.8, metadata))
         for route, handler in _php_routes_in_line(line):
             symbols.append(ExtractedSymbol(route, "route", line_no, line.strip()))
             if handler:
@@ -827,6 +893,50 @@ def _strip_php_line_noise(line: str) -> str:
     without_comment = re.split(r"//|#", line, maxsplit=1)[0]
     without_comment = re.sub(r"/\*.*?\*/", "", without_comment)
     return re.sub(r"""(["']).*?\1""", '""', without_comment)
+
+
+def _php_includes_in_line(line: str) -> list[tuple[str, str, dict[str, object]]]:
+    direct = PHP_INCLUDE_RE.search(line)
+    if direct:
+        return [(direct.group(1).lower(), direct.group(2), {"path_base": "runtime"})]
+    match = re.search(
+        r"\b(include_once|require_once|include|require)\s*(?:\(\s*)?(?P<expr>[^;]+)",
+        line,
+        re.IGNORECASE,
+    )
+    if not match:
+        return []
+    expression = match.group("expr").strip().rstrip(")").strip()
+    string_match = re.search(r"[\"']([^\"']+)[\"']", expression)
+    if not string_match:
+        return []
+    target = string_match.group(1).replace("\\", "/")
+    metadata: dict[str, object] = {"path_base": "runtime", "expression": expression[:160]}
+    if "dirname(__DIR__)" in expression:
+        target = f"../{target.lstrip('/')}"
+        metadata["path_base"] = "source_dir"
+    elif "__DIR__" in expression or "dirname(__FILE__)" in expression:
+        target = target.lstrip("/")
+        metadata["path_base"] = "source_dir"
+    return [(match.group(1).lower(), target, metadata)]
+
+
+def _python_regex_import_binding(value: str) -> tuple[str, str]:
+    parts = re.split(r"\s+as\s+", value.strip(), maxsplit=1)
+    module = parts[0].strip()
+    local_name = parts[1].strip() if len(parts) > 1 else module.split(".")[0]
+    return module, local_name
+
+
+def _python_regex_imported_names(value: str) -> list[tuple[str, str]]:
+    result: list[tuple[str, str]] = []
+    for item in value.strip().strip("()").split(","):
+        clean = item.strip()
+        if not clean or clean == "*":
+            continue
+        parts = re.split(r"\s+as\s+", clean, maxsplit=1)
+        result.append((parts[0].strip(), parts[1].strip() if len(parts) > 1 else parts[0].strip()))
+    return result
 
 
 def _extract_js_ts(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:

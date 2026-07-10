@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from .language_detector import detect_language, detect_role
+from .relation_resolver import rebuild_resolved_relations
 from .symbol_extractor import ExtractedRelation, ExtractedSymbol, extract_symbols_and_relations
 from .text_tokens import is_query_noise_token, tokenize_query
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "7"
+INDEX_VERSION = "8"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:
@@ -36,6 +37,8 @@ def scan_project(root: Path, store: Any) -> dict[str, int]:
             store.delete_file_by_path(rel_path)
             removed_files += 1
 
+    resolved = rebuild_resolved_relations(store)
+    indexed_relations += resolved["resolved_file_edges"]
     if hasattr(store, "rebuild_term_stats"):
         store.rebuild_term_stats()
     if hasattr(store, "set_meta"):
@@ -85,7 +88,7 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
             "target_type": relation.target_type,
             "target_id": relation.target,
             "confidence": relation.confidence,
-            "metadata": {"line": relation.line},
+            "metadata": {"line": relation.line, **(relation.metadata or {})},
         }
         for relation in extracted_relations
     )

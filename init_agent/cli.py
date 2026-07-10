@@ -160,6 +160,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--read-file", action="append", default=[], help="For `plan finish`: file that was read.")
     plan_parser.add_argument("--verified", action="append", default=[], help="For `plan finish`: file that was verified.")
     plan_parser.add_argument("--useful", action="append", default=[], help="For `plan finish`: file verified useful.")
+    plan_parser.add_argument("--central", action="append", default=[], help="For `plan finish`: central orientation target.")
+    plan_parser.add_argument("--support", action="append", default=[], help="For `plan finish`: supporting file used after orientation.")
+    plan_parser.add_argument("--created", action="append", default=[], help="For `plan finish`: file created during the task.")
+    plan_parser.add_argument("--verification", action="append", default=[], help="For `plan finish`: test or documentation verification file.")
     plan_parser.add_argument("--noisy", action="append", default=[], help="For `plan finish`: file verified noisy.")
     plan_parser.add_argument("--missing", action="append", default=[], help="For `plan finish`: important missing file.")
     plan_parser.add_argument("--summary", default="", help="For `plan finish`: closing summary.")
@@ -516,6 +520,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
             read=args.read_file,
             verified=args.verified,
             useful=args.useful,
+            central=args.central,
+            support=args.support,
+            created=args.created,
+            verification=args.verification,
             noisy=args.noisy,
             missing=args.missing,
             summary=args.summary,

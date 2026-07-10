@@ -27,12 +27,13 @@ For lower-level graph diagnostics, run:
 
 ```bash
 python3 experiments/flow-graph/evaluate.py
+python3 experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
 ```
 
 That experiment builds small framework-shaped fixture repositories and checks
-whether the SQLite graph contains expected runtime-flow edges such as
-include/import/call/route links. It is useful when deciding whether a ranking
-problem is actually caused by missing graph semantics.
+whether the SQLite graph extracts runtime-flow relations and resolves
+unambiguous include/import/call/route/template targets to real files. It also
+checks ambiguity guards and compares ranking noise with resolved edges enabled.
 
 By default it expects local benchmark repositories under `/tmp`, for example:
 

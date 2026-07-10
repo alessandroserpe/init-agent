@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .relation_resolver import rebuild_resolved_relations
 from .scanner import INDEX_VERSION, index_file, iter_project_files
 from .utils import agent_dir, db_path, relative_path, sha256_file, utc_now
 
@@ -85,6 +86,7 @@ def refresh_index(root: Path) -> dict[str, Any]:
                 result["removed"].append(rel_path)
 
             if result["added"] or result["updated"] or result["removed"]:
+                result["resolved_relations"] = rebuild_resolved_relations(store)
                 store.rebuild_term_stats()
             store.set_meta("last_refresh", utc_now())
             store.finish_run(
