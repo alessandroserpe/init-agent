@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             "min_top3_rate": args.min_top3_rate,
             "min_top5_rate": args.min_top5_rate,
             "max_noise": args.max_noise,
+            "min_cases": args.min_cases,
         }
     write_report_outputs(report, args)
     print(json.dumps(report, indent=2, sort_keys=True))
@@ -76,6 +77,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-top3-rate", type=float, default=0.85, help="Minimum top-3 hit rate for --strict.")
     parser.add_argument("--min-top5-rate", type=float, default=1.0, help="Minimum top-5 hit rate for --strict.")
     parser.add_argument("--max-noise", type=int, default=2, help="Maximum total noise hits for --strict.")
+    parser.add_argument("--min-cases", type=int, default=1, help="Minimum number of executed cases required by --strict.")
     parser.add_argument("--output-dir", type=Path, help="Write results.json, results.csv and summary.md to this directory.")
     parser.add_argument("--json-output", type=Path, help="Write machine-readable JSON report to this path.")
     parser.add_argument("--csv-output", type=Path, help="Write per-case CSV results to this path.")
@@ -96,6 +98,8 @@ def load_cases(selected_names: list[str] | None = None) -> list[dict[str, Any]]:
 
 
 def resolve_case_repo(case: dict[str, Any]) -> Path | None:
+    if case.get("repo") == "$SELF":
+        return ROOT
     repo = Path(case["repo"])
     if repo.exists():
         return repo
@@ -456,8 +460,10 @@ def _percent_value(value: Any) -> str:
 
 def strict_failures_for(summary: dict[str, Any], args: argparse.Namespace) -> list[str]:
     failures = []
-    if int(summary.get("cases", 0)) == 0:
-        failures.append("no benchmark cases ran")
+    case_count = int(summary.get("cases", 0))
+    min_cases = max(1, int(args.min_cases))
+    if case_count < min_cases:
+        failures.append(f"cases {case_count} < required minimum {min_cases}")
         return failures
     if float(summary.get("top3_rate", 0.0)) < args.min_top3_rate:
         failures.append(f"top3_rate {summary.get('top3_rate')} < {args.min_top3_rate}")

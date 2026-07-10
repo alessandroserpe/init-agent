@@ -6,6 +6,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .mcp_compact import compact_mcp_result
+
 from .agent_tools import (
     repo_entrypoints,
     repo_feedback_add,
@@ -67,7 +69,7 @@ def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str
     limit = int(arguments.get("limit") or 10)
     read_budget = int(arguments.get("read_budget") or arguments.get("read") or 3)
     kind = str(arguments.get("kind") or "real")
-    return repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False, kind=kind)
+    return _mcp_result(arguments, repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False, kind=kind))
 
 
 def _handle_repo_reading_plan_read(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -79,27 +81,27 @@ def _handle_repo_reading_plan_read(root: Path, arguments: dict[str, Any]) -> dic
         paths = _string_list(arguments.get("path"))
     if not paths:
         raise ValueError("repo_reading_plan_read requires paths")
-    return repo_reading_plan_read(
+    return _mcp_result(arguments, repo_reading_plan_read(
         root,
         plan_id,
         paths=paths,
         note=str(arguments.get("note") or ""),
         source=str(arguments.get("source") or "agent"),
-    )
+    ))
 
 
 def _handle_repo_reading_plan_diff(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     plan_id = int(arguments.get("id") or 0)
     if plan_id <= 0:
         raise ValueError("repo_reading_plan_diff requires positive id")
-    return repo_reading_plan_diff(root, plan_id)
+    return _mcp_result(arguments, repo_reading_plan_diff(root, plan_id))
 
 
 def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     plan_id = int(arguments.get("id") or 0)
     if plan_id <= 0:
         raise ValueError("repo_reading_plan_finish requires positive id")
-    return repo_reading_plan_finish(
+    return _mcp_result(arguments, repo_reading_plan_finish(
         root,
         plan_id,
         read=_string_list(arguments.get("read")),
@@ -110,7 +112,7 @@ def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> d
         summary=str(arguments.get("summary") or ""),
         source=str(arguments.get("source") or "agent"),
         kind=str(arguments["kind"]) if arguments.get("kind") else None,
-    )
+    ))
 
 
 def _handle_repo_reading_plan_mark(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -120,7 +122,7 @@ def _handle_repo_reading_plan_mark(root: Path, arguments: dict[str, Any]) -> dic
     kind = str(arguments.get("kind") or "").strip()
     if not kind:
         raise ValueError("repo_reading_plan_mark requires kind")
-    return repo_reading_plan_mark(root, plan_id, kind)
+    return _mcp_result(arguments, repo_reading_plan_mark(root, plan_id, kind))
 
 
 def _handle_repo_reading_plan_stats(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -247,7 +249,7 @@ def _handle_repo_memory_topics(root: Path, arguments: dict[str, Any]) -> dict[st
 def _handle_repo_flow_topics(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     tag = str(arguments.get("tag") or "").strip() or None
     limit = int(arguments.get("limit") or 20)
-    return repo_flow_topics(root, tag=tag, limit=limit)
+    return _mcp_result(arguments, repo_flow_topics(root, tag=tag, limit=limit))
 
 
 def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -260,12 +262,12 @@ def _handle_repo_file_notes(root: Path, arguments: dict[str, Any]) -> dict[str, 
 
 def _handle_repo_session_summary(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     limit = int(arguments.get("limit") or 10)
-    return repo_session_summary(root, limit=limit)
+    return _mcp_result(arguments, repo_session_summary(root, limit=limit))
 
 
 def _handle_repo_session_close(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     limit = int(arguments.get("limit") or 10)
-    return repo_session_close(root, limit=limit)
+    return _mcp_result(arguments, repo_session_close(root, limit=limit))
 
 
 def _handle_repo_task_add(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -367,7 +369,10 @@ def _int_list(value: Any) -> list[int]:
     return result
 
 
-
+def _mcp_result(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if bool(arguments.get("include_details") or False):
+        return result
+    return compact_mcp_result(result)
 
 
 MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
@@ -448,6 +453,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                         "default": "real",
                         "description": "Plan kind for scorecard filtering.",
                     },
+                    "include_details": {"type": "boolean", "default": False, "description": "Return the full unbounded plan contract."},
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -463,6 +469,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                     "paths": {"type": "array", "items": {"type": "string"}, "description": "Files opened or inspected."},
                     "note": {"type": "string", "description": "Optional short note for this read event."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
+                    "include_details": {"type": "boolean", "default": False, "description": "Return the complete persisted plan."},
                 },
                 "required": ["id", "paths"],
                 "additionalProperties": False,
@@ -475,6 +482,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "include_details": {"type": "boolean", "default": False, "description": "Return the complete persisted plan."},
                 },
                 "required": ["id"],
                 "additionalProperties": False,
@@ -499,6 +507,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                         "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
                         "description": "Optional replacement plan kind for scorecard filtering.",
                     },
+                    "include_details": {"type": "boolean", "default": False, "description": "Return full plan items and events."},
                 },
                 "required": ["id"],
                 "additionalProperties": False,
@@ -516,6 +525,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                         "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
                         "description": "Plan kind.",
                     },
+                    "include_details": {"type": "boolean", "default": False, "description": "Return the complete persisted plan."},
                 },
                 "required": ["id", "kind"],
                 "additionalProperties": False,
@@ -670,6 +680,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    "include_details": {"type": "boolean", "default": False, "description": "Include full recent plans, events and metadata."},
                 },
                 "additionalProperties": False,
             },
@@ -681,6 +692,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    "include_details": {"type": "boolean", "default": False, "description": "Include full recent plans, events and metadata."},
                 },
                 "additionalProperties": False,
             },
@@ -720,6 +732,7 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                 "properties": {
                     "tag": {"type": "string", "description": "Optional exact tag filter."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                    "include_details": {"type": "boolean", "default": False, "description": "Include all note fields and longer path lists."},
                 },
                 "additionalProperties": False,
             },

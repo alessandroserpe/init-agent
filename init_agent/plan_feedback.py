@@ -10,7 +10,7 @@ from typing import Any
 from .feedback import add_feedback
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, utc_now
+from .utils import ensure_agent_dir, normalize_repo_path, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
@@ -335,14 +335,11 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         planned_paths[int(item["plan_id"])].add(str(item["path"]))
     useful_by_rank: Counter[int] = Counter()
     noisy_by_rank: Counter[int] = Counter()
-    read_counts: Counter[int] = Counter()
     event_paths: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for event in events:
         plan_id = int(event["plan_id"])
         event_name = str(event["event"])
         path = str(event["path"])
-        if event_name in {"opened", "read"}:
-            read_counts[plan_id] += 1
         if plan_id in finished_ids and path:
             event_paths[plan_id][event_name].append(path)
         rank = rank_by_plan_path.get((plan_id, str(event["path"])), 0)
@@ -365,12 +362,17 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
     first_useful_positions: list[int] = []
     missing_rates: list[float] = []
     noise_rates: list[float] = []
+    outcome_coverages: list[float] = []
+    verified_coverages: list[float] = []
+    explicitly_tracked_plans = 0
     for plan in included_plans:
         plan_id = int(plan["id"])
         paths_by_event = event_paths.get(plan_id, {})
         useful = _unique(paths_by_event.get("useful", []))
         missing = _unique(paths_by_event.get("missing", []))
         noisy = _unique(paths_by_event.get("noisy", []))
+        opened = _unique(paths_by_event.get("opened", []))
+        verified = _unique(paths_by_event.get("verified", []))
         read = _unique([*paths_by_event.get("opened", []), *paths_by_event.get("read", [])])
         extra_read_count = len([path for path in read if path not in planned_paths.get(plan_id, set())])
         expected = _unique([*useful, *missing])
@@ -384,6 +386,15 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
             missing_rates.append(round(len(missing) / len(expected), 4))
         if planned_paths.get(plan_id):
             noise_rates.append(round(len(noisy) / len(planned_paths[plan_id]), 4))
+        if opened:
+            explicitly_tracked_plans += 1
+        classified = set([*useful, *noisy, *missing])
+        outcome_coverage = round(len(set(read).intersection(classified)) / len(read), 4) if read else None
+        verified_coverage = round(len(set(read).intersection(verified)) / len(read), 4) if read else None
+        if outcome_coverage is not None:
+            outcome_coverages.append(outcome_coverage)
+        if verified_coverage is not None:
+            verified_coverages.append(verified_coverage)
         plan_rows.append(
             {
                 "id": plan_id,
@@ -400,11 +411,21 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
                 "useful_count": len(useful),
                 "missing_count": len(missing),
                 "noisy_count": len(noisy),
+                "explicit_read_tracking": bool(opened),
+                "read_outcome_coverage": outcome_coverage,
+                "verified_read_coverage": verified_coverage,
                 "summary": str(plan.get("summary") or ""),
             }
         )
     excluded_by_kind = Counter(str(plan.get("effective_kind") or "real") for plan in excluded_plans)
     evaluable_count = len(evaluable_ids)
+    explicit_tracking_rate = round(explicitly_tracked_plans / len(included_plans), 4) if included_plans else 0.0
+    outcome_coverage = _float_average(outcome_coverages)
+    confidence, confidence_reasons = scorecard_evidence_confidence(
+        evaluable_count,
+        explicit_tracking_rate,
+        outcome_coverage,
+    )
     return {
         "plan_count": len(plans),
         "finished_plan_count": len(all_finished_ids),
@@ -416,10 +437,15 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         "scorecard_excluded_by_kind": dict(sorted(excluded_by_kind.items())),
         "scorecard_evaluable_plan_count": evaluable_count,
         "scorecard_not_evaluable_plan_count": len(included_plans) - evaluable_count,
-        "average_read_now_count": _average([int(plan["read_budget"] or 0) for plan in plans]),
-        "average_files_read_per_finished_plan": _average([read_counts[plan_id] for plan_id in finished_ids]),
+        "average_read_now_count": _average([int(plan["read_budget"] or 0) for plan in included_plans]),
+        "average_files_read_per_finished_plan": _average([int(plan["read_file_count"]) for plan in plan_rows]),
         "average_extra_files_read_per_finished_plan": _average([int(plan["extra_read_count"]) for plan in plan_rows]),
         "average_first_useful_read_position": _average(first_useful_positions),
+        "explicit_read_tracking_rate": explicit_tracking_rate,
+        "average_read_outcome_coverage": outcome_coverage,
+        "average_verified_read_coverage": _float_average(verified_coverages),
+        "scorecard_confidence": confidence,
+        "scorecard_confidence_reasons": confidence_reasons,
         "missing_rate": _float_average(missing_rates),
         "noise_rate": _float_average(noise_rates),
         "top1_verified_useful_rate": _rank_rate(useful_plan_ranks, 1, max(1, len(finished_ids))),
@@ -431,8 +457,20 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         "noisy_hits_by_rank": dict(sorted(noisy_by_rank.items())),
         "missing_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "missing"),
         "noisy_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "noisy"),
+        "useful_count": sum(1 for event in events if int(event["plan_id"]) in finished_ids and str(event["event"]) == "useful"),
         "plans": plan_rows,
     }
+
+
+def scorecard_evidence_confidence(evaluable_count: int, explicit_tracking_rate: float, outcome_coverage: float) -> tuple[str, list[str]]:
+    reasons = [f"{evaluable_count} evaluable real plans"]
+    reasons.append(f"{explicit_tracking_rate * 100:.0f}% used explicit plan-read tracking")
+    reasons.append(f"{outcome_coverage * 100:.0f}% of read files received useful/noisy/missing outcomes")
+    if evaluable_count >= 20 and explicit_tracking_rate >= 0.8 and outcome_coverage >= 0.6:
+        return "high", reasons
+    if evaluable_count >= 5 and explicit_tracking_rate >= 0.5 and outcome_coverage >= 0.4:
+        return "medium", reasons
+    return "low", reasons
 
 
 def _plan(row: Any, items: list[dict[str, Any]], events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -516,7 +554,7 @@ def _paths(values: list[str] | None) -> list[str]:
     result = []
     seen = set()
     for value in values or []:
-        path = Path(value).as_posix().lstrip("./")
+        path = normalize_repo_path(value)
         if path and path not in seen:
             seen.add(path)
             result.append(path)

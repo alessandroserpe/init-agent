@@ -141,7 +141,8 @@ init-agent tool repo_memory_audit --json
 init-agent tool repo_memory_list --stale --json
 ```
 
-If a note is stale, re-read the file before using it. Then either update it or
+Staleness is checked against the current file on disk and does not require a
+fresh repository map. If a note is stale, re-read the file before using it. Then either update it or
 delete it:
 
 ```bash

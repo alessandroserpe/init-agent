@@ -88,6 +88,8 @@ class WebUiTests(InitAgentTestCase):
                 self.assertEqual(data["open_tasks"][0]["title"], "Inspect login flow")
                 self.assertEqual(data["scorecard"]["scorecard_evaluable_plan_count"], 1)
                 self.assertEqual(data["scorecard"]["top1_hit_rate"], 1.0)
+                self.assertEqual(data["scorecard"]["scorecard_confidence"], "low")
+                self.assertIn("explicit_read_tracking_rate", data["scorecard"])
                 self.assertTrue(any(item["path"] == "src/auth/session.py" for item in data["file_activity"]))
             finally:
                 os.chdir(previous)

@@ -8,7 +8,7 @@ from typing import Any
 
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import utc_now
+from .utils import normalize_repo_path, utc_now
 
 
 RATINGS = {"crucial", "useful", "neutral", "noisy", "missing"}
@@ -262,4 +262,4 @@ def _feedback_contribution(item: dict[str, Any], similarity: float) -> float:
 
 
 def _normalize_path(path: str) -> str:
-    return Path(path).as_posix().lstrip("./")
+    return normalize_repo_path(path)

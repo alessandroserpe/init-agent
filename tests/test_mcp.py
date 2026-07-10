@@ -270,6 +270,7 @@ class McpTests(InitAgentTestCase):
             self.assertIsNotNone(plan)
             plan_data = plan["result"]["structuredContent"]
             self.assertEqual(plan_data["tool"], "repo_reading_plan")
+            self.assertTrue(plan_data["compact"])
             self.assertEqual(plan_data["read_budget"], 1)
             self.assertIsInstance(plan_data["id"], int)
             by_path = {item["path"]: item for item in plan_data["plan_items"]}
@@ -303,6 +304,7 @@ class McpTests(InitAgentTestCase):
             read_data = read["result"]["structuredContent"]
             self.assertEqual(read_data["tool"], "repo_reading_plan_read")
             self.assertTrue(read_data["updated"])
+            self.assertNotIn("items", read_data["plan"])
             diff_data = diff["result"]["structuredContent"]
             self.assertEqual(diff_data["tool"], "repo_reading_plan_diff")
             self.assertIn("src/auth/session.py", diff_data["diff"]["read_paths"])
@@ -346,6 +348,7 @@ class McpTests(InitAgentTestCase):
             finished_data = finished["result"]["structuredContent"]
             self.assertEqual(finished_data["tool"], "repo_reading_plan_finish")
             self.assertTrue(finished_data["updated"])
+            self.assertNotIn("events", finished_data["plan"])
             self.assertEqual(finished_data["feedback"][0]["rating"], "useful")
             stats_data = stats["result"]["structuredContent"]
             self.assertEqual(stats_data["tool"], "repo_reading_plan_stats")
@@ -353,6 +356,76 @@ class McpTests(InitAgentTestCase):
             flows_data = flows["result"]["structuredContent"]
             self.assertEqual(flows_data["tool"], "repo_flow_topics")
             self.assertTrue(flows_data["flows"]["flows"])
+
+    def test_mcp_plan_session_and_flow_payloads_are_compact_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            plan_response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 201,
+                    "method": "tools/call",
+                    "params": {"name": "repo_reading_plan", "arguments": {"query": "debug login session"}},
+                }
+            )
+            assert plan_response is not None
+            plan = plan_response["result"]["structuredContent"]
+            plan_id = plan["id"]
+            for index in range(30):
+                server.handle(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 202 + index,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "repo_reading_plan_read",
+                            "arguments": {"id": plan_id, "paths": ["src/auth/session.py"]},
+                        },
+                    }
+                )
+            close_response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 240,
+                    "method": "tools/call",
+                    "params": {"name": "repo_session_close", "arguments": {}},
+                }
+            )
+            flow_response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 241,
+                    "method": "tools/call",
+                    "params": {"name": "repo_flow_topics", "arguments": {}},
+                }
+            )
+            assert close_response is not None
+            assert flow_response is not None
+            close = close_response["result"]["structuredContent"]
+            flows = flow_response["result"]["structuredContent"]
+            self.assertTrue(close["compact"])
+            self.assertTrue(flows["compact"])
+            self.assertLess(len(json.dumps(plan_response)), 30_000)
+            self.assertLess(len(json.dumps(close_response)), 30_000)
+            self.assertLess(len(json.dumps(flow_response)), 30_000)
+            self.assertNotIn("recent_memory", close)
+
+            detailed_response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 242,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_reading_plan_diff",
+                        "arguments": {"id": plan_id, "include_details": True},
+                    },
+                }
+            )
+            assert detailed_response is not None
+            detailed = detailed_response["result"]["structuredContent"]
+            self.assertIn("items", detailed["plan"])
 
     def test_mcp_tool_call_repo_memory_add_search_and_file_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

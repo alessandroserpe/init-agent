@@ -130,7 +130,7 @@ def _initialize_result(params: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _tool_result(result: dict[str, Any]) -> dict[str, Any]:
-    text = json.dumps(result, indent=2, sort_keys=True)
+    text = json.dumps(result, sort_keys=True, separators=(",", ":"))
     return {
         "content": [{"type": "text", "text": text}],
         "structuredContent": result,

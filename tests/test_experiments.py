@@ -31,6 +31,12 @@ class ExperimentsTests(InitAgentTestCase):
         }
         self.assertEqual(resolve_case_repo(case), Path(__file__).resolve().parents[1])
 
+    def test_experiment_self_case_resolves_to_current_checkout(self) -> None:
+        self.assertEqual(
+            resolve_case_repo({"name": "local-case", "repo": "$SELF"}),
+            Path(__file__).resolve().parents[1],
+        )
+
     def test_experiment_case_filter_rejects_unknown_case(self) -> None:
         with self.assertRaises(SystemExit):
             load_cases(["not-a-real-benchmark-case"])
@@ -106,10 +112,13 @@ class ExperimentsTests(InitAgentTestCase):
         self.assertEqual(summary["top5_rate"], 1.0)
         self.assertEqual(summary["average_manual_scan_reduction_percent"], 85.0)
         self.assertEqual(summary["average_manual_scan_elapsed_seconds"], 5.0)
-        args = argparse.Namespace(min_top3_rate=0.85, min_top5_rate=1.0, max_noise=2)
+        args = argparse.Namespace(min_top3_rate=0.85, min_top5_rate=1.0, max_noise=2, min_cases=2)
         failures = strict_failures_for(summary, args)
         self.assertIn("top3_rate 0.5 < 0.85", failures)
         self.assertNotIn("top5_rate 1.0 < 1.0", failures)
+
+        too_few = strict_failures_for(summary, argparse.Namespace(min_top3_rate=0.0, min_top5_rate=0.0, max_noise=2, min_cases=3))
+        self.assertEqual(too_few, ["cases 2 < required minimum 3"])
 
     def test_experiment_expected_ranks_csv_and_markdown_outputs(self) -> None:
         candidates = ["src/a.py", "src/b.py", "src/c.py"]

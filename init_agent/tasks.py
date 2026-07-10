@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
-from .utils import ensure_agent_dir, utc_now
+from .utils import ensure_agent_dir, normalize_repo_path, utc_now
 
 
 STATUSES = {"open", "in_progress", "blocked", "done"}
@@ -396,7 +396,7 @@ def _normalize_source(source: str) -> str:
 
 
 def _normalize_paths(paths: list[str]) -> list[str]:
-    return [Path(path).as_posix().lstrip("./") for path in paths if path and path.strip()]
+    return [normalize_repo_path(path) for path in paths if path and path.strip()]
 
 
 def _merge_unique(existing: list[Any], additions: list[Any]) -> list[Any]:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .plan_feedback import scorecard_evidence_confidence
 from .utils import db_path
 
 
@@ -396,12 +397,18 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
     missing_rates = []
     noise_rates = []
     extra_reads = []
+    read_counts = []
+    outcome_coverages = []
+    verified_coverages = []
+    explicitly_tracked_plans = 0
     for plan in included:
         plan_id = int(plan["id"])
         by_event = events.get(plan_id, {})
         useful = _unique(by_event.get("useful", []))
         missing = _unique(by_event.get("missing", []))
         noisy = _unique(by_event.get("noisy", []))
+        opened = _unique(by_event.get("opened", []))
+        verified = _unique(by_event.get("verified", []))
         read = _unique([*by_event.get("opened", []), *by_event.get("read", [])])
         expected = _unique([*useful, *missing])
         evaluable = bool(expected or noisy)
@@ -419,6 +426,16 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
             noise_rates.append(len(noisy) / len(planned[plan_id]))
         extra_count = len([path for path in read if path not in planned.get(plan_id, set())])
         extra_reads.append(extra_count)
+        read_counts.append(len(read))
+        if opened:
+            explicitly_tracked_plans += 1
+        classified = set([*useful, *noisy, *missing])
+        outcome_coverage = len(set(read).intersection(classified)) / len(read) if read else None
+        verified_coverage = len(set(read).intersection(verified)) / len(read) if read else None
+        if outcome_coverage is not None:
+            outcome_coverages.append(outcome_coverage)
+        if verified_coverage is not None:
+            verified_coverages.append(verified_coverage)
         plan_rows.append(
             {
                 "id": plan_id,
@@ -432,12 +449,22 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
                 "missing_count": len(missing),
                 "noisy_count": len(noisy),
                 "extra_read_count": extra_count,
+                "explicit_read_tracking": bool(opened),
+                "read_outcome_coverage": outcome_coverage,
+                "verified_read_coverage": verified_coverage,
             }
         )
     excluded_by_kind = {}
     for plan in excluded:
         kind = str(plan["effective_kind"])
         excluded_by_kind[kind] = excluded_by_kind.get(kind, 0) + 1
+    explicit_tracking_rate = explicitly_tracked_plans / len(included) if included else 0.0
+    outcome_coverage = _avg(outcome_coverages)
+    confidence, confidence_reasons = scorecard_evidence_confidence(
+        evaluable_count,
+        explicit_tracking_rate,
+        outcome_coverage,
+    )
     return {
         "scorecard_limit": limit,
         "scorecard_included_plan_count": len(included),
@@ -449,7 +476,13 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
         "top3_hit_rate": _rate(top_hits[3], evaluable_count),
         "top5_hit_rate": _rate(top_hits[5], evaluable_count),
         "average_first_useful_read_position": _avg(first_positions),
+        "average_files_read_per_finished_plan": _avg(read_counts),
         "average_extra_files_read_per_finished_plan": _avg(extra_reads),
+        "explicit_read_tracking_rate": explicit_tracking_rate,
+        "average_read_outcome_coverage": outcome_coverage,
+        "average_verified_read_coverage": _avg(verified_coverages),
+        "scorecard_confidence": confidence,
+        "scorecard_confidence_reasons": confidence_reasons,
         "missing_rate": _avg(missing_rates),
         "noise_rate": _avg(noise_rates),
         "plans": plan_rows,
@@ -587,6 +620,9 @@ def _scorecard_block(scorecard: dict[str, Any]) -> str:
         ("Top-1", _percent(scorecard.get("top1_hit_rate", 0))),
         ("Top-3", _percent(scorecard.get("top3_hit_rate", 0))),
         ("Top-5", _percent(scorecard.get("top5_hit_rate", 0))),
+        ("Evidence", scorecard.get("scorecard_confidence", "low")),
+        ("Tracked", _percent(scorecard.get("explicit_read_tracking_rate", 0))),
+        ("Outcomes", _percent(scorecard.get("average_read_outcome_coverage", 0))),
         ("Missing", _percent(scorecard.get("missing_rate", 0))),
         ("Noise", _percent(scorecard.get("noise_rate", 0))),
         ("First useful", scorecard.get("average_first_useful_read_position", 0)),
@@ -594,10 +630,12 @@ def _scorecard_block(scorecard: dict[str, Any]) -> str:
     cards = "".join(f"<div><strong>{_e(value)}</strong><span>{_e(label)}</span></div>" for label, value in metrics)
     excluded = scorecard.get("scorecard_excluded_by_kind") or {}
     excluded_text = ", ".join(f"{kind}: {count}" for kind, count in excluded.items()) or "none"
+    confidence_text = "; ".join(scorecard.get("scorecard_confidence_reasons") or []) or "insufficient evidence"
     return (
         '<section class="panel scorecard-panel">'
         "<h2>Orientation Scorecard</h2>"
         f'<div class="metrics mini-metrics">{cards}</div>'
+        f'<p class="muted">Evidence quality: {_e(confidence_text)}</p>'
         f'<p class="muted">Excluded from default scorecard: {_e(excluded_text)}</p>'
         "</section>"
     )

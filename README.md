@@ -190,8 +190,8 @@ The repository includes tests and an orientation benchmark runner:
 
 ```bash
 python -m unittest discover -s tests -v
-python experiments/evaluate.py --strict
-python experiments/evaluate.py --strict --output-dir experiments/results
+python experiments/evaluate.py --strict --min-cases 4
+python experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
 python experiments/plot_results.py experiments/results/results.csv
 ```
 

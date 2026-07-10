@@ -303,6 +303,46 @@
     ]
   },
   {
+    "name": "init-agent-memory-staleness",
+    "repo": "$SELF",
+    "query": "where is local agent memory stale file hash audit implemented",
+    "expected_files": [
+      "init_agent/memory.py",
+      "init_agent/graph_store.py"
+    ],
+    "noise_patterns": [
+      "experiments/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "init-agent-mcp-session-close",
+    "repo": "$SELF",
+    "query": "where does MCP session close build compact handoff output",
+    "expected_files": [
+      "init_agent/session_tools.py",
+      "init_agent/mcp_tools.py",
+      "init_agent/mcp_compact.py"
+    ],
+    "noise_patterns": [
+      "experiments/",
+      "docs/"
+    ]
+  },
+  {
+    "name": "init-agent-reading-plan-scorecard",
+    "repo": "$SELF",
+    "query": "where are reading plan scorecard coverage confidence metrics computed",
+    "expected_files": [
+      "init_agent/plan_feedback.py",
+      "init_agent/reading_plan.py"
+    ],
+    "noise_patterns": [
+      "experiments/",
+      "docs/"
+    ]
+  },
+  {
     "name": "init-agent-repository-overview",
     "repo": "/tmp/init-agent-bench-init-agent",
     "command": "overview",

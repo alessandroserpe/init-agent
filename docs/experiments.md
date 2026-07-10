@@ -54,10 +54,10 @@ observed runs, not broad performance claims.
 ```bash
 python3 experiments/evaluate.py
 python3 experiments/evaluate.py --case django-auth-session-middleware
-python3 experiments/evaluate.py --strict
-python3 experiments/evaluate.py --strict --rebuild-index
+python3 experiments/evaluate.py --strict --min-cases 4
+python3 experiments/evaluate.py --strict --min-cases 4 --rebuild-index
 python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
-python3 experiments/evaluate.py --strict --output-dir experiments/results
+python3 experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
 ```
 
 ## What It Reports
@@ -67,7 +67,7 @@ By default, `evaluate.py` prints a JSON report to stdout.
 Use `--output-dir` to write all standard artifacts:
 
 ```bash
-python3 experiments/evaluate.py --strict --output-dir experiments/results
+python3 experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
 ```
 
 This writes:
@@ -86,6 +86,11 @@ python3 experiments/evaluate.py \
 ```
 
 Missing optional benchmark repositories under `/tmp` are skipped.
+
+Four self-hosted cases always run against the current init-agent checkout. Use
+`--min-cases 4` for the local/CI guard so strict mode cannot pass after silently
+skipping every external repository. A broader local benchmark can declare a
+higher minimum after the optional target repositories are installed.
 
 Use `--case <name>` to isolate one query and `--rebuild-index` after changing
 scanner, symbol extraction, role detection or scoring code.

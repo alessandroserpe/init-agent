@@ -16,10 +16,10 @@ Run the evaluator from the project root:
 ```bash
 python3 experiments/evaluate.py
 python3 experiments/evaluate.py --case django-auth-session-middleware
-python3 experiments/evaluate.py --strict
-python3 experiments/evaluate.py --strict --rebuild-index
+python3 experiments/evaluate.py --strict --min-cases 4
+python3 experiments/evaluate.py --strict --min-cases 4 --rebuild-index
 python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
-python3 experiments/evaluate.py --strict --output-dir experiments/results
+python3 experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
 python3 experiments/plot_results.py experiments/results/results.csv
 ```
 
@@ -143,6 +143,11 @@ Defaults are:
 - top-3 hit rate >= 0.85
 - top-5 hit rate >= 1.0
 - total noise hits <= 2
+- executed cases >= `--min-cases` (default 1; CI declares 4)
+
+The manifest contains four cases that always resolve to the current checkout.
+They make the CI guard deterministic. External repositories under `/tmp` remain
+optional and are needed for broader cross-project evidence.
 
 This is intentionally small and local. It does not call an LLM and does not
 send repository contents anywhere.

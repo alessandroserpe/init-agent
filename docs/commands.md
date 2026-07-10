@@ -338,7 +338,9 @@ opened files that still need an outcome. `repo_reading_plan_mark` labels smoke,
 experiment, planning, diagnostic or docs-only plans so they do not pollute the
 default scorecard. `repo_reading_plan_stats` and `init-agent scorecard` report
 orientation metrics such as Top-1/Top-3/Top-5 useful hit rate, missing rate,
-noise rate and first useful read position. These metrics are local self-audit
+noise rate and first useful read position. The scorecard also reports evidence
+confidence, explicit plan-read tracking and outcome/verification coverage so a
+small or incompletely labelled sample is visible. These metrics are local self-audit
 signals about repository orientation quality, not claims about agent speed or
 task success.
 
@@ -355,6 +357,10 @@ Use this when an agent wants an area-level view before reopening many files.
 The response groups local memory by tag, lists related topics and paths, and
 suggests where a missing flow-level memory might be useful. It is a memory
 navigation aid, not a code-understanding source of truth.
+
+MCP calls return compact plan and flow payloads by default. Pass
+`include_details: true` through MCP only when the full persisted items, notes or
+events are needed for diagnosis. CLI JSON contracts remain detailed.
 
 ## `init-agent tool repo_overview`
 
@@ -440,9 +446,9 @@ init-agent tool repo_memory_add --scope repo --topic architecture --query "start
 ```
 
 Memory is optional local working context. Keep notes short, factual and free of
-source code snippets. init-agent stores the indexed file hash with each note;
-`repo_memory_search` and `repo_file_notes` mark notes stale when the file hash
-later changes in the index. Evidence values are `read_full_file`,
+source code snippets. init-agent stores the current file hash with each note;
+`repo_memory_search` and `repo_file_notes` compare it with the live file on disk
+without requiring `map` or `refresh`. Evidence values are `read_full_file`,
 `read_excerpt`, `manifest_only`, `inferred_from_graph`, `user_decision`,
 `implementation_note` and `planning_note`. File-scoped notes require `--path`;
 repo-scoped notes use `--scope repo` and have stale status marked as not
@@ -516,6 +522,9 @@ init-agent tool repo_session_summary --limit 20 --json
 The summary includes project/root metadata, Git status, recent memory notes,
 recent feedback, open local tasks and memory audit counts. It does not modify
 source files or replace tests/direct file reads.
+
+MCP returns a bounded summary by default. Pass `include_details: true` only
+when a client needs complete recent plan items and event history.
 
 ## `init-agent session close`
 

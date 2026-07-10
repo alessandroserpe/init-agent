@@ -63,6 +63,7 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
         entry = candidates.setdefault(path, _empty_candidate(path))
         entry["sources"].add("memory")
         entry["memory_score"] = max(float(entry.get("memory_score") or 0.0), float(match.get("score") or 0.0))
+        entry["matching_memory_ids"].add(int(match["id"]))
 
     for path, signal in feedback.items():
         entry = candidates.setdefault(path, _empty_candidate(path))
@@ -80,22 +81,25 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
     plan_items = []
     for path, entry in candidates.items():
         path_notes = sorted(notes_by_path.get(path, []), key=lambda item: -int(item["id"]))[:3]
+        matching_notes = [note for note in path_notes if int(note["id"]) in entry["matching_memory_ids"]]
         tags = _combined_tags(file_tags.get(path, []), path_notes)
-        score = _combined_score(entry, path_notes)
-        action = _action(entry, path_notes)
+        score = _combined_score(entry, matching_notes)
+        action = _action(entry, matching_notes)
+        confidence, confidence_evidence = _confidence(entry, matching_notes)
         plan_items.append(
             {
                 "path": path,
                 "rank": 0,
                 "score": round(score, 4),
                 "action": action,
-                "confidence": _confidence(entry, path_notes),
+                "confidence": confidence,
+                "confidence_evidence": confidence_evidence,
                 "sources": sorted(entry["sources"]),
                 "tags": tags,
                 "memory": [_compact_memory(note) for note in path_notes],
                 "feedback": entry.get("feedback", {}),
                 "trace_path": entry.get("trace_path", []),
-                "reason": _reason(entry, path_notes, action),
+                "reason": _reason(entry, matching_notes, action),
             }
         )
     plan_items.sort(key=lambda item: (-float(item["score"]), str(item["path"])))
@@ -131,6 +135,7 @@ def _empty_candidate(path: str) -> dict[str, Any]:
         "memory_score": 0.0,
         "tag_score": 0.0,
         "feedback": {},
+        "matching_memory_ids": set(),
     }
 
 
@@ -211,13 +216,31 @@ def _action(entry: dict[str, Any], notes: list[dict[str, Any]]) -> str:
     return "read"
 
 
-def _confidence(entry: dict[str, Any], notes: list[dict[str, Any]]) -> str:
-    source_count = len(entry["sources"])
-    if source_count >= 3 or any(note.get("stale") is False for note in notes):
-        return "high"
-    if source_count >= 2 or notes:
-        return "medium"
-    return "low"
+def _confidence(entry: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    sources = set(entry["sources"])
+    fresh_memory = any(note.get("stale") is False for note in notes)
+    strong_graph = float(entry.get("graph_score") or 0.0) >= 0.6
+    feedback = entry.get("feedback") or {}
+    strong_feedback = abs(float(feedback.get("net") or 0.0)) >= 5.0
+    evidence = []
+    if strong_graph:
+        evidence.append("strong graph match")
+    if "trace" in sources:
+        evidence.append("reachable through trace")
+    if fresh_memory:
+        evidence.append("fresh query-matching memory")
+    if strong_feedback:
+        evidence.append("strong prior feedback")
+    if "tags" in sources:
+        evidence.append("matching indexed tags")
+    independent_support = bool({"memory", "feedback"}.intersection(sources))
+    if strong_graph and (independent_support or "trace" in sources):
+        return "high", evidence
+    if fresh_memory and bool({"graph", "trace"}.intersection(sources)):
+        return "high", evidence
+    if strong_graph or fresh_memory or strong_feedback or len(sources) >= 2:
+        return "medium", evidence
+    return "low", evidence or ["single weak orientation signal"]
 
 
 def _reason(entry: dict[str, Any], notes: list[dict[str, Any]], action: str) -> str:

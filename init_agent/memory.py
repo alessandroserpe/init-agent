@@ -8,7 +8,7 @@ from typing import Any
 
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, utc_now
+from .utils import ensure_agent_dir, normalize_repo_path, sha256_file, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
@@ -69,7 +69,7 @@ def add_note(
     ensure_agent_dir(root)
     with GraphStore(root) as store:
         store.initialize()
-        record["file_sha256"] = _file_sha256(store, normalized_path) if normalized_scope == "file" else None
+        record["file_sha256"] = _current_file_sha256(root, normalized_path) if normalized_scope == "file" else None
         cursor = store.connection.execute(
             """
             INSERT INTO agent_notes(path, scope, topic, query, note, note_tokens_json, tags_json, file_sha256, evidence, source, created_at)
@@ -121,8 +121,13 @@ def list_notes(
             """,
             params,
         ).fetchall()
-        current_hashes = store.file_hashes()
-    notes = [_with_staleness(_row_to_note(row), current_hashes) for row in rows]
+    parsed_notes = [_row_to_note(row) for row in rows]
+    current_hashes = {
+        str(note["path"]): _current_file_sha256(root, str(note["path"]))
+        for note in parsed_notes
+        if note.get("scope") != "repo"
+    }
+    notes = [_with_staleness(note, current_hashes) for note in parsed_notes]
     if stale_only:
         notes = [
             note for note in notes
@@ -147,8 +152,11 @@ def delete_note(root: Path, note_id: int) -> dict[str, Any]:
         ).fetchone()
         if row is None:
             return {"deleted": False, "id": note_id, "note": None}
-        current_hashes = store.file_hashes()
-        note = _with_staleness(_row_to_note(row), current_hashes)
+        parsed_note = _row_to_note(row)
+        current_hashes = {
+            str(parsed_note["path"]): _current_file_sha256(root, str(parsed_note["path"]))
+        }
+        note = _with_staleness(parsed_note, current_hashes)
         store.connection.execute("DELETE FROM agent_notes WHERE id = ?", (note_id,))
         store.connection.commit()
     return {"deleted": True, "id": note_id, "note": _public_note(note)}
@@ -197,7 +205,7 @@ def update_note(
         clean_tags = _normalize_tags(tags, path, clean_topic, clean_query, clean_note) if tags is not None else list(existing.get("tags") or [])
         token_text = " ".join([scope, path, clean_topic, clean_query, normalized_evidence, clean_note, *clean_tags])
         tokens = tokenize_query(token_text)
-        file_sha256 = _file_sha256(store, path) if scope == "file" else None
+        file_sha256 = _current_file_sha256(root, path) if scope == "file" else None
         record = {
             "id": note_id,
             "path": path,
@@ -411,9 +419,15 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _file_sha256(store: GraphStore, path: str) -> str | None:
-    row = store.connection.execute("SELECT sha256 FROM files WHERE path = ?", (path,)).fetchone()
-    return str(row["sha256"]) if row and row["sha256"] else None
+def _current_file_sha256(root: Path, path: str) -> str | None:
+    try:
+        target = (root / path).resolve()
+        target.relative_to(root.resolve())
+        if target.is_file():
+            return sha256_file(target)
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str]) -> dict[str, Any]:
@@ -429,7 +443,7 @@ def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str]) -> dic
     current_hash = str(current_hashes.get(path) or "")
     if not current_hash:
         stale = True
-        reason = "file is not indexed"
+        reason = "file is missing or outside the repository"
     elif not stored_hash:
         stale = None
         reason = "memory predates file hash tracking"
@@ -465,7 +479,7 @@ def _score(query_tokens: set[str], note_tokens: set[str], query: str, note: dict
 
 
 def _normalize_path(path: str | None) -> str:
-    return Path(path or "").as_posix().lstrip("./")
+    return normalize_repo_path(path)
 
 
 def _normalize_tags(tags: list[str] | None, path: str, topic: str, query: str, note: str) -> list[str]:

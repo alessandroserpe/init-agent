@@ -522,6 +522,12 @@ class CliToolsTests(InitAgentTestCase):
                 self.assertEqual(stats["stats"]["plan_count"], 1)
                 self.assertEqual(stats["stats"]["finished_plan_count"], 1)
                 self.assertEqual(stats["stats"]["top1_verified_useful_rate"], 1.0)
+                self.assertEqual(stats["stats"]["average_files_read_per_finished_plan"], 1.0)
+                self.assertEqual(stats["stats"]["explicit_read_tracking_rate"], 1.0)
+                self.assertEqual(stats["stats"]["average_read_outcome_coverage"], 1.0)
+                self.assertEqual(stats["stats"]["average_verified_read_coverage"], 1.0)
+                self.assertEqual(stats["stats"]["scorecard_confidence"], "low")
+                self.assertTrue(stats["stats"]["scorecard_confidence_reasons"])
 
                 close_output = StringIO()
                 with redirect_stdout(close_output):
@@ -617,6 +623,8 @@ class CliToolsTests(InitAgentTestCase):
                 self.assertEqual(stats["scorecard_excluded_by_kind"], {"smoke": 1})
                 self.assertEqual(stats["scorecard_evaluable_plan_count"], 1)
                 self.assertEqual(stats["top1_hit_rate"], 1.0)
+                self.assertEqual(stats["scorecard_confidence"], "low")
+                self.assertEqual(stats["explicit_read_tracking_rate"], 0.0)
 
                 all_output = StringIO()
                 with redirect_stdout(all_output):
@@ -937,7 +945,7 @@ class CliToolsTests(InitAgentTestCase):
             finally:
                 os.chdir(previous)
 
-    def test_tool_repo_memory_marks_note_stale_after_file_changes(self) -> None:
+    def test_tool_repo_memory_marks_note_stale_without_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
@@ -969,8 +977,6 @@ class CliToolsTests(InitAgentTestCase):
                     "    return False\n",
                     encoding="utf-8",
                 )
-                with redirect_stdout(StringIO()):
-                    self.assertEqual(main(["refresh", "--json"]), 0)
                 notes_output = StringIO()
                 with redirect_stdout(notes_output):
                     self.assertEqual(
@@ -998,7 +1004,7 @@ class CliToolsTests(InitAgentTestCase):
                                 "--evidence",
                                 "read_full_file",
                                 "--note",
-                                "Session validation changed and was re-read after refresh.",
+                                "Session validation changed and was re-read from disk.",
                                 "--json",
                             ]
                         ),
@@ -1017,7 +1023,41 @@ class CliToolsTests(InitAgentTestCase):
                     )
                 refreshed_notes = json.loads(refreshed_notes_output.getvalue())
                 self.assertFalse(refreshed_notes["notes"][0]["stale"])
-                self.assertEqual(refreshed_notes["notes"][0]["note"], "Session validation changed and was re-read after refresh.")
+                self.assertEqual(refreshed_notes["notes"][0]["note"], "Session validation changed and was re-read from disk.")
+            finally:
+                os.chdir(previous)
+
+    def test_tool_memory_preserves_dotfile_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text("name: CI\n", encoding="utf-8")
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "tool",
+                                "repo_memory_add",
+                                "--path",
+                                "./.github/workflows/ci.yml",
+                                "--topic",
+                                "continuous integration",
+                                "--note",
+                                "Defines the repository CI workflow.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                memory = json.loads(output.getvalue())["memory"]
+                self.assertEqual(memory["path"], ".github/workflows/ci.yml")
+                self.assertFalse(memory["stale"])
             finally:
                 os.chdir(previous)
 

@@ -27,7 +27,7 @@ from .reading_plan import build_reading_plan
 from .run import run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .trace import trace_query
-from .utils import db_path, ensure_agent_dir
+from .utils import db_path, ensure_agent_dir, normalize_repo_path
 from .session_tools import repo_session_close, repo_session_summary
 from .renderers import (
     render_repo_graph_search_text,
@@ -98,7 +98,7 @@ def repo_graph_search(root: Path, query: str, limit: int = 10, prepare: bool = T
 def repo_related_file(root: Path, path: str, prepare: bool = True) -> dict[str, Any]:
     """Return a compact JSON contract for one indexed file neighborhood."""
 
-    normalized_path = Path(path).as_posix().lstrip("./")
+    normalized_path = normalize_repo_path(path)
     if prepare:
         run_result = run_query(root, f"related file {normalized_path}", overview=False)
         preparation = run_result.get("preparation", {})
@@ -399,7 +399,7 @@ def repo_reading_plan_read(root: Path, plan_id: int, paths: list[str], note: str
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    normalized_paths = [Path(path).as_posix().lstrip("./") for path in paths if str(path).strip()]
+    normalized_paths = [normalize_repo_path(path) for path in paths if str(path).strip()]
     read = (
         record_reading_plan_read(root, plan_id, normalized_paths, note=note, source=source)
         if readiness["ready"]
@@ -470,7 +470,7 @@ def repo_feedback_add(
         "tool": "repo_feedback_add",
         "contract": TOOL_CONTRACT_VERSION,
         "query": query,
-        "path": Path(path).as_posix().lstrip("./"),
+        "path": normalize_repo_path(path),
         "rating": rating,
         "source": source,
         "recorded": False,
@@ -532,7 +532,7 @@ def repo_memory_add(
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    normalized_path = Path(path).as_posix().lstrip("./") if path else ""
+    normalized_path = normalize_repo_path(path) if path else ""
     result: dict[str, Any] = {
         "tool": "repo_memory_add",
         "contract": TOOL_CONTRACT_VERSION,
@@ -602,7 +602,7 @@ def repo_memory_list(
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    normalized_path = Path(path).as_posix().lstrip("./") if path else None
+    normalized_path = normalize_repo_path(path) if path else None
     notes = (
         list_notes(root, path=normalized_path, topic=topic, scope=scope, stale_only=stale_only, limit=limit)
         if readiness["ready"]
@@ -725,7 +725,7 @@ def repo_file_notes(root: Path, path: str, limit: int = 20) -> dict[str, Any]:
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
-    normalized_path = Path(path).as_posix().lstrip("./")
+    normalized_path = normalize_repo_path(path)
     notes = list_notes(root, path=normalized_path, limit=limit) if readiness["ready"] else []
     return {
         "tool": "repo_file_notes",

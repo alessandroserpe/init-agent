@@ -226,6 +226,7 @@ def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
         f"Excluded: {stats.get('scorecard_excluded_plan_count', 0)}",
         f"Evaluable: {stats.get('scorecard_evaluable_plan_count', 0)}",
         f"Not evaluable: {stats.get('scorecard_not_evaluable_plan_count', 0)}",
+        f"Evidence confidence: {stats.get('scorecard_confidence', 'low')}",
         "",
         "Hit rates:",
         f"- Top-1 useful/missing hit rate: {_percent(stats.get('top1_hit_rate', 0))}",
@@ -238,7 +239,14 @@ def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
         f"- Average extra files read outside plan: {stats.get('average_extra_files_read_per_finished_plan', 0)}",
         f"- Missing rate: {_percent(stats.get('missing_rate', 0))}",
         f"- Noise rate: {_percent(stats.get('noise_rate', 0))}",
+        f"- Explicit plan-read tracking: {_percent(stats.get('explicit_read_tracking_rate', 0))}",
+        f"- Read files with useful/noisy/missing outcome: {_percent(stats.get('average_read_outcome_coverage', 0))}",
+        f"- Read files explicitly verified: {_percent(stats.get('average_verified_read_coverage', 0))}",
     ]
+    confidence_reasons = list(stats.get("scorecard_confidence_reasons") or [])
+    if confidence_reasons:
+        lines.extend(["", "Evidence quality:"])
+        lines.extend(f"- {reason}" for reason in confidence_reasons)
     excluded = stats.get("scorecard_excluded_by_kind") or {}
     if excluded:
         lines.extend(["", "Excluded by kind:"])

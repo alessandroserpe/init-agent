@@ -41,8 +41,8 @@ calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
 index and return warnings if the index is missing or empty. Feedback tools can
 write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
 files. Memory tools can store short local notes, also in `.agent/graph.sqlite`.
-File-scoped notes report stale status when the indexed file hash changed after
-the note was recorded; repo-scoped notes are useful for project-wide decisions
+File-scoped notes hash the current file on disk, so stale status does not depend
+on running `map` or `refresh` first; repo-scoped notes are useful for project-wide decisions
 and report stale status as not applicable. Use `repo_memory_audit` to find
 stale, vague or duplicate notes. Use `repo_memory_topics` and
 `repo_flow_topics` to get compact area-level memory and tag maps before
@@ -57,6 +57,10 @@ tasks and unfinished reading plans are included in `repo_session_summary` and
 `repo_session_close`. Use
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
+
+Reading-plan, session and flow tools return compact MCP payloads by default to
+avoid spending agent context on repeated plan items and event history. Pass
+`include_details: true` only when diagnosing the complete persisted record.
 
 For decision-log and area-map patterns, see
 [memory-workflows.md](memory-workflows.md).

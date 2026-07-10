@@ -172,6 +172,15 @@ def relative_path(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 
 
+def normalize_repo_path(path: str | Path | None) -> str:
+    """Normalize a project-relative path without stripping leading dotfiles."""
+
+    normalized = Path(path or "").as_posix()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return "" if normalized == "." else normalized
+
+
 def load_ignore_rules(root: Path) -> dict[str, set[str]]:
     rules = {
         "exclude_dirs": set(DEFAULT_EXCLUDED_DIRS),

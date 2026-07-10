@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .overview import build_overview_pack
-from .utils import db_path
+from .utils import db_path, normalize_repo_path
 
 
 STRUCTURAL_FILE_RELATIONS = {
@@ -196,7 +196,7 @@ def _resolve_path(source_path: str, target: str, path_to_id: dict[str, int]) -> 
         str(source_dir / Path(normalized).name),
     ]
     for candidate in candidates:
-        clean = Path(candidate).as_posix().lstrip("./")
+        clean = normalize_repo_path(candidate)
         if clean in path_to_id:
             return path_to_id[clean]
     return None

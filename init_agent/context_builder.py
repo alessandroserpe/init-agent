@@ -12,6 +12,7 @@ from typing import Any
 from .feedback import feedback_signals
 from .graph_store import GraphStore
 from .text_tokens import identifier_terms, is_query_noise_token, tokenize_query
+from .utils import normalize_repo_path
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
@@ -493,7 +494,7 @@ def _is_example_path(path: str) -> bool:
 def _relation_target_index(candidate_paths: set[str]) -> dict[str, str]:
     index: dict[str, str] = {}
     for path in sorted(candidate_paths):
-        normalized = path.lstrip("./")
+        normalized = normalize_repo_path(path)
         parts = normalized.split("/")
         for offset in range(len(parts)):
             index.setdefault("/".join(parts[offset:]), path)
@@ -503,7 +504,7 @@ def _relation_target_index(candidate_paths: set[str]) -> dict[str, str]:
 
 
 def _resolve_relation_target(target: str, target_index: dict[str, str]) -> str | None:
-    normalized = target.lstrip("./")
+    normalized = normalize_repo_path(target)
     return target_index.get(normalized) or target_index.get(_basename(normalized))
 
 

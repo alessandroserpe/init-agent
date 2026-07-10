@@ -299,25 +299,6 @@ def _project_summary(root: Path) -> dict[str, Any]:
     }
 
 
-def _compact_memory_note(note: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": note["id"],
-        "path": note.get("path", ""),
-        "scope": note.get("scope", "file"),
-        "topic": note.get("topic", ""),
-        "query": note.get("query", ""),
-        "note": note.get("note", ""),
-        "tags": list(note.get("tags") or []),
-        "file_sha256": note.get("file_sha256", ""),
-        "current_file_sha256": note.get("current_file_sha256", ""),
-        "stale": note.get("stale"),
-        "stale_reason": note.get("stale_reason", ""),
-        "evidence": note.get("evidence", "unknown"),
-        "source": note.get("source", "agent"),
-        "created_at": note.get("created_at", ""),
-    }
-
-
 def _compact_feedback(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": item["id"],

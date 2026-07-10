@@ -91,7 +91,7 @@ from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
 from .scanner import INDEX_VERSION, scan_project
 from .skill_installer import install_codex_skill
-from .utils import config_path, ensure_agent_dir, has_project_marker, project_root, utc_now, write_json
+from .utils import config_path, ensure_agent_dir, has_project_marker, normalize_repo_path, project_root, utc_now, write_json
 from .web_ui import build_web_snapshot, serve_web_ui
 
 
@@ -1057,7 +1057,7 @@ def cmd_related(args: argparse.Namespace) -> int:
         return 1
     data = related_query(root, args.path)
     if data is None:
-        print(f"File not found in index: {Path(args.path).as_posix().lstrip('./')}")
+        print(f"File not found in index: {normalize_repo_path(args.path)}")
         return 1
     print(f"File: {data['file']['path']}")
     print("Symbols:")

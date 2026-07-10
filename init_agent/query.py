@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from .graph_store import GraphStore
+from .utils import normalize_repo_path
 
 
 def search(root: Path, text: str, limit: int = 20) -> list[dict[str, object]]:
@@ -23,7 +24,7 @@ def search(root: Path, text: str, limit: int = 20) -> list[dict[str, object]]:
 
 
 def related(root: Path, file_path: str) -> dict[str, object] | None:
-    normalized = Path(file_path).as_posix().lstrip("./")
+    normalized = normalize_repo_path(file_path)
     with GraphStore(root) as store:
         conn = store.connection
         file_row = conn.execute("SELECT * FROM files WHERE path = ?", (normalized,)).fetchone()
