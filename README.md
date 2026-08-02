@@ -48,9 +48,9 @@ pipx upgrade init-agent
 init-agent sync
 ```
 
-`sync` updates the bundled Codex skill, backs up locally modified skill files,
-and reports whether the init-agent MCP server is registered. It does not edit
-Codex MCP configuration.
+`sync` updates the bundled Codex skill, stores locally modified skill backups
+under `~/.codex/init-agent-backups/skills/`, and reports whether the init-agent
+MCP server is registered. It does not edit Codex MCP configuration.
 
 If you do not have `pipx`:
 

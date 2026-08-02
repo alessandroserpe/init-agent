@@ -66,6 +66,8 @@ def codex_skill_status(destination_root: Path | None = None) -> dict[str, Any]:
 
 def install_codex_skill(destination_root: Path | None = None, force: bool = True) -> dict[str, Any]:
     target_root = destination_root or (Path.home() / ".codex" / "skills")
+    backup_root = _skill_backup_root(target_root)
+    migrated_backups = _migrate_legacy_backups(target_root, backup_root)
     source = resources.files("init_agent").joinpath("resources", "skills", SKILL_NAME)
     if not source.is_dir():
         raise FileNotFoundError(f"bundled skill not found: {SKILL_NAME}")
@@ -77,7 +79,7 @@ def install_codex_skill(destination_root: Path | None = None, force: bool = True
         if not force:
             raise FileExistsError(f"skill already exists: {target}")
         if previous["status"] in {"modified", "outdated_or_modified"}:
-            backup_path = _backup_skill(target)
+            backup_path = _backup_skill(target, backup_root)
         shutil.rmtree(target)
 
     target_root.mkdir(parents=True, exist_ok=True)
@@ -106,10 +108,13 @@ def install_codex_skill(destination_root: Path | None = None, force: bool = True
         "version": __version__,
         "previous_status": previous["status"],
         "backup_path": str(backup_path) if backup_path else None,
+        "migrated_backups": migrated_backups,
     }
 
 
 def sync_codex_skill(destination_root: Path | None = None) -> dict[str, Any]:
+    target_root = destination_root or (Path.home() / ".codex" / "skills")
+    migrated_backups = _migrate_legacy_backups(target_root, _skill_backup_root(target_root))
     before = codex_skill_status(destination_root)
     if before["current"] and before["status"] == "current":
         return {
@@ -121,8 +126,10 @@ def sync_codex_skill(destination_root: Path | None = None) -> dict[str, Any]:
             "version": __version__,
             "previous_status": before["status"],
             "backup_path": None,
+            "migrated_backups": migrated_backups,
         }
     result = install_codex_skill(destination_root)
+    result["migrated_backups"] = migrated_backups + result.get("migrated_backups", [])
     result["updated"] = before["installed"]
     result["status"] = "updated" if before["installed"] else "installed"
     return result
@@ -146,8 +153,30 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _backup_skill(target: Path) -> Path:
+def _skill_backup_root(target_root: Path) -> Path:
+    return target_root.parent / "init-agent-backups" / "skills"
+
+
+def _backup_skill(target: Path, backup_root: Path) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    backup = target.parent / f"{target.name}.bak-{timestamp}"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup = backup_root / f"{target.name}.bak-{timestamp}"
     shutil.copytree(target, backup)
     return backup
+
+
+def _migrate_legacy_backups(target_root: Path, backup_root: Path) -> list[str]:
+    if not target_root.is_dir():
+        return []
+    migrated: list[str] = []
+    for legacy in sorted(target_root.glob(f"{SKILL_NAME}.bak-*")):
+        if not legacy.is_dir():
+            continue
+        backup_root.mkdir(parents=True, exist_ok=True)
+        destination = backup_root / legacy.name
+        if destination.exists():
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+            destination = backup_root / f"{legacy.name}-{timestamp}"
+        shutil.move(str(legacy), str(destination))
+        migrated.append(str(destination))
+    return migrated

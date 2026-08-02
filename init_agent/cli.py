@@ -1280,6 +1280,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         print(f"Target: {skill['target']}")
         if skill.get("backup_path"):
             print(f"Backup: {skill['backup_path']}")
+        for migrated in skill.get("migrated_backups", []):
+            print(f"Migrated backup: {migrated}")
         print(f"Codex MCP: {mcp['status']}")
         print(mcp["message"])
         print()

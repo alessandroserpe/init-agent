@@ -28,7 +28,8 @@ init-agent sync
 ```
 
 The installed skill includes a local manifest used by `init-agent doctor` to
-detect stale or locally modified copies.
+detect stale or locally modified copies. Backups are stored outside the Codex
+skill discovery directory under `~/.codex/init-agent-backups/skills/`.
 
 Open a new Codex session and ask:
 

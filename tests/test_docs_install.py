@@ -401,8 +401,29 @@ class DocsInstallTests(InitAgentTestCase):
             self.assertEqual(codex_skill_status(target)["status"], "modified")
             synced = sync_codex_skill(target)
             self.assertTrue(synced["updated"])
-            self.assertTrue(Path(synced["backup_path"]).is_dir())
+            backup = Path(synced["backup_path"])
+            self.assertTrue(backup.is_dir())
+            self.assertNotEqual(backup.parent, target)
+            self.assertFalse(list(target.glob("init-agent-orientation.bak-*")))
             self.assertEqual(codex_skill_status(target)["status"], "current")
+
+    def test_sync_migrates_legacy_backups_outside_skill_discovery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            sync_codex_skill(target)
+            legacy = target / "init-agent-orientation.bak-legacy"
+            legacy.mkdir()
+            (legacy / "SKILL.md").write_text("legacy backup\n", encoding="utf-8")
+
+            result = sync_codex_skill(target)
+
+            self.assertFalse(legacy.exists())
+            self.assertEqual(len(result["migrated_backups"]), 1)
+            migrated = Path(result["migrated_backups"][0])
+            self.assertTrue(migrated.is_dir())
+            self.assertEqual(migrated.parent, Path(tmp) / "init-agent-backups" / "skills")
+            discovered = [path.name for path in target.iterdir() if (path / "SKILL.md").is_file()]
+            self.assertEqual(discovered, ["init-agent-orientation"])
 
     def test_skill_status_distinguishes_outdated_generated_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

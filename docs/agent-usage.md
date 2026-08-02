@@ -206,7 +206,10 @@ init-agent sync
 
 This keeps the copied Codex skill aligned with the installed package and
 checks MCP registration without rewriting Codex configuration. If a local
-skill was edited, init-agent creates a timestamped backup before replacing it.
+skill was edited, init-agent creates a timestamped backup under
+`~/.codex/init-agent-backups/skills/` before replacing it. Legacy backups found
+inside `~/.codex/skills/` are migrated so Codex cannot load them as duplicate
+skills.
 `init-agent doctor` compares skill contents offline; remote release checks are
 explicit through `init-agent doctor --check-updates`.
 

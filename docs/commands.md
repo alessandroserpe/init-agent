@@ -185,8 +185,10 @@ init-agent sync
 init-agent sync --json
 ```
 
-The command writes an install manifest beside the skill and creates a
-timestamped backup before replacing modified or untracked skill contents. It
+The command writes an install manifest beside the skill and creates backups in
+`~/.codex/init-agent-backups/skills/` before replacing modified or untracked
+skill contents. Legacy backup directories are migrated out of
+`~/.codex/skills/` so Codex does not discover duplicate skills. The command
 does not modify Codex MCP configuration.
 
 ## `init-agent context <text>`
