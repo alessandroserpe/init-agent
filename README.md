@@ -41,6 +41,17 @@ pipx install git+https://github.com/alessandroserpe/init-agent.git
 init-agent --version
 ```
 
+After upgrading an existing installation, synchronize copied Codex assets:
+
+```bash
+pipx upgrade init-agent
+init-agent sync
+```
+
+`sync` updates the bundled Codex skill, backs up locally modified skill files,
+and reports whether the init-agent MCP server is registered. It does not edit
+Codex MCP configuration.
+
 If you do not have `pipx`:
 
 ```bash
@@ -163,6 +174,10 @@ You can also install the bundled Codex skill:
 ```bash
 init-agent install-skill codex
 ```
+
+`init-agent doctor` detects an installed skill that differs from the bundled
+version without using the network. To explicitly check GitHub for a newer
+init-agent release, run `init-agent doctor --check-updates`.
 
 Then open Codex from a repository and ask:
 

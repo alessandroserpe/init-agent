@@ -31,6 +31,7 @@ scripts, MCP clients and targeted follow-up.
 | `init-agent git` | Import Git branch, status and recent commit timeline. |
 | `init-agent status` | Print a short project/index summary. |
 | `init-agent doctor` | Run read-only diagnostics. |
+| `init-agent sync` | Synchronize copied Codex assets and inspect MCP registration. |
 | `init-agent overview` | Print a broad repository orientation pack. |
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
@@ -156,6 +157,7 @@ Runs read-only diagnostics for:
 - Git metadata availability
 - uncommitted Git changes
 - files missing from or stale in the database
+- installed Codex skill status
 
 Final result is one of:
 
@@ -166,7 +168,26 @@ Final result is one of:
 ```bash
 init-agent doctor
 init-agent doctor --json
+init-agent doctor --check-updates
 ```
+
+Normal diagnostics and skill comparison are local. `--check-updates`
+explicitly contacts the GitHub Releases API with a short timeout; network
+failure is reported without making a healthy repository unusable.
+
+## `init-agent sync`
+
+Synchronizes the copied Codex skill with the installed init-agent package and
+reads Codex MCP configuration to report whether `init_agent` is registered:
+
+```bash
+init-agent sync
+init-agent sync --json
+```
+
+The command writes an install manifest beside the skill and creates a
+timestamped backup before replacing modified or untracked skill contents. It
+does not modify Codex MCP configuration.
 
 ## `init-agent context <text>`
 

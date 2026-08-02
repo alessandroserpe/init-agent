@@ -7,9 +7,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .git_reader import git_available, status_short
 from .graph_store import SCHEMA
 from .scanner import INDEX_VERSION, iter_project_files
+from .skill_installer import codex_skill_status
+from .updates import check_latest_release
 from .utils import agent_dir, config_path, db_path, relative_path
 
 
@@ -25,11 +28,42 @@ REQUIRED_TABLES = {
 }
 
 
-def run_doctor(root: Path) -> dict[str, Any]:
+def run_doctor(
+    root: Path,
+    *,
+    check_updates: bool = False,
+    skill_root: Path | None = None,
+) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     warnings: list[str] = []
     suggested_commands: list[str] = []
     stats = {"files": 0, "symbols": 0, "relations": 0, "git_commits": 0, "last_map": None}
+    environment: dict[str, Any] = {
+        "version": __version__,
+        "codex_skill": codex_skill_status(skill_root),
+    }
+
+    skill = environment["codex_skill"]
+    if skill["status"] == "missing":
+        _add_check(checks, "codex_skill", True, "info", "Codex skill is not installed (optional).")
+    elif skill["current"]:
+        _add_check(checks, "codex_skill", True, "info", f"Codex skill is current for init-agent {__version__}.")
+    else:
+        message = f"Codex skill is {skill['status']}. Run: init-agent sync"
+        _add_warning(checks, warnings, "codex_skill", message)
+        _suggest(suggested_commands, "init-agent sync")
+
+    if check_updates:
+        release = check_latest_release(__version__)
+        environment["release"] = release
+        if release["status"] == "update_available":
+            message = f"init-agent {release['latest_version']} is available. Run: pipx upgrade init-agent"
+            _add_warning(checks, warnings, "latest_release", message)
+            _suggest(suggested_commands, "pipx upgrade init-agent")
+        elif release["status"] in {"current", "ahead"}:
+            _add_check(checks, "latest_release", True, "info", release["message"])
+        else:
+            _add_check(checks, "latest_release", False, "info", release["message"])
 
     agent_exists = agent_dir(root).is_dir()
     database_exists = db_path(root).is_file()
@@ -44,7 +78,7 @@ def run_doctor(root: Path) -> dict[str, Any]:
 
     if not agent_exists or not database_exists:
         _suggest(suggested_commands, "init-agent init")
-        return _finalize(checks, stats, warnings, suggested_commands)
+        return _finalize(checks, stats, warnings, suggested_commands, environment)
     if not config_exists:
         _suggest(suggested_commands, "init-agent init")
 
@@ -66,7 +100,7 @@ def run_doctor(root: Path) -> dict[str, Any]:
         )
         if not tables_ok:
             _suggest(suggested_commands, "init-agent init")
-            return _finalize(checks, stats, warnings, suggested_commands)
+            return _finalize(checks, stats, warnings, suggested_commands, environment)
 
         stats = _stats(conn)
         indexed_paths = _indexed_paths(conn)
@@ -75,7 +109,7 @@ def run_doctor(root: Path) -> dict[str, Any]:
     except sqlite3.Error as exc:
         _add_check(checks, "database_readable", False, "error", f"Database is not readable: {exc}.")
         _suggest(suggested_commands, "init-agent init")
-        return _finalize(checks, stats, warnings, suggested_commands)
+        return _finalize(checks, stats, warnings, suggested_commands, environment)
     finally:
         if conn is not None:
             conn.close()
@@ -141,7 +175,7 @@ def run_doctor(root: Path) -> dict[str, Any]:
     else:
         _add_check(checks, "real_files_not_indexed", True, "info", "No unindexed project files detected.")
 
-    return _finalize(checks, stats, warnings, suggested_commands)
+    return _finalize(checks, stats, warnings, suggested_commands, environment)
 
 
 def required_tables_from_schema() -> set[str]:
@@ -245,6 +279,7 @@ def _finalize(
     stats: dict[str, Any],
     warnings: list[str],
     suggested_commands: list[str],
+    environment: dict[str, Any],
 ) -> dict[str, Any]:
     has_error = any(not check["ok"] and check["severity"] == "error" for check in checks)
     if has_error:
@@ -259,4 +294,5 @@ def _finalize(
         "stats": stats,
         "warnings": warnings,
         "suggested_commands": suggested_commands,
+        "environment": environment,
     }

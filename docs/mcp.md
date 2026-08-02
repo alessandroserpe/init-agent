@@ -306,6 +306,14 @@ After installing or upgrading init-agent, use a fresh Codex session to verify
 the MCP registration:
 
 ```bash
+init-agent sync
+```
+
+This refreshes the copied Codex skill and inspects MCP registration without
+editing Codex configuration. Use `init-agent mcp install-codex --replace` only
+when the registration itself must change.
+
+```bash
 cd /path/to/repository
 codex
 ```

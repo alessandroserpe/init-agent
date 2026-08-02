@@ -21,6 +21,15 @@ If `init-agent` is installed, use the bundled installer:
 init-agent install-skill codex
 ```
 
+After upgrading the package, refresh the copied skill with:
+
+```bash
+init-agent sync
+```
+
+The installed skill includes a local manifest used by `init-agent doctor` to
+detect stale or locally modified copies.
+
 Open a new Codex session and ask:
 
 ```text

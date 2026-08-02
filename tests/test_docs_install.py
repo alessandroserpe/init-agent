@@ -1,3 +1,8 @@
+import hashlib
+
+from init_agent.mcp_installer import codex_mcp_status
+from init_agent.skill_installer import SKILL_MANIFEST, codex_skill_status, sync_codex_skill
+
 from tests.support import *
 
 
@@ -28,6 +33,7 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertTrue(readme_path.exists())
         content = readme_path.read_text(encoding="utf-8")
         self.assertIn("init-agent install-skill codex", content)
+        self.assertIn("init-agent sync", content)
         self.assertIn("cp -R skills/init-agent-orientation ~/.codex/skills/", content)
         self.assertIn("PYTHONPATH", content)
         self.assertIn("init-agent: command not found", content)
@@ -40,6 +46,8 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("pipx install git+https://github.com/alessandroserpe/init-agent.git", content)
         self.assertIn("init-agent mcp install-codex", content)
         self.assertIn("init-agent install-skill codex", content)
+        self.assertIn("init-agent sync", content)
+        self.assertIn("init-agent doctor --check-updates", content)
         self.assertIn("recommended daily workflow", content)
         self.assertIn('init-agent plan "<task>" --read 3', content)
         self.assertIn("init-agent session close", content)
@@ -376,6 +384,68 @@ class DocsInstallTests(InitAgentTestCase):
             self.assertTrue(data["installed"])
             self.assertEqual(data["skill"], "init-agent-orientation")
             self.assertTrue((target / "init-agent-orientation" / "SKILL.md").exists())
+            manifest = json.loads((target / "init-agent-orientation" / SKILL_MANIFEST).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["package_version"], __import__("init_agent").__version__)
+
+    def test_sync_skill_is_idempotent_and_backs_up_local_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            first = sync_codex_skill(target)
+            self.assertTrue(first["installed"])
+            second = sync_codex_skill(target)
+            self.assertEqual(second["status"], "current")
+            self.assertFalse(second["updated"])
+
+            installed = target / "init-agent-orientation" / "SKILL.md"
+            installed.write_text(installed.read_text(encoding="utf-8") + "\nlocal edit\n", encoding="utf-8")
+            self.assertEqual(codex_skill_status(target)["status"], "modified")
+            synced = sync_codex_skill(target)
+            self.assertTrue(synced["updated"])
+            self.assertTrue(Path(synced["backup_path"]).is_dir())
+            self.assertEqual(codex_skill_status(target)["status"], "current")
+
+    def test_skill_status_distinguishes_outdated_generated_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            sync_codex_skill(target)
+            installed_dir = target / "init-agent-orientation"
+            installed_file = installed_dir / "SKILL.md"
+            old_content = "---\nname: old\n---\n"
+            installed_file.write_text(old_content, encoding="utf-8")
+            manifest_path = installed_dir / SKILL_MANIFEST
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["installed_sha256"] = hashlib.sha256(old_content.encode("utf-8")).hexdigest()
+            manifest["package_version"] = "0.1.0"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            status = codex_skill_status(target)
+            self.assertEqual(status["status"], "outdated")
+            self.assertFalse(status["modified"])
+
+    def test_sync_cli_updates_skill_and_checks_mcp_without_writing_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "skills"
+            config = Path(tmp) / "config.toml"
+            original = '[mcp_servers.init_agent]\ncommand = "init-agent-mcp"\n'
+            config.write_text(original, encoding="utf-8")
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(
+                    main(["sync", "--target-dir", str(target), "--config-path", str(config), "--json"]),
+                    0,
+                )
+            data = json.loads(output.getvalue())
+            self.assertEqual(data["status"], "ok")
+            self.assertTrue(data["skill"]["installed"])
+            self.assertEqual(data["mcp"]["status"], "configured")
+            self.assertEqual(config.read_text(encoding="utf-8"), original)
+
+    def test_codex_mcp_status_reports_missing_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text('model = "gpt-5.6-sol"\n', encoding="utf-8")
+            result = codex_mcp_status(config)
+            self.assertFalse(result["configured"])
+            self.assertEqual(result["status"], "missing_server")
 
     def test_export_json_output_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

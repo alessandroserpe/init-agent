@@ -198,6 +198,18 @@ Install the bundled Codex skill:
 init-agent install-skill codex
 ```
 
+After `pipx upgrade init-agent`, run:
+
+```bash
+init-agent sync
+```
+
+This keeps the copied Codex skill aligned with the installed package and
+checks MCP registration without rewriting Codex configuration. If a local
+skill was edited, init-agent creates a timestamped backup before replacing it.
+`init-agent doctor` compares skill contents offline; remote release checks are
+explicit through `init-agent doctor --check-updates`.
+
 Then open Codex from a repository and ask:
 
 ```text

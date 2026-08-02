@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import os
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,53 @@ from typing import Any
 DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_SERVER_NAME = "init_agent"
 SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def codex_mcp_status(
+    config_path: Path | None = None,
+    server_name: str = DEFAULT_SERVER_NAME,
+) -> dict[str, Any]:
+    """Inspect Codex MCP registration without modifying client configuration."""
+
+    _validate_server_name(server_name)
+    target_config = (config_path or _codex_config_path()).expanduser()
+    if not target_config.is_file():
+        return {
+            "configured": False,
+            "status": "missing_config",
+            "config_path": str(target_config),
+            "server_name": server_name,
+            "message": "Codex config.toml was not found.",
+        }
+    try:
+        data = tomllib.loads(target_config.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return {
+            "configured": False,
+            "status": "invalid_config",
+            "config_path": str(target_config),
+            "server_name": server_name,
+            "message": f"Codex config.toml could not be read: {exc}",
+        }
+    servers = data.get("mcp_servers", {})
+    entry = servers.get(server_name) if isinstance(servers, dict) else None
+    if not isinstance(entry, dict):
+        return {
+            "configured": False,
+            "status": "missing_server",
+            "config_path": str(target_config),
+            "server_name": server_name,
+            "message": "init-agent MCP is not registered in Codex config.",
+        }
+    return {
+        "configured": True,
+        "status": "configured",
+        "config_path": str(target_config),
+        "server_name": server_name,
+        "command": str(entry.get("command", "")),
+        "args": entry.get("args", []),
+        "message": "init-agent MCP is registered in Codex config.",
+    }
 
 
 def install_codex_mcp_cli(

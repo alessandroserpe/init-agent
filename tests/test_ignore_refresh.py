@@ -1,4 +1,5 @@
 from tests.support import *
+from unittest.mock import patch
 
 
 class IgnoreRefreshTests(InitAgentTestCase):
@@ -14,7 +15,7 @@ class IgnoreRefreshTests(InitAgentTestCase):
                     self.assertEqual(main(["doctor"]), 0)
                 self.assertIn("NOT_READY", output.getvalue())
                 self.assertFalse((root / ".agent").exists())
-                report = run_doctor(root)
+                report = run_doctor(root, skill_root=root / "unused-skills")
                 self.assertEqual(report["status"], "NOT_READY")
                 self.assertIn("init-agent init", report["suggested_commands"])
             finally:
@@ -28,7 +29,7 @@ class IgnoreRefreshTests(InitAgentTestCase):
             try:
                 os.chdir(root)
                 main(["init"])
-                report = run_doctor(root)
+                report = run_doctor(root, skill_root=root / "unused-skills")
                 self.assertEqual(report["status"], "NOT_READY")
                 self.assertEqual(report["stats"]["files"], 0)
                 self.assertIn("init-agent map", report["suggested_commands"])
@@ -54,6 +55,53 @@ class IgnoreRefreshTests(InitAgentTestCase):
                 self.assertIn("stats", data)
                 self.assertIn("warnings", data)
                 self.assertIn("suggested_commands", data)
+                self.assertIn("environment", data)
+            finally:
+                os.chdir(previous)
+
+    def test_doctor_warns_for_outdated_installed_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as skills_tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+            skill = Path(skills_tmp) / "init-agent-orientation"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("old skill\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                report = run_doctor(root, skill_root=Path(skills_tmp))
+                self.assertEqual(report["environment"]["codex_skill"]["status"], "outdated_or_modified")
+                self.assertIn("init-agent sync", report["suggested_commands"])
+                self.assertEqual(report["status"], "READY_WITH_WARNINGS")
+            finally:
+                os.chdir(previous)
+
+    def test_doctor_remote_update_check_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as skills_tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                release = {
+                    "status": "update_available",
+                    "current_version": "0.48.0",
+                    "latest_version": "0.49.0",
+                    "update_available": True,
+                    "url": "https://example.invalid/release",
+                    "message": "init-agent 0.49.0 is available.",
+                }
+                with patch("init_agent.doctor.check_latest_release", return_value=release) as mocked:
+                    report = run_doctor(root, check_updates=True, skill_root=Path(skills_tmp))
+                mocked.assert_called_once()
+                self.assertEqual(report["environment"]["release"]["latest_version"], "0.49.0")
+                self.assertIn("pipx upgrade init-agent", report["suggested_commands"])
             finally:
                 os.chdir(previous)
 
@@ -67,7 +115,7 @@ class IgnoreRefreshTests(InitAgentTestCase):
                 os.chdir(root)
                 main(["init"])
                 main(["map"])
-                report = run_doctor(root)
+                report = run_doctor(root, skill_root=root / "unused-skills")
                 self.assertEqual(report["status"], "READY")
                 self.assertEqual(report["warnings"], [])
             finally:
@@ -82,7 +130,7 @@ class IgnoreRefreshTests(InitAgentTestCase):
                 main(["init"])
                 main(["map"])
                 _mark_index_stale(root)
-                report = run_doctor(root)
+                report = run_doctor(root, skill_root=root / "unused-skills")
                 self.assertEqual(report["status"], "READY_WITH_WARNINGS")
                 self.assertIn("init-agent map", report["suggested_commands"])
                 self.assertTrue(any("older extractor" in warning for warning in report["warnings"]))
@@ -400,7 +448,7 @@ class IgnoreRefreshTests(InitAgentTestCase):
                 os.chdir(root)
                 main(["init"])
                 main(["map"])
-                report = run_doctor(root)
+                report = run_doctor(root, skill_root=root / "unused-skills")
                 self.assertEqual(report["status"], "READY")
                 self.assertFalse(any("project files are not indexed" in warning for warning in report["warnings"]))
             finally:

@@ -82,6 +82,7 @@ from .feedback import add_feedback, clear_feedback, explain_feedback, export_fee
 from .git_reader import collect_git, current_branch, git_available, has_git, status_short
 from .graph_store import GraphStore
 from .mcp_installer import (
+    codex_mcp_status,
     install_codex_mcp_cli,
     install_codex_mcp_config,
     uninstall_codex_mcp_cli,
@@ -94,7 +95,7 @@ from .query import search
 from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
 from .scanner import INDEX_VERSION, scan_project
-from .skill_installer import install_codex_skill
+from .skill_installer import install_codex_skill, sync_codex_skill
 from .utils import config_path, ensure_agent_dir, has_project_marker, normalize_repo_path, project_root, utc_now, write_json
 from .web_ui import build_web_snapshot, serve_web_ui
 
@@ -312,8 +313,19 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.set_defaults(handler=cmd_context)
 
     doctor_parser = subparsers.add_parser("doctor", help="Run read-only diagnostics for init-agent readiness.")
+    doctor_parser.add_argument(
+        "--check-updates",
+        action="store_true",
+        help="Explicitly check GitHub for a newer init-agent release.",
+    )
     doctor_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     doctor_parser.set_defaults(handler=cmd_doctor)
+
+    sync_parser = subparsers.add_parser("sync", help="Synchronize installed Codex assets with this init-agent version.")
+    sync_parser.add_argument("--target-dir", help="Override the Codex skills directory, mainly for testing.")
+    sync_parser.add_argument("--config-path", help="Override Codex config.toml when checking MCP registration.")
+    sync_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    sync_parser.set_defaults(handler=cmd_sync)
 
     related_parser = subparsers.add_parser("related", help="Show symbols, links and commits related to a file.")
     related_parser.add_argument("path", help="Project-relative file path.")
@@ -1054,7 +1066,7 @@ def cmd_context(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = project_root()
-    report = run_doctor(root)
+    report = run_doctor(root, check_updates=args.check_updates)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
@@ -1076,6 +1088,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     else:
         git_indexed_label = "YES" if git_indexed and git_indexed["ok"] and "yes" in str(git_indexed["message"]) else "NO"
     print(f"- Git indexed: {git_indexed_label}")
+    skill_label = report["environment"]["codex_skill"]["status"].replace("_", " ").upper()
+    print(f"- Codex skill: {skill_label}")
+    if "release" in report["environment"]:
+        release = report["environment"]["release"]
+        print(f"- Latest release: {release['latest_version'] or release['status']}")
     print()
     print("Index:")
     print(f"- Files indexed: {stats['files']}")
@@ -1231,6 +1248,42 @@ def cmd_install_skill(args: argparse.Namespace) -> int:
         print(f"- Skill: {result['skill']}")
         print(f"- Target: {result['target']}")
         print("Open a new Codex session to load the skill.")
+    return 0
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    try:
+        target_dir = Path(args.target_dir).expanduser() if args.target_dir else None
+        config_path = Path(args.config_path).expanduser() if args.config_path else None
+        skill = sync_codex_skill(target_dir)
+        mcp = codex_mcp_status(config_path)
+    except (OSError, ValueError) as exc:
+        if args.json:
+            print(json.dumps({"status": "error", "error": str(exc)}, indent=2, sort_keys=True))
+        else:
+            print(f"Sync failed: {exc}", file=sys.stderr)
+        return 1
+
+    result = {
+        "status": "ok",
+        "version": __version__,
+        "skill": skill,
+        "mcp": mcp,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print("Init Agent Sync")
+        print()
+        print(f"Version: {__version__}")
+        print(f"Codex skill: {skill['status']}")
+        print(f"Target: {skill['target']}")
+        if skill.get("backup_path"):
+            print(f"Backup: {skill['backup_path']}")
+        print(f"Codex MCP: {mcp['status']}")
+        print(mcp["message"])
+        print()
+        print("Open a new Codex session when the skill or MCP installation changed.")
     return 0
 
 

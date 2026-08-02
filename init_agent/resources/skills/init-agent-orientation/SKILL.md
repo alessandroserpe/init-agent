@@ -25,6 +25,10 @@ Skip it when:
 - `init-agent` is not installed and installing it would distract from a small task
 - the user explicitly says not to run project analysis tools
 
+If `init-agent doctor` reports that this installed skill is outdated, tell the
+user to run `init-agent sync`. Do not perform remote update checks implicitly;
+`init-agent doctor --check-updates` is an explicit user-facing operation.
+
 ## Base Workflow
 
 Default to the smallest useful loop:
