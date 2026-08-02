@@ -192,6 +192,30 @@ CREATE TABLE IF NOT EXISTS reading_plan_events (
     created_at TEXT NOT NULL,
     FOREIGN KEY(plan_id) REFERENCES reading_plans(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS reading_plan_workstreams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    workstream_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    role TEXT NOT NULL,
+    model_tier TEXT NOT NULL,
+    reasoning_effort TEXT NOT NULL,
+    access_mode TEXT NOT NULL,
+    scope_paths_json TEXT NOT NULL,
+    depends_on_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    agent_name TEXT,
+    report_json TEXT,
+    orchestrator_decision TEXT,
+    orchestrator_note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    FOREIGN KEY(plan_id) REFERENCES reading_plans(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, workstream_key)
+);
 """
 
 

@@ -39,6 +39,8 @@ from .agent_tools import (
     repo_task_note,
     repo_task_update,
     repo_trace,
+    repo_workstream_report,
+    repo_workstream_review,
 )
 
 
@@ -116,6 +118,50 @@ def _handle_repo_reading_plan_finish(root: Path, arguments: dict[str, Any]) -> d
         summary=str(arguments.get("summary") or ""),
         source=str(arguments.get("source") or "agent"),
         kind=str(arguments["kind"]) if arguments.get("kind") else None,
+    ))
+
+
+def _handle_repo_workstream_report(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    workstream_key = str(arguments.get("workstream_key") or "").strip()
+    summary = str(arguments.get("summary") or "").strip()
+    if plan_id <= 0:
+        raise ValueError("repo_workstream_report requires positive id")
+    if not workstream_key:
+        raise ValueError("repo_workstream_report requires workstream_key")
+    if not summary:
+        raise ValueError("repo_workstream_report requires summary")
+    return _mcp_result(arguments, repo_workstream_report(
+        root,
+        plan_id,
+        workstream_key,
+        summary,
+        agent_name=str(arguments.get("agent_name") or "subagent"),
+        files_read=_string_list(arguments.get("files_read")),
+        files_modified=_string_list(arguments.get("files_modified")),
+        tests=_string_list(arguments.get("tests")),
+        findings=_string_list(arguments.get("findings")),
+        risks=_string_list(arguments.get("risks")),
+        remaining=_string_list(arguments.get("remaining")),
+    ))
+
+
+def _handle_repo_workstream_review(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
+    plan_id = int(arguments.get("id") or 0)
+    workstream_key = str(arguments.get("workstream_key") or "").strip()
+    decision = str(arguments.get("decision") or "").strip()
+    if plan_id <= 0:
+        raise ValueError("repo_workstream_review requires positive id")
+    if not workstream_key:
+        raise ValueError("repo_workstream_review requires workstream_key")
+    if not decision:
+        raise ValueError("repo_workstream_review requires decision")
+    return _mcp_result(arguments, repo_workstream_review(
+        root,
+        plan_id,
+        workstream_key,
+        decision,
+        note=str(arguments.get("note") or ""),
     ))
 
 
@@ -386,6 +432,8 @@ MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "repo_reading_plan_read": _handle_repo_reading_plan_read,
     "repo_reading_plan_diff": _handle_repo_reading_plan_diff,
     "repo_reading_plan_finish": _handle_repo_reading_plan_finish,
+    "repo_workstream_report": _handle_repo_workstream_report,
+    "repo_workstream_review": _handle_repo_workstream_review,
     "repo_reading_plan_mark": _handle_repo_reading_plan_mark,
     "repo_reading_plan_stats": _handle_repo_reading_plan_stats,
     "repo_entrypoints": _handle_repo_entrypoints,
@@ -518,6 +566,44 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                     "include_details": {"type": "boolean", "default": False, "description": "Return full plan items and events."},
                 },
                 "required": ["id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_workstream_report",
+            "description": "Submit a structured delegated-workstream report for parent-orchestrator review.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "workstream_key": {"type": "string", "description": "Workstream key from the reading plan."},
+                    "agent_name": {"type": "string", "default": "subagent", "description": "Worker identity or role name."},
+                    "summary": {"type": "string", "description": "Concise account of completed work and conclusion."},
+                    "files_read": {"type": "array", "items": {"type": "string"}},
+                    "files_modified": {"type": "array", "items": {"type": "string"}},
+                    "tests": {"type": "array", "items": {"type": "string"}},
+                    "findings": {"type": "array", "items": {"type": "string"}},
+                    "risks": {"type": "array", "items": {"type": "string"}},
+                    "remaining": {"type": "array", "items": {"type": "string"}},
+                    "include_details": {"type": "boolean", "default": False},
+                },
+                "required": ["id", "workstream_key", "summary"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "repo_workstream_review",
+            "description": "Record the parent orchestrator's acceptance, rework request or rejection of a worker report.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "minimum": 1, "description": "Reading plan id."},
+                    "workstream_key": {"type": "string", "description": "Workstream key from the reading plan."},
+                    "decision": {"type": "string", "enum": ["accepted", "rework", "rejected"]},
+                    "note": {"type": "string", "description": "Parent review rationale or rework instruction."},
+                    "include_details": {"type": "boolean", "default": False},
+                },
+                "required": ["id", "workstream_key", "decision"],
                 "additionalProperties": False,
             },
         },

@@ -39,6 +39,8 @@ scripts, MCP clients and targeted follow-up.
 | `init-agent plan read --id <id> --file <path>` | Record a file opened while following a saved reading plan. |
 | `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
 | `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
+| `init-agent plan report --id <id> --workstream <key> --summary <text>` | Submit a delegated worker report for parent review. |
+| `init-agent plan review --id <id> --workstream <key> --decision accepted` | Record the parent orchestrator's decision. |
 | `init-agent plan mark --id <id> --kind smoke` | Mark a plan as real, smoke, experiment, planning, diagnostic or docs for scorecard filtering. |
 | `init-agent plan stats` | Summarize reading-plan usefulness/noise metrics. |
 | `init-agent scorecard` | Show local orientation scorecard metrics for recent real reading plans. |
@@ -48,6 +50,8 @@ scripts, MCP clients and targeted follow-up.
 | `init-agent tool repo_reading_plan_read --id <id> --path <path> --json` | Record files opened while following a reading plan. |
 | `init-agent tool repo_reading_plan_diff --id <id> --json` | Return the gap between a plan and recorded activity. |
 | `init-agent tool repo_reading_plan_finish --id <id> --useful <path> --json` | Record reading-plan outcomes after verification. |
+| `init-agent tool repo_workstream_report --id <id> --workstream <key> --summary "..." --json` | Submit a delegated worker report. |
+| `init-agent tool repo_workstream_review --id <id> --workstream <key> --decision accepted --json` | Record the parent orchestrator review. |
 | `init-agent tool repo_reading_plan_mark --id <id> --kind experiment --json` | Mark non-real plans so scorecards can exclude smoke/test/experiment data. |
 | `init-agent tool repo_reading_plan_stats --json` | Return aggregate reading-plan outcome metrics. |
 | `init-agent tool repo_overview --json` | Return an agent-facing repository overview contract. |
@@ -232,6 +236,8 @@ init-agent plan "installare server mcp codex" --read 3
 init-agent plan "installare server mcp codex" --json
 init-agent plan read --id 7 --file init_agent/mcp_server.py --note "Opened MCP server implementation."
 init-agent plan diff --id 7
+init-agent plan report --id 7 --workstream ws-1 --agent explorer --summary "Verified the assigned scope." --read-file init_agent/mcp_server.py --finding "The stdio loop is owned here."
+init-agent plan review --id 7 --workstream ws-1 --decision accepted --note "Parent checked the file and evidence."
 init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path."
 init-agent plan stats
 ```
@@ -334,6 +340,8 @@ init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3
 init-agent tool repo_reading_plan_read --id 7 --path init_agent/mcp_server.py --note "Opened MCP server implementation." --json
 init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path." --json
+init-agent tool repo_workstream_report --id 7 --workstream ws-1 --agent explorer --summary "Verified the assigned scope." --read-file init_agent/mcp_server.py --json
+init-agent tool repo_workstream_review --id 7 --workstream ws-1 --decision accepted --note "Parent checked the evidence." --json
 init-agent tool repo_reading_plan_mark --id 7 --kind smoke --json
 init-agent tool repo_reading_plan_stats --json
 ```
@@ -652,6 +660,8 @@ The server exposes:
 - `repo_reading_plan_read`
 - `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
+- `repo_workstream_report`
+- `repo_workstream_review`
 - `repo_reading_plan_stats`
 - `repo_overview`
 - `repo_entrypoints`

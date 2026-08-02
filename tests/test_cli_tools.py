@@ -1091,3 +1091,69 @@ class CliToolsTests(InitAgentTestCase):
             self.assertIn("file_sha256", columns)
             self.assertIn("evidence", columns)
             self.assertIn("scope", columns)
+
+    def test_plan_cli_records_and_reviews_delegated_workstream(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                plan_output = StringIO()
+                with redirect_stdout(plan_output):
+                    self.assertEqual(
+                        main(["plan", "debug login session across source tests and docs", "--read", "3", "--json"]),
+                        0,
+                    )
+                plan = json.loads(plan_output.getvalue())
+                workstream = plan["delegation"]["workstreams"][0]
+
+                report_output = StringIO()
+                with redirect_stdout(report_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "plan",
+                                "report",
+                                "--id",
+                                str(plan["id"]),
+                                "--workstream",
+                                workstream["key"],
+                                "--agent",
+                                "explorer",
+                                "--summary",
+                                "Verified the assigned scope.",
+                                "--read-file",
+                                "src/auth/session.py",
+                                "--finding",
+                                "Session validation is implemented in the auth package.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                self.assertEqual(json.loads(report_output.getvalue())["workstream"]["status"], "reported")
+
+                review_output = StringIO()
+                with redirect_stdout(review_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "plan",
+                                "review",
+                                "--id",
+                                str(plan["id"]),
+                                "--workstream",
+                                workstream["key"],
+                                "--decision",
+                                "accepted",
+                                "--note",
+                                "Parent verified the evidence.",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                self.assertEqual(json.loads(review_output.getvalue())["workstream"]["status"], "accepted")
+            finally:
+                os.chdir(previous)

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .context_builder import build_context_pack
+from .delegation import build_delegation_advice
 from .feedback import feedback_signals
 from .graph_store import GraphStore
 from .memory import list_notes, search_notes
@@ -111,6 +112,7 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
     plan_items.sort(key=lambda item: int(item["rank"]))
     plan_items = plan_items[:bounded_limit]
     _assign_read_priorities(plan_items, bounded_read_budget)
+    delegation = build_delegation_advice(query, plan_items, bounded_read_budget)
 
     return {
         "query": query,
@@ -120,6 +122,7 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
         "memory_matches": [_compact_memory(item) for item in memory_matches[:10]],
         "repo_memory_context": [_compact_memory(note) for note in repo_notes[:5]],
         "recommended_actions": _recommended_actions(query, plan_items),
+        "delegation": delegation,
         "warnings": [
             "reading plan is heuristic; verify files before editing",
             "stale memory is a prompt to re-read, not a source of truth",

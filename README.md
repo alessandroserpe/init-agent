@@ -86,6 +86,13 @@ init-agent web
 The dashboard is read-only and shows local memory, feedback, open tasks,
 reading plans, orientation scorecard metrics and recurring files.
 
+For larger plans, `init-agent` can also return conservative delegation advice.
+It may propose bounded read-only workstreams with `fast`, `balanced` or `deep`
+model tiers and a reasoning-effort hint. The coding agent remains the
+orchestrator: it decides whether to delegate, every worker must submit a
+structured report, and the parent must review that report before finishing the
+plan. `init-agent` does not launch agents or choose provider-specific models.
+
 ## Example Output
 
 ```text
@@ -135,7 +142,8 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
 
 For MCP and scripted integrations, the same loop is available through JSON
 tools such as `repo_reading_plan_read`, `repo_reading_plan_diff`,
-`repo_reading_plan_finish`, `repo_task_note` and `repo_task_close`.
+`repo_reading_plan_finish`, `repo_workstream_report`,
+`repo_workstream_review`, `repo_task_note` and `repo_task_close`.
 
 ## Use With Codex
 

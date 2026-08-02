@@ -61,7 +61,8 @@ tools directly. The most common groups are:
   `repo_related_file`, `repo_symbol_callers`;
 - plans: `repo_reading_plan`, `repo_reading_plan_read`,
   `repo_reading_plan_diff`, `repo_reading_plan_finish`,
-  `repo_reading_plan_stats`;
+  `repo_reading_plan_stats`, `repo_workstream_report`,
+  `repo_workstream_review`;
 - feedback: `repo_feedback_add`, `repo_feedback_explain`;
 - memory: `repo_memory_add`, `repo_memory_search`, `repo_memory_audit`,
   `repo_memory_topics`, `repo_flow_topics`, `repo_memory_list`,
@@ -99,6 +100,23 @@ memory, feedback and tags. It is not proof of agent speed or task success.
 Mark smoke, experiment, planning, diagnostic or docs-only plans with
 `init-agent plan mark --id <id> --kind <kind>` or
 `repo_reading_plan_mark` so the default scorecard focuses on real work.
+
+### Optional Delegation
+
+A reading plan may include `delegation` advice. Treat it as a coordination
+hint, not an instruction to spawn workers. Small or high-confidence plans use
+the `direct` strategy. Broader plans may propose one or more bounded,
+read-only workstreams and provider-agnostic model tiers (`fast`, `balanced`,
+`deep`) with reasoning effort (`low`, `medium`, `high`). The parent agent maps
+those hints to capabilities actually available in its environment.
+
+If the parent delegates a proposed workstream, the worker must submit a
+structured report with `repo_workstream_report`. The parent then checks the
+files, findings and verification evidence and records `accepted`, `rework` or
+`rejected` with `repo_workstream_review`. A submitted but unreviewed report, or
+a workstream marked `rework`, blocks `repo_reading_plan_finish`. An unused
+proposal does not block completion. `init-agent` never launches subagents and
+never approves delegated work itself.
 
 Context packs also include a confidence diagnostic and suggested next agent
 actions. If confidence is low or medium, agents should follow those actions

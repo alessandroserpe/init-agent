@@ -17,6 +17,7 @@ from .utils import ensure_agent_dir, iter_indexable_files, normalize_repo_path, 
 SOURCES = {"agent", "user", "benchmark"}
 PLAN_KINDS = {"real", "smoke", "experiment", "planning", "diagnostic", "docs"}
 EXCLUDED_SCORECARD_KINDS = {"smoke", "experiment", "planning", "diagnostic", "docs"}
+WORKSTREAM_DECISIONS = {"accepted", "rework", "rejected"}
 
 
 def save_reading_plan(
@@ -26,6 +27,7 @@ def save_reading_plan(
     read_budget: int,
     source: str = "agent",
     kind: str = "real",
+    delegation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_source = _source(source)
     normalized_kind = _plan_kind(kind)
@@ -93,6 +95,41 @@ def save_reading_plan(
                 for item in plan_items
             ],
         )
+        workstreams = list((delegation or {}).get("workstreams") or [])
+        store.connection.executemany(
+            """
+            INSERT INTO reading_plan_workstreams(
+                plan_id, workstream_key, title, objective, role, model_tier,
+                reasoning_effort, access_mode, scope_paths_json, depends_on_json,
+                status, agent_name, report_json, orchestrator_decision,
+                orchestrator_note, created_at, updated_at, reviewed_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    plan_id,
+                    str(item.get("key") or f"ws-{index}"),
+                    str(item.get("title") or "Delegated workstream"),
+                    str(item.get("objective") or ""),
+                    str(item.get("role") or "explorer"),
+                    str(item.get("model_tier") or "balanced"),
+                    str(item.get("reasoning_effort") or "medium"),
+                    str(item.get("access_mode") or "read_only"),
+                    json.dumps(_paths(item.get("scope_paths") or []), sort_keys=True),
+                    json.dumps(_unique([str(value) for value in item.get("depends_on") or []]), sort_keys=True),
+                    "proposed",
+                    "",
+                    "",
+                    "",
+                    "",
+                    created_at,
+                    created_at,
+                    None,
+                )
+                for index, item in enumerate(workstreams, start=1)
+            ],
+        )
         store.connection.commit()
     return {
         "id": plan_id,
@@ -100,6 +137,7 @@ def save_reading_plan(
         "read_budget": int(read_budget),
         "kind": normalized_kind,
         "created_at": created_at,
+        "workstream_count": len(workstreams),
     }
 
 
@@ -140,6 +178,24 @@ def finish_reading_plan(
         plan_row = store.connection.execute("SELECT * FROM reading_plans WHERE id = ?", (plan_id,)).fetchone()
         if plan_row is None:
             return {"updated": False, "id": plan_id, "plan": None, "events": [], "feedback": [], "suggested_memory": []}
+        pending_review = [
+            _workstream(row)
+            for row in store.connection.execute(
+                "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? AND status IN ('reported', 'rework') ORDER BY id",
+                (plan_id,),
+            ).fetchall()
+        ]
+        if pending_review:
+            return {
+                "updated": False,
+                "id": plan_id,
+                "plan": get_reading_plan(root, plan_id),
+                "events": [],
+                "feedback": [],
+                "suggested_memory": [],
+                "blocked_reason": "delegated workstreams require orchestrator review or completed rework",
+                "pending_review": pending_review,
+            }
         query = str(plan_row["query"])
         known_paths = _decode_file_manifest(plan_row["file_manifest_blob"])
     if known_paths is not None:
@@ -279,6 +335,7 @@ def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
     useful_set = set([*useful_paths, *central_paths, *support_paths])
     noisy_set = set(noisy_paths)
     missing_set = set(missing_paths)
+    workstreams = list(plan.get("workstreams") or [])
     return {
         "id": plan_id,
         "found": True,
@@ -303,8 +360,133 @@ def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
                 for path in read_events
                 if path not in useful_set | noisy_set | missing_set | set(created_paths) | set(verification_paths)
             ],
+            "delegation": {
+                "proposed": [item["key"] for item in workstreams if item.get("status") == "proposed"],
+                "pending_review": [item["key"] for item in workstreams if item.get("status") == "reported"],
+                "accepted": [item["key"] for item in workstreams if item.get("status") == "accepted"],
+                "rework": [item["key"] for item in workstreams if item.get("status") == "rework"],
+                "rejected": [item["key"] for item in workstreams if item.get("status") == "rejected"],
+            },
         },
     }
+
+
+def record_workstream_report(
+    root: Path,
+    plan_id: int,
+    workstream_key: str,
+    agent_name: str,
+    summary: str,
+    files_read: list[str] | None = None,
+    files_modified: list[str] | None = None,
+    tests: list[str] | None = None,
+    findings: list[str] | None = None,
+    risks: list[str] | None = None,
+    remaining: list[str] | None = None,
+) -> dict[str, Any]:
+    if plan_id <= 0:
+        raise ValueError("plan id must be positive")
+    key = workstream_key.strip()
+    if not key:
+        raise ValueError("workstream key is required")
+    if not summary.strip():
+        raise ValueError("workstream report summary is required")
+    report = {
+        "summary": summary.strip(),
+        "files_read": _paths(files_read),
+        "files_modified": _paths(files_modified),
+        "tests": _strings(tests),
+        "findings": _strings(findings),
+        "risks": _strings(risks),
+        "remaining": _strings(remaining),
+    }
+    ensure_agent_dir(root)
+    with GraphStore(root) as store:
+        store.initialize()
+        row = store.connection.execute(
+            "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? AND workstream_key = ?",
+            (plan_id, key),
+        ).fetchone()
+        if row is None:
+            return {"updated": False, "id": plan_id, "workstream_key": key, "workstream": None}
+        if str(row["status"] or "") in {"accepted", "rejected"}:
+            raise ValueError("reviewed workstream reports cannot be replaced")
+        now = utc_now()
+        store.connection.execute(
+            """
+            UPDATE reading_plan_workstreams
+            SET status = 'reported', agent_name = ?, report_json = ?,
+                orchestrator_decision = '', orchestrator_note = '',
+                reviewed_at = NULL, updated_at = ?
+            WHERE plan_id = ? AND workstream_key = ?
+            """,
+            (agent_name.strip() or "subagent", json.dumps(report, sort_keys=True), now, plan_id, key),
+        )
+        store.connection.executemany(
+            """
+            INSERT INTO reading_plan_events(plan_id, event, path, note, feedback_id, created_at)
+            VALUES(?, 'opened', ?, ?, NULL, ?)
+            """,
+            [
+                (
+                    plan_id,
+                    path,
+                    f"delegated workstream {key} reported by {agent_name.strip() or 'subagent'}",
+                    now,
+                )
+                for path in report["files_read"]
+            ],
+        )
+        store.connection.commit()
+        updated = store.connection.execute(
+            "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? AND workstream_key = ?",
+            (plan_id, key),
+        ).fetchone()
+    return {"updated": True, "id": plan_id, "workstream_key": key, "workstream": _workstream(updated)}
+
+
+def review_workstream_report(
+    root: Path,
+    plan_id: int,
+    workstream_key: str,
+    decision: str,
+    note: str = "",
+) -> dict[str, Any]:
+    if plan_id <= 0:
+        raise ValueError("plan id must be positive")
+    key = workstream_key.strip()
+    normalized_decision = decision.lower().strip()
+    if not key:
+        raise ValueError("workstream key is required")
+    if normalized_decision not in WORKSTREAM_DECISIONS:
+        raise ValueError(f"decision must be one of: {', '.join(sorted(WORKSTREAM_DECISIONS))}")
+    ensure_agent_dir(root)
+    with GraphStore(root) as store:
+        store.initialize()
+        row = store.connection.execute(
+            "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? AND workstream_key = ?",
+            (plan_id, key),
+        ).fetchone()
+        if row is None:
+            return {"updated": False, "id": plan_id, "workstream_key": key, "workstream": None}
+        if not str(row["report_json"] or "").strip():
+            raise ValueError("the workstream has no report to review")
+        now = utc_now()
+        store.connection.execute(
+            """
+            UPDATE reading_plan_workstreams
+            SET status = ?, orchestrator_decision = ?, orchestrator_note = ?,
+                reviewed_at = ?, updated_at = ?
+            WHERE plan_id = ? AND workstream_key = ?
+            """,
+            (normalized_decision, normalized_decision, note.strip(), now, now, plan_id, key),
+        )
+        store.connection.commit()
+        updated = store.connection.execute(
+            "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? AND workstream_key = ?",
+            (plan_id, key),
+        ).fetchone()
+    return {"updated": True, "id": plan_id, "workstream_key": key, "workstream": _workstream(updated)}
 
 
 def get_reading_plan(root: Path, plan_id: int) -> dict[str, Any] | None:
@@ -328,7 +510,14 @@ def get_reading_plan(root: Path, plan_id: int) -> dict[str, Any] | None:
                 (plan_id,),
             ).fetchall()
         ]
-    return _plan(plan, items, events)
+        workstreams = [
+            _workstream(row)
+            for row in store.connection.execute(
+                "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id",
+                (plan_id,),
+            ).fetchall()
+        ]
+    return _plan(plan, items, events, workstreams)
 
 
 def list_reading_plans(root: Path, limit: int = 20, unfinished_only: bool = False) -> list[dict[str, Any]]:
@@ -357,7 +546,14 @@ def list_reading_plans(root: Path, limit: int = 20, unfinished_only: bool = Fals
                     (int(row["id"]),),
                 ).fetchall()
             ]
-            result.append(_plan(row, items, events))
+            workstreams = [
+                _workstream(item)
+                for item in store.connection.execute(
+                    "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id",
+                    (int(row["id"]),),
+                ).fetchall()
+            ]
+            result.append(_plan(row, items, events, workstreams))
     return result
 
 
@@ -569,7 +765,12 @@ def scorecard_evidence_confidence(evaluable_count: int, explicit_tracking_rate: 
     return "low", reasons
 
 
-def _plan(row: Any, items: list[dict[str, Any]], events: list[dict[str, Any]]) -> dict[str, Any]:
+def _plan(
+    row: Any,
+    items: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    workstreams: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     return {
         "id": int(row["id"]),
         "query": str(row["query"]),
@@ -582,6 +783,7 @@ def _plan(row: Any, items: list[dict[str, Any]], events: list[dict[str, Any]]) -
         "created_at": str(row["created_at"]),
         "items": items,
         "events": events,
+        "workstreams": workstreams or [],
     }
 
 
@@ -615,6 +817,31 @@ def _event(row: Any) -> dict[str, Any]:
         "note": str(row["note"] or ""),
         "feedback_id": row["feedback_id"],
         "created_at": str(row["created_at"]),
+    }
+
+
+def _workstream(row: Any) -> dict[str, Any]:
+    report = json.loads(row["report_json"] or "{}")
+    return {
+        "id": int(row["id"]),
+        "plan_id": int(row["plan_id"]),
+        "key": str(row["workstream_key"]),
+        "title": str(row["title"]),
+        "objective": str(row["objective"]),
+        "role": str(row["role"]),
+        "model_tier": str(row["model_tier"]),
+        "reasoning_effort": str(row["reasoning_effort"]),
+        "access_mode": str(row["access_mode"]),
+        "scope_paths": json.loads(row["scope_paths_json"] or "[]"),
+        "depends_on": json.loads(row["depends_on_json"] or "[]"),
+        "status": str(row["status"]),
+        "agent_name": str(row["agent_name"] or ""),
+        "report": report,
+        "orchestrator_decision": str(row["orchestrator_decision"] or ""),
+        "orchestrator_note": str(row["orchestrator_note"] or ""),
+        "created_at": str(row["created_at"]),
+        "updated_at": str(row["updated_at"]),
+        "reviewed_at": row["reviewed_at"],
     }
 
 
@@ -661,6 +888,10 @@ def _paths(values: list[str] | None) -> list[str]:
             seen.add(path)
             result.append(path)
     return result
+
+
+def _strings(values: list[str] | None) -> list[str]:
+    return _unique([str(value).strip() for value in values or [] if str(value).strip()])
 
 
 def _feedback_reason(event: str, path: str) -> str:

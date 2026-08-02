@@ -18,6 +18,8 @@ def compact_mcp_result(result: dict[str, Any]) -> dict[str, Any]:
         return _compact_plan_finish(result)
     if tool == "repo_reading_plan_mark":
         return _compact_plan_mark(result)
+    if tool in {"repo_workstream_report", "repo_workstream_review"}:
+        return _compact_workstream_result(result)
     if tool == "repo_flow_topics":
         return _compact_flow_topics(result)
     if tool == "repo_session_summary":
@@ -48,6 +50,7 @@ def _compact_reading_plan(result: dict[str, Any]) -> dict[str, Any]:
         "memory_matches": [_compact_memory(note) for note in list(result.get("memory_matches") or [])[:5]],
         "repo_memory_context": [_compact_memory(note) for note in list(result.get("repo_memory_context") or [])[:3]],
         "recommended_actions": list(result.get("recommended_actions") or [])[:5],
+        "delegation": _compact_delegation(result.get("delegation") or {}),
         "compact": True,
     }
 
@@ -153,6 +156,10 @@ def _compact_plan_finish(result: dict[str, Any]) -> dict[str, Any]:
         "event_count": len(events),
         "feedback": feedback[:20],
         "suggested_memory": list(result.get("suggested_memory") or [])[:5],
+        "blocked_reason": result.get("blocked_reason", ""),
+        "pending_review": [
+            _compact_workstream(item) for item in list(result.get("pending_review") or [])[:5]
+        ],
         "compact": True,
     }
 
@@ -181,6 +188,55 @@ def _plan_summary(plan: Any) -> dict[str, Any] | None:
         "finished_at": plan.get("finished_at"),
         "item_count": len(plan.get("items") or []),
         "event_count": len(events),
+        "workstreams": [_compact_workstream(item) for item in list(plan.get("workstreams") or [])[:5]],
+    }
+
+
+def _compact_delegation(delegation: dict[str, Any]) -> dict[str, Any]:
+    if not delegation:
+        return {}
+    return {
+        "strategy": delegation.get("strategy", "direct"),
+        "recommended": bool(delegation.get("recommended")),
+        "reason": delegation.get("reason", ""),
+        "task_profile": delegation.get("task_profile", {}),
+        "workstreams": [_compact_workstream(item) for item in list(delegation.get("workstreams") or [])[:3]],
+        "orchestrator_contract": delegation.get("orchestrator_contract", {}),
+        "report_contract": delegation.get("report_contract", {}),
+    }
+
+
+def _compact_workstream(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in {
+            "key": item.get("key", ""),
+            "title": item.get("title", ""),
+            "objective": item.get("objective", ""),
+            "role": item.get("role", ""),
+            "model_tier": item.get("model_tier", ""),
+            "reasoning_effort": item.get("reasoning_effort", ""),
+            "access_mode": item.get("access_mode", ""),
+            "scope_paths": list(item.get("scope_paths") or [])[:5],
+            "depends_on": list(item.get("depends_on") or [])[:5],
+            "status": item.get("status", ""),
+            "agent_name": item.get("agent_name", ""),
+            "report": item.get("report", {}),
+            "orchestrator_decision": item.get("orchestrator_decision", ""),
+            "orchestrator_note": item.get("orchestrator_note", ""),
+        }.items()
+        if value not in (None, "", [], {}) or key in {"status"}
+    }
+
+
+def _compact_workstream_result(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_base(result),
+        "updated": bool(result.get("updated")),
+        "id": result.get("id"),
+        "workstream_key": result.get("workstream_key", ""),
+        "workstream": _compact_workstream(result.get("workstream") or {}),
+        "compact": True,
     }
 
 

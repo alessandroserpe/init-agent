@@ -106,6 +106,19 @@ outcomes. Use `--noisy` for irrelevant candidates and `--missing` for important
 files absent from the plan. The read ledger is explicit metadata, not automatic
 editor telemetry.
 
+If a reading plan includes delegation advice, treat it as optional. The parent
+agent remains the orchestrator and decides whether parallel work will save more
+time than coordination costs. Do not delegate a tiny or tightly coupled task
+just because a proposal exists. Map the provider-agnostic `fast`, `balanced`
+and `deep` tiers to agents/models actually available in the current client.
+
+When a proposed workstream is delegated, require the worker to report what it
+read, changed, tested, found, risks and remaining work through
+`repo_workstream_report`. The parent must inspect that evidence and call
+`repo_workstream_review` with `accepted`, `rework` or `rejected`. A worker never
+approves its own output. Do not finish the reading plan while a submitted report
+is unreviewed or marked for rework. Unused proposals may be ignored.
+
 When closing a non-trivial plan, prefer semantic outcomes: `central` for the
 file that located or owned the primary behavior, `support` for files needed
 after orientation, `created` for new implementation files and `verification`

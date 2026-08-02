@@ -13,6 +13,8 @@ The MCP server exposes the same local repo tool contracts as the CLI:
 - `repo_reading_plan_finish`
 - `repo_reading_plan_mark`
 - `repo_reading_plan_stats`
+- `repo_workstream_report`
+- `repo_workstream_review`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`
@@ -52,6 +54,12 @@ bounded `read_now` list, record files actually opened, inspect the diff between
 planned and actual reads, and later classify central, supporting, created,
 verification, noisy or missing files. `useful` remains available for backward
 compatibility. This is explicit local metadata, not automatic editor telemetry.
+Reading plans can also include optional delegation advice. If an orchestrator
+uses a proposed workstream, `repo_workstream_report` records the worker's
+structured evidence and `repo_workstream_review` records the parent's explicit
+acceptance, rework request or rejection. Unused proposals do not block plan
+completion; submitted reports must be reviewed. The MCP server does not spawn
+or select agents.
 Use task tools to keep an operational thread for longer work: open
 task title, linked files, verification performed and remaining follow-up. Open
 tasks and unfinished reading plans are included in `repo_session_summary` and
@@ -128,6 +136,8 @@ include:
 - `repo_reading_plan_finish`
 - `repo_reading_plan_mark`
 - `repo_reading_plan_stats`
+- `repo_workstream_report`
+- `repo_workstream_review`
 - `repo_overview`
 - `repo_entrypoints`
 - `repo_related_file`

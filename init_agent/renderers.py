@@ -142,6 +142,26 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
         lines.append(f"- {item['path']} ({item.get('read_priority') or '-'}; rank {item.get('rank')})")
         if item.get("reason"):
             lines.append(f"  reason: {item['reason']}")
+    delegation = result.get("delegation") or {}
+    lines.extend(["", "Delegation advice:"])
+    lines.append(f"- strategy: {delegation.get('strategy') or 'direct'}")
+    lines.append(f"- recommended: {'yes' if delegation.get('recommended') else 'no'}")
+    if delegation.get("reason"):
+        lines.append(f"- reason: {delegation['reason']}")
+    profile = delegation.get("task_profile") or {}
+    if profile:
+        lines.append(
+            f"- task profile: {profile.get('model_tier') or 'balanced'} / "
+            f"{profile.get('reasoning_effort') or 'medium'} effort"
+        )
+    for workstream in delegation.get("workstreams") or []:
+        lines.append(
+            f"- {workstream.get('key')}: {workstream.get('title')} "
+            f"[{workstream.get('model_tier')}/{workstream.get('reasoning_effort')}; "
+            f"{workstream.get('access_mode')}]"
+        )
+        if workstream.get("scope_paths"):
+            lines.append(f"  scope: {', '.join(workstream['scope_paths'])}")
     lines.extend(["", "Recommended actions:"])
     _append_commands(lines, result.get("recommended_actions", []))
     if result.get("repo_memory_context"):
@@ -158,9 +178,12 @@ def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
         "",
         f"Plan id: {result.get('id')}",
         f"Updated: {'yes' if result.get('updated') else 'no'}",
-        "",
-        "Events:",
     ]
+    if result.get("blocked_reason"):
+        lines.extend(["", f"Blocked: {result['blocked_reason']}"])
+        for item in result.get("pending_review") or []:
+            lines.append(f"- {item.get('key')}: {item.get('status')} ({item.get('agent_name') or 'subagent'})")
+    lines.extend(["", "Events:"])
     if not result.get("events"):
         lines.append("-")
     for event in result.get("events", []):
@@ -217,6 +240,44 @@ def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
     lines.append(f"- verification: {len(diff.get('verification_paths', []))}")
     lines.append(f"- noisy: {len(diff.get('noisy_paths', []))}")
     lines.append(f"- missing: {len(diff.get('missing_paths', []))}")
+    delegation = diff.get("delegation") or {}
+    if delegation:
+        lines.extend(["", "Delegated workstreams:"])
+        for status in ("proposed", "pending_review", "accepted", "rework", "rejected"):
+            lines.append(f"- {status}: {', '.join(delegation.get(status) or []) or '-'}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_workstream_report_text(result: dict[str, Any]) -> str:
+    workstream = result.get("workstream") or {}
+    lines = [
+        "Init Agent Tool: repo_workstream_report",
+        "",
+        f"Plan id: {result.get('id')}",
+        f"Workstream: {result.get('workstream_key') or '-'}",
+        f"Recorded: {'yes' if result.get('updated') else 'no'}",
+    ]
+    if workstream:
+        lines.append(f"Status: {workstream.get('status') or '-'}")
+        lines.append(f"Agent: {workstream.get('agent_name') or '-'}")
+        lines.append(f"Summary: {(workstream.get('report') or {}).get('summary') or '-'}")
+    _append_warnings(lines, result.get("warnings", []))
+    return "\n".join(lines)
+
+
+def render_repo_workstream_review_text(result: dict[str, Any]) -> str:
+    workstream = result.get("workstream") or {}
+    lines = [
+        "Init Agent Tool: repo_workstream_review",
+        "",
+        f"Plan id: {result.get('id')}",
+        f"Workstream: {result.get('workstream_key') or '-'}",
+        f"Updated: {'yes' if result.get('updated') else 'no'}",
+    ]
+    if workstream:
+        lines.append(f"Decision: {workstream.get('orchestrator_decision') or '-'}")
+        lines.append(f"Note: {workstream.get('orchestrator_note') or '-'}")
     _append_warnings(lines, result.get("warnings", []))
     return "\n".join(lines)
 

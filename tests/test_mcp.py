@@ -21,6 +21,8 @@ class McpTests(InitAgentTestCase):
                     "repo_reading_plan_finish",
                     "repo_reading_plan_mark",
                     "repo_reading_plan_stats",
+                    "repo_workstream_report",
+                    "repo_workstream_review",
                     "repo_trace",
                     "repo_entrypoints",
                     "repo_feedback_add",
@@ -278,6 +280,7 @@ class McpTests(InitAgentTestCase):
             self.assertIn("base_rank", by_path["src/auth/session.py"])
             self.assertIn("rank_lift", by_path["src/auth/session.py"])
             self.assertIn("signal_rank_lift", by_path["src/auth/session.py"])
+            self.assertIn("delegation", plan_data)
 
             read = server.handle(
                 {
@@ -360,6 +363,63 @@ class McpTests(InitAgentTestCase):
             flows_data = flows["result"]["structuredContent"]
             self.assertEqual(flows_data["tool"], "repo_flow_topics")
             self.assertTrue(flows_data["flows"]["flows"])
+
+    def test_mcp_workstream_report_and_review_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            server = InitAgentMcpServer(root)
+            plan_response = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 201,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_reading_plan",
+                        "arguments": {
+                            "query": "debug login session across source tests and docs",
+                            "read_budget": 3,
+                        },
+                    },
+                }
+            )
+            plan = plan_response["result"]["structuredContent"]
+            key = plan["delegation"]["workstreams"][0]["key"]
+            reported = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 202,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_workstream_report",
+                        "arguments": {
+                            "id": plan["id"],
+                            "workstream_key": key,
+                            "agent_name": "explorer",
+                            "summary": "Verified the assigned source path.",
+                            "files_read": ["src/auth/session.py"],
+                        },
+                    },
+                }
+            )
+            reviewed = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 203,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "repo_workstream_review",
+                        "arguments": {
+                            "id": plan["id"],
+                            "workstream_key": key,
+                            "decision": "accepted",
+                            "note": "Parent checked the evidence.",
+                        },
+                    },
+                }
+            )
+            self.assertEqual(reported["result"]["structuredContent"]["workstream"]["status"], "reported")
+            self.assertEqual(reviewed["result"]["structuredContent"]["workstream"]["status"], "accepted")
 
     def test_mcp_plan_session_and_flow_payloads_are_compact_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

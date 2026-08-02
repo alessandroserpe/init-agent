@@ -20,6 +20,8 @@ from .plan_feedback import (
     reading_plan_diff,
     reading_plan_stats,
     record_reading_plan_read,
+    record_workstream_report,
+    review_workstream_report,
     save_reading_plan,
 )
 from .query import callers_for_symbol, related
@@ -58,6 +60,8 @@ from .renderers import (
     render_repo_task_note_text,
     render_repo_session_summary_text,
     render_repo_session_close_text,
+    render_repo_workstream_report_text,
+    render_repo_workstream_review_text,
 )
 
 
@@ -308,6 +312,7 @@ def repo_reading_plan(
             bounded_read_budget,
             source=source,
             kind=kind,
+            delegation=plan.get("delegation"),
         )
     else:
         saved_plan = None
@@ -324,6 +329,7 @@ def repo_reading_plan(
         "memory_matches": plan.get("memory_matches", []),
         "repo_memory_context": plan.get("repo_memory_context", []),
         "recommended_actions": plan.get("recommended_actions", []),
+        "delegation": plan.get("delegation", {}),
         "warnings": [*warnings, *plan.get("warnings", [])],
     }
 
@@ -444,6 +450,80 @@ def repo_reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
         "safety": [
             "diff is based on recorded plan events, not automatic editor telemetry",
             "verify files before converting diff output into feedback or memory",
+        ],
+    }
+
+
+def repo_workstream_report(
+    root: Path,
+    plan_id: int,
+    workstream_key: str,
+    summary: str,
+    agent_name: str = "subagent",
+    files_read: list[str] | None = None,
+    files_modified: list[str] | None = None,
+    tests: list[str] | None = None,
+    findings: list[str] | None = None,
+    risks: list[str] | None = None,
+    remaining: list[str] | None = None,
+) -> dict[str, Any]:
+    """Record a delegated worker report for parent-orchestrator review."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    report = (
+        record_workstream_report(
+            root,
+            plan_id,
+            workstream_key,
+            agent_name,
+            summary,
+            files_read=files_read,
+            files_modified=files_modified,
+            tests=tests,
+            findings=findings,
+            risks=risks,
+            remaining=remaining,
+        )
+        if readiness["ready"]
+        else {"updated": False, "id": plan_id, "workstream_key": workstream_key, "workstream": None}
+    )
+    return {
+        "tool": "repo_workstream_report",
+        "contract": TOOL_CONTRACT_VERSION,
+        **report,
+        "warnings": warnings,
+        "safety": [
+            "workers report evidence; they do not approve their own work",
+            "the parent orchestrator must review the report before finishing the plan",
+        ],
+    }
+
+
+def repo_workstream_review(
+    root: Path,
+    plan_id: int,
+    workstream_key: str,
+    decision: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Record the parent orchestrator's decision on a worker report."""
+
+    readiness = _memory_readiness(root)
+    warnings = list(readiness["warnings"])
+    review = (
+        review_workstream_report(root, plan_id, workstream_key, decision, note=note)
+        if readiness["ready"]
+        else {"updated": False, "id": plan_id, "workstream_key": workstream_key, "workstream": None}
+    )
+    return {
+        "tool": "repo_workstream_review",
+        "contract": TOOL_CONTRACT_VERSION,
+        **review,
+        "warnings": warnings,
+        "safety": [
+            "accept only after checking the worker's evidence and relevant repository state",
+            "use rework when the report is incomplete; rejected reports do not count as accepted work",
         ],
     }
 

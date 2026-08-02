@@ -38,6 +38,8 @@ from .agent_tools import (
     render_repo_task_note_text,
     render_repo_task_update_text,
     render_repo_trace_text,
+    render_repo_workstream_report_text,
+    render_repo_workstream_review_text,
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
@@ -68,6 +70,8 @@ from .agent_tools import (
     repo_task_note,
     repo_task_update,
     repo_trace,
+    repo_workstream_report,
+    repo_workstream_review,
 )
 from .cli_tool_commands import register_tool_subcommands
 from .context_builder import build_context_pack
@@ -154,7 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("text", nargs="+", help="Free-text task or question.")
     plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
     plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
-    plan_parser.add_argument("--id", type=int, help="Plan id for `plan read`, `plan diff` or `plan finish`.")
+    plan_parser.add_argument("--id", type=int, help="Plan id for plan tracking operations.")
     plan_parser.add_argument("--file", action="append", default=[], help="For `plan read`: file that was opened.")
     plan_parser.add_argument("--note", default="", help="For `plan read`: optional note for opened files.")
     plan_parser.add_argument("--read-file", action="append", default=[], help="For `plan finish`: file that was read.")
@@ -167,6 +171,14 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--noisy", action="append", default=[], help="For `plan finish`: file verified noisy.")
     plan_parser.add_argument("--missing", action="append", default=[], help="For `plan finish`: important missing file.")
     plan_parser.add_argument("--summary", default="", help="For `plan finish`: closing summary.")
+    plan_parser.add_argument("--workstream", help="For `plan report/review`: delegated workstream key.")
+    plan_parser.add_argument("--agent", default="subagent", help="For `plan report`: worker identity or role name.")
+    plan_parser.add_argument("--modified-file", action="append", default=[], help="For `plan report`: file modified by the worker.")
+    plan_parser.add_argument("--test", action="append", default=[], help="For `plan report`: verification performed.")
+    plan_parser.add_argument("--finding", action="append", default=[], help="For `plan report`: verified finding.")
+    plan_parser.add_argument("--risk", action="append", default=[], help="For `plan report`: known risk.")
+    plan_parser.add_argument("--remaining", action="append", default=[], help="For `plan report`: remaining work.")
+    plan_parser.add_argument("--decision", choices=["accepted", "rework", "rejected"], help="For `plan review`: orchestrator decision.")
     plan_parser.add_argument(
         "--kind",
         default=None,
@@ -511,6 +523,36 @@ def cmd_trace(args: argparse.Namespace) -> int:
 def cmd_plan(args: argparse.Namespace) -> int:
     root = project_root()
     mode = args.text[0].lower() if args.text else ""
+    if mode == "report":
+        if not args.id or not args.workstream or not args.summary:
+            raise SystemExit("init-agent plan report requires --id, --workstream and --summary")
+        result = repo_workstream_report(
+            root,
+            args.id,
+            args.workstream,
+            args.summary,
+            agent_name=args.agent,
+            files_read=args.read_file,
+            files_modified=args.modified_file,
+            tests=args.test,
+            findings=args.finding,
+            risks=args.risk,
+            remaining=args.remaining,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_workstream_report_text(result))
+        return 0 if result.get("updated") else 1
+    if mode == "review":
+        if not args.id or not args.workstream or not args.decision:
+            raise SystemExit("init-agent plan review requires --id, --workstream and --decision")
+        result = repo_workstream_review(root, args.id, args.workstream, args.decision, note=args.note)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(render_repo_workstream_review_text(result))
+        return 0 if result.get("updated") else 1
     if mode == "finish":
         if not args.id:
             raise SystemExit("init-agent plan finish requires --id")

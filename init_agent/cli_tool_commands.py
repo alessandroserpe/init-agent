@@ -35,6 +35,8 @@ from .agent_tools import (
     render_repo_task_note_text,
     render_repo_task_update_text,
     render_repo_trace_text,
+    render_repo_workstream_report_text,
+    render_repo_workstream_review_text,
     repo_entrypoints,
     repo_feedback_add,
     repo_feedback_explain,
@@ -65,6 +67,8 @@ from .agent_tools import (
     repo_task_note,
     repo_task_update,
     repo_trace,
+    repo_workstream_report,
+    repo_workstream_review,
 )
 from .utils import project_root
 
@@ -107,6 +111,28 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_reading_plan_finish_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Plan finish source.")
     repo_reading_plan_finish_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_reading_plan_finish_parser.set_defaults(handler=cmd_tool_repo_reading_plan_finish)
+
+    repo_workstream_report_parser = tool_subparsers.add_parser("repo_workstream_report", help="Submit a delegated worker report for parent review.")
+    repo_workstream_report_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_workstream_report_parser.add_argument("--workstream", required=True, help="Workstream key from the reading plan.")
+    repo_workstream_report_parser.add_argument("--agent", default="subagent", help="Worker identity or role name.")
+    repo_workstream_report_parser.add_argument("--summary", required=True, help="Concise account of completed work.")
+    repo_workstream_report_parser.add_argument("--read-file", action="append", default=[], help="File read by the worker. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--modified-file", action="append", default=[], help="File modified by the worker. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--finding", action="append", default=[], help="Verified finding. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--risk", action="append", default=[], help="Known risk. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--remaining", action="append", default=[], help="Remaining work. Can be repeated.")
+    repo_workstream_report_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_workstream_report_parser.set_defaults(handler=cmd_tool_repo_workstream_report)
+
+    repo_workstream_review_parser = tool_subparsers.add_parser("repo_workstream_review", help="Review a delegated worker report as the parent orchestrator.")
+    repo_workstream_review_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
+    repo_workstream_review_parser.add_argument("--workstream", required=True, help="Workstream key from the reading plan.")
+    repo_workstream_review_parser.add_argument("--decision", required=True, choices=["accepted", "rework", "rejected"], help="Parent review decision.")
+    repo_workstream_review_parser.add_argument("--note", default="", help="Review rationale or rework instruction.")
+    repo_workstream_review_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    repo_workstream_review_parser.set_defaults(handler=cmd_tool_repo_workstream_review)
 
     repo_reading_plan_mark_parser = tool_subparsers.add_parser("repo_reading_plan_mark", help="Mark a reading plan kind for scorecard filtering.")
     repo_reading_plan_mark_parser.add_argument("--id", type=int, required=True, help="Reading plan id.")
@@ -379,6 +405,38 @@ def cmd_tool_repo_reading_plan_finish(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(render_repo_reading_plan_finish_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_workstream_report(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_workstream_report(
+        root,
+        args.id,
+        args.workstream,
+        args.summary,
+        agent_name=args.agent,
+        files_read=args.read_file,
+        files_modified=args.modified_file,
+        tests=args.test,
+        findings=args.finding,
+        risks=args.risk,
+        remaining=args.remaining,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_workstream_report_text(result))
+    return 0 if result.get("updated") else 1
+
+
+def cmd_tool_repo_workstream_review(args: argparse.Namespace) -> int:
+    root = project_root()
+    result = repo_workstream_review(root, args.id, args.workstream, args.decision, note=args.note)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(render_repo_workstream_review_text(result))
     return 0 if result.get("updated") else 1
 
 
