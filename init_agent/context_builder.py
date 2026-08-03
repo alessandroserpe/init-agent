@@ -31,11 +31,21 @@ SYMPTOM_QUERY_TOKENS = {
     "rendered",
     "response",
     "risposta",
+    "broken",
+    "corrupt",
+    "corrupted",
+    "corrupts",
+    "incorrect",
+    "incorrectly",
+    "loses",
+    "stale",
     "symptom",
     "sintomo",
     "test",
     "tests",
     "wrong",
+    "unexpected",
+    "unexpectedly",
 }
 GENERIC_SYMPTOM_PATH_TOKENS = {
     "base",
@@ -62,6 +72,30 @@ MIGRATION_EXTENSIONS = {".sql"}
 DOCS_EXTENSIONS = {".md", ".rst", ".txt"}
 SOURCE_BACKEND_EXTENSIONS = {".php", ".py", ".js", ".ts", ".go", ".rs"}
 EXAMPLE_PATH_PARTS = {"example", "examples", "demo", "demos", "sample", "samples", "playground"}
+STRUCTURAL_SEED_LIMIT = 10
+STRUCTURAL_PRIMARY_SEED_LIMIT = 5
+STRUCTURAL_MIN_CONFIDENCE = 0.6
+STRUCTURAL_MIN_SYMBOL_SEED_RELEVANCE = 1.2
+STRUCTURAL_STRONG_SYMBOL_RELEVANCE = 1.24
+STRUCTURAL_STRONG_TEST_EVIDENCE = 0.72
+STRUCTURAL_MAX_SEED_FRACTION = 0.8
+STRUCTURAL_REINFORCEMENT_FRACTION = 0.35
+STRUCTURAL_MAX_RANK_FRACTION = 0.9
+STRUCTURAL_DEFAULT_SEED_FRACTION = 0.4
+STRUCTURAL_DEFAULT_MAX_RANK_FRACTION = 0.55
+STRUCTURAL_RELATION_WEIGHTS = {
+    "calls": 1.0,
+    "route_to_handler": 1.0,
+    "renders_template": 0.9,
+    "inherits": 0.85,
+    "implements": 0.85,
+    "imports_symbol": 0.7,
+    "include": 0.65,
+    "include_once": 0.65,
+    "require": 0.65,
+    "require_once": 0.65,
+    "imports": 0.5,
+}
 
 
 def build_context_pack(root: Path, query: str) -> dict[str, Any]:
@@ -116,6 +150,26 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     _adjust_test_file_scores(files, tokens, file_scores, reasons)
     _adjust_role_type_scores(files, tokens, file_scores, reasons)
     _score_files_by_feedback(root, files, tokens, file_scores, reasons)
+    structural_seed_paths = [
+        path
+        for path, _ in sorted(
+            ((path, score) for path, score in file_scores.items() if score > 0),
+            key=lambda item: (-float(item[1]), str(item[0])),
+        )[:STRUCTURAL_PRIMARY_SEED_LIMIT]
+    ]
+    with GraphStore(root) as store:
+        structural_relations = _load_structural_relations(
+            store.connection,
+            structural_seed_paths,
+            tokens,
+        )
+    structural_scores = _score_structural_files(
+        structural_relations,
+        file_by_id,
+        tokens,
+        file_scores,
+        reasons,
+    )
 
     raw_candidates = [
         {
@@ -123,6 +177,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
             "raw_score": file_scores[item["path"]],
             "language": item["language"],
             "role": item["role"],
+            "structural_score": structural_scores.get(str(item["path"]), 0.0),
             "reasons": reasons[item["path"]][:8],
         }
         for item in files
@@ -138,6 +193,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
             "score": round(float(item["raw_score"]) / max_score, 2) if max_score else 0.0,
             "language": item["language"],
             "role": item["role"],
+            "structural_score": item["structural_score"],
             "reasons": item["reasons"],
         }
         for item in raw_candidates
@@ -372,7 +428,10 @@ def _score_related_files(
     candidate_paths = {path for path, score in file_scores.items() if score > 0}
     if not candidate_paths:
         return
-    target_index = _relation_target_index(candidate_paths)
+    candidate_target_index = _relation_target_index(candidate_paths)
+    all_target_index = _relation_target_index(
+        {str(item["path"]) for item in file_by_id.values()}
+    )
     related_boosts: dict[str, float] = defaultdict(float)
     related_reason_counts: dict[str, int] = defaultdict(int)
     for relation in relations:
@@ -382,7 +441,7 @@ def _score_related_files(
         source_path = str(source["path"])
         target = str(relation["target_id"])
         if source_path in candidate_paths:
-            linked_path = _resolve_relation_target(target, target_index)
+            linked_path = _resolve_relation_target(target, all_target_index)
             if linked_path and linked_path != source_path and related_boosts[linked_path] < 1.5:
                 boost = min(0.5, 1.5 - related_boosts[linked_path])
                 file_scores[linked_path] += boost
@@ -391,7 +450,7 @@ def _score_related_files(
                     related_reason_counts[linked_path] += 1
                     _add_reason(reasons[linked_path], f"related to {source_path}")
         else:
-            target_candidate = _resolve_relation_target(target, target_index)
+            target_candidate = _resolve_relation_target(target, candidate_target_index)
             if not target_candidate or related_boosts[source_path] >= 1.5:
                 continue
             boost = min(0.5, 1.5 - related_boosts[source_path])
@@ -400,6 +459,336 @@ def _score_related_files(
             if related_reason_counts[source_path] < 5:
                 related_reason_counts[source_path] += 1
                 _add_reason(reasons[source_path], f"related to {target_candidate}")
+
+
+def _load_structural_relations(
+    conn: Any,
+    seed_paths: list[str],
+    tokens: list[str],
+) -> list[dict[str, Any]]:
+    """Return compact, cross-file edges suitable for bounded reranking."""
+
+    if not seed_paths:
+        return []
+    relation_names = tuple(STRUCTURAL_RELATION_WEIGHTS)
+    relation_placeholders = ",".join("?" for _ in relation_names)
+    path_placeholders = ",".join("?" for _ in seed_paths)
+    query_terms = [
+        token
+        for token in tokens
+        if len(token) >= 3 and not is_query_noise_token(token)
+    ][:8]
+    symbol_match_sql = ""
+    symbol_match_params: list[str] = []
+    if query_terms:
+        symbol_match_sql = " OR " + " OR ".join(
+            "lower(COALESCE(source_symbol.qualified_name, source_symbol.name)) LIKE ?"
+            for _ in query_terms
+        )
+        symbol_match_params = [f"%{token}%" for token in query_terms]
+    rows = conn.execute(
+        f"""
+        SELECT source_file.path AS source_path,
+               source_file.role AS source_role,
+               target_file.path AS target_path,
+               target_file.role AS target_role,
+               source_symbol.qualified_name AS source_symbol,
+               target_symbol.qualified_name AS target_symbol,
+               relation.relation,
+               MAX(COALESCE(relation.confidence, 0.0)) AS confidence,
+               COUNT(*) AS edge_count,
+               'symbol' AS provenance
+        FROM relations relation
+        JOIN symbols source_symbol
+          ON relation.source_type = 'symbol'
+         AND source_symbol.id = relation.source_id
+        JOIN files source_file ON source_file.id = source_symbol.file_id
+        JOIN symbols target_symbol
+          ON relation.target_type = 'resolved_symbol'
+         AND target_symbol.id = CAST(relation.target_id AS INTEGER)
+        JOIN files target_file ON target_file.id = target_symbol.file_id
+        WHERE relation.relation IN ({relation_placeholders})
+          AND source_file.id != target_file.id
+          AND (
+              source_file.path IN ({path_placeholders})
+              OR target_file.path IN ({path_placeholders})
+              {symbol_match_sql}
+          )
+        GROUP BY source_file.path, source_file.role,
+                 target_file.path, target_file.role,
+                 source_symbol.qualified_name, target_symbol.qualified_name,
+                 relation.relation
+        """,
+        (*relation_names, *seed_paths, *seed_paths, *symbol_match_params),
+    ).fetchall()
+    compact: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    symbol_pairs: set[tuple[str, str, str]] = set()
+    for row in rows:
+        item = dict(row)
+        pair = (str(item["source_path"]), str(item["relation"]), str(item["target_path"]))
+        symbol_pairs.add(pair)
+        key = (*pair, str(item.get("source_symbol") or ""))
+        compact[key] = item
+
+    file_rows = conn.execute(
+        f"""
+        SELECT source_file.path AS source_path,
+               source_file.role AS source_role,
+               relation.target_id AS target_path,
+               target_file.role AS target_role,
+               '' AS source_symbol,
+               '' AS target_symbol,
+               relation.relation,
+               MAX(COALESCE(relation.confidence, 0.0)) AS confidence,
+               COUNT(*) AS edge_count,
+               'file' AS provenance
+        FROM relations relation
+        JOIN files source_file
+          ON relation.source_type = 'file'
+         AND source_file.id = relation.source_id
+        JOIN files target_file
+          ON relation.target_type = 'resolved_file'
+         AND target_file.path = relation.target_id
+        WHERE relation.relation IN ({relation_placeholders})
+          AND source_file.id != target_file.id
+          AND (
+              source_file.path IN ({path_placeholders})
+              OR target_file.path IN ({path_placeholders})
+          )
+        GROUP BY source_file.path, source_file.role,
+                 relation.target_id, target_file.role, relation.relation
+        """,
+        (*relation_names, *seed_paths, *seed_paths),
+    ).fetchall()
+    for row in file_rows:
+        item = dict(row)
+        pair = (str(item["source_path"]), str(item["relation"]), str(item["target_path"]))
+        if pair in symbol_pairs:
+            continue
+        compact[(*pair, "")] = item
+    return list(compact.values())
+
+
+def _score_structural_files(
+    structural_relations: list[dict[str, Any]],
+    file_by_id: dict[int, dict[str, Any]],
+    tokens: list[str],
+    file_scores: dict[str, float],
+    reasons: dict[str, list[str]],
+) -> dict[str, float]:
+    """Promote one-hop structural neighbors of a few strong lexical seeds."""
+
+    file_roles = {str(item["path"]): str(item.get("role") or "") for item in file_by_id.values()}
+    primary_seeds = sorted(
+        ((path, score) for path, score in file_scores.items() if score > 0),
+        key=lambda item: (-float(item[1]), str(item[0])),
+    )[:STRUCTURAL_PRIMARY_SEED_LIMIT]
+    symbol_seed_relevance: dict[str, float] = defaultdict(float)
+    for edge in structural_relations:
+        relevance = _structural_symbol_relevance(edge, tokens)
+        minimum_relevance = (
+            1.32
+            if str(edge.get("relation") or "") in {"inherits", "implements"}
+            else STRUCTURAL_MIN_SYMBOL_SEED_RELEVANCE
+        )
+        if relevance < minimum_relevance:
+            continue
+        source_path = str(edge["source_path"])
+        if file_scores[source_path] > 0:
+            symbol_seed_relevance[source_path] = max(
+                symbol_seed_relevance[source_path], relevance
+            )
+    extra_seeds = sorted(
+        (
+            (path, file_scores[path])
+            for path in symbol_seed_relevance
+            if path not in {item[0] for item in primary_seeds}
+        ),
+        key=lambda item: (
+            -symbol_seed_relevance[item[0]],
+            -float(item[1]),
+            str(item[0]),
+        ),
+    ) if _is_symptom_query(tokens) else []
+    ranked_seeds = primary_seeds + extra_seeds[: STRUCTURAL_SEED_LIMIT - len(primary_seeds)]
+    if not ranked_seeds or not structural_relations:
+        return {}
+
+    primary_max_score = max((float(score) for _, score in primary_seeds), default=1.0)
+    seed_scores = {}
+    for path, score in ranked_seeds:
+        effective_score = float(score)
+        if file_roles.get(path) == "test" and symbol_seed_relevance.get(path, 0.0) > 1.0:
+            effective_score = min(primary_max_score, effective_score / 0.45)
+            if symbol_seed_relevance[path] >= STRUCTURAL_STRONG_SYMBOL_RELEVANCE:
+                effective_score = primary_max_score
+        seed_scores[path] = effective_score
+    max_seed_score = max(seed_scores.values(), default=1.0)
+    neighbors: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for edge in structural_relations:
+        confidence = float(edge.get("confidence") or 0.0)
+        if confidence < STRUCTURAL_MIN_CONFIDENCE:
+            continue
+        source_path = str(edge["source_path"])
+        target_path = str(edge["target_path"])
+        if source_path in seed_scores:
+            neighbors[(source_path, "out", str(edge.get("source_symbol") or ""))].add(target_path)
+        if target_path in seed_scores:
+            neighbors[(target_path, "in", str(edge.get("target_symbol") or ""))].add(source_path)
+
+    structural_evidence: dict[str, tuple[float, float, float, str, float]] = {}
+    seed_rank = {path: rank for rank, (path, _) in enumerate(ranked_seeds, start=1)}
+    for edge in structural_relations:
+        confidence = float(edge.get("confidence") or 0.0)
+        relation = str(edge.get("relation") or "")
+        relation_weight = STRUCTURAL_RELATION_WEIGHTS.get(relation, 0.0)
+        if confidence < STRUCTURAL_MIN_CONFIDENCE or relation_weight <= 0:
+            continue
+        symbol_relevance = _structural_symbol_relevance(edge, tokens)
+        source_path = str(edge["source_path"])
+        target_path = str(edge["target_path"])
+        directions: list[tuple[str, str, str, str, float]] = []
+        if source_path in seed_scores:
+            directions.append(
+                (
+                    source_path,
+                    target_path,
+                    "out",
+                    str(edge.get("source_symbol") or ""),
+                    1.0,
+                )
+            )
+        if target_path in seed_scores:
+            directions.append(
+                (
+                    target_path,
+                    source_path,
+                    "in",
+                    str(edge.get("target_symbol") or ""),
+                    0.5,
+                )
+            )
+        for seed_path, candidate_path, direction, anchor_symbol, direction_weight in directions:
+            if candidate_path == seed_path:
+                continue
+            test_to_source = (
+                file_roles.get(seed_path) == "test"
+                and file_roles.get(candidate_path) == "source"
+            )
+            if test_to_source and (
+                direction != "out"
+                or relation in {"inherits", "implements"}
+                or not str(edge.get("source_symbol") or "")
+                or symbol_relevance < STRUCTURAL_MIN_SYMBOL_SEED_RELEVANCE
+            ):
+                continue
+            degree = len(neighbors.get((seed_path, direction, anchor_symbol), set()))
+            fanout_penalty = 1.0 / (1.0 + 0.45 * log(max(degree, 1)))
+            seed_strength = 0.55 + 0.45 * (seed_scores[seed_path] / max_seed_score)
+            rank_penalty = 1.0 / (1.0 + 0.15 * (seed_rank[seed_path] - 1))
+            edge_count = max(int(edge.get("edge_count") or 1), 1)
+            repeated_edge_bonus = 1.0 + min(0.3, 0.12 * log(edge_count + 1))
+            role_weight = 1.0
+            if test_to_source:
+                role_weight = 1.2
+            evidence_weight = (
+                seed_strength
+                * rank_penalty
+                * relation_weight
+                * direction_weight
+                * confidence
+                * symbol_relevance
+                * fanout_penalty
+                * repeated_edge_bonus
+                * role_weight
+            )
+            if (
+                test_to_source
+                and relation in {"calls", "route_to_handler", "renders_template"}
+                and symbol_relevance >= STRUCTURAL_STRONG_SYMBOL_RELEVANCE
+            ):
+                evidence_weight = max(evidence_weight, STRUCTURAL_STRONG_TEST_EVIDENCE)
+            seed_fraction = (
+                STRUCTURAL_MAX_SEED_FRACTION
+                if test_to_source
+                else STRUCTURAL_DEFAULT_SEED_FRACTION
+            )
+            propagated_score = (
+                seed_scores[seed_path]
+                * seed_fraction
+                * evidence_weight
+            )
+            propagated_score = min(
+                propagated_score,
+                seed_scores[seed_path] * seed_fraction,
+            )
+            reinforcement = (
+                seed_scores[seed_path]
+                * STRUCTURAL_REINFORCEMENT_FRACTION
+                * evidence_weight
+                if test_to_source
+                else 0.0
+            )
+            max_rank_fraction = (
+                STRUCTURAL_MAX_RANK_FRACTION
+                if test_to_source
+                else STRUCTURAL_DEFAULT_MAX_RANK_FRACTION
+            )
+            ceiling = seed_scores[seed_path] * max_rank_fraction
+            if direction == "out":
+                reason = f"structural {relation} path from {seed_path}"
+            else:
+                reason = f"structural {relation} caller of {seed_path}"
+            structural_strength = (
+                1.0
+                if test_to_source
+                and str(edge.get("source_symbol") or "")
+                and symbol_relevance >= STRUCTURAL_MIN_SYMBOL_SEED_RELEVANCE
+                else (0.55 if test_to_source else 0.3)
+            )
+            existing = structural_evidence.get(candidate_path)
+            projected = min(max(file_scores[candidate_path], propagated_score) + reinforcement, ceiling)
+            existing_projected = (
+                min(max(file_scores[candidate_path], existing[0]) + existing[1], existing[2])
+                if existing is not None
+                else 0.0
+            )
+            if projected > existing_projected:
+                structural_evidence[candidate_path] = (
+                    propagated_score,
+                    reinforcement,
+                    ceiling,
+                    reason,
+                    structural_strength,
+                )
+
+    applied_scores: dict[str, float] = {}
+    for path, (propagated_score, reinforcement, ceiling, reason, structural_strength) in structural_evidence.items():
+        target_score = min(max(file_scores[path], propagated_score) + reinforcement, ceiling)
+        boost = max(0.0, target_score - file_scores[path])
+        if boost <= 0:
+            continue
+        file_scores[path] += boost
+        _prepend_reason(reasons[path], reason)
+        applied_scores[path] = structural_strength
+    return applied_scores
+
+
+def _structural_symbol_relevance(edge: dict[str, Any], tokens: list[str]) -> float:
+    source_symbol = str(edge.get("source_symbol") or "")
+    if not source_symbol:
+        return 0.45
+    query_terms = {
+        token
+        for token in tokens
+        if len(token) >= 3 and not is_query_noise_token(token)
+    }
+    leaf_symbol = source_symbol.replace("::", ".").rsplit(".", 1)[-1]
+    symbol_terms = set(identifier_terms(leaf_symbol))
+    overlap = len(query_terms.intersection(symbol_terms))
+    if overlap:
+        return 1.0 + min(0.4, overlap * 0.12)
+    return 0.3
 
 
 def _score_files_by_feedback(

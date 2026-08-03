@@ -12,7 +12,7 @@ from .text_tokens import is_query_noise_token, tokenize_query
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "8"
+INDEX_VERSION = "9"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:
@@ -88,7 +88,7 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
             "target_type": relation.target_type,
             "target_id": relation.target,
             "confidence": relation.confidence,
-            "metadata": {"line": relation.line, **(relation.metadata or {})},
+            "metadata": _relation_metadata(relation),
         }
         for relation in extracted_relations
     )
@@ -100,6 +100,9 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
                 "kind": symbol.kind,
                 "line": symbol.line,
                 "signature": symbol.signature,
+                "qualified_name": symbol.qualified_name or symbol.name,
+                "container_name": symbol.container_name,
+                "end_line": symbol.end_line,
             }
             for symbol in symbols
         ],
@@ -108,6 +111,15 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
     if hasattr(store, "replace_file_tags"):
         store.replace_file_tags(file_id, _file_tags(rel_path, language, role, symbols, extracted_relations))
     return {"path": rel_path, "symbols": len(symbols), "relations": len(relations) + len(symbols)}
+
+
+def _relation_metadata(relation: ExtractedRelation) -> dict[str, object]:
+    metadata: dict[str, object] = {"line": relation.line, **(relation.metadata or {})}
+    if relation.source_qualified_name:
+        metadata["source_qualified_name"] = relation.source_qualified_name
+    if relation.provenance != "extracted":
+        metadata["provenance"] = relation.provenance
+    return metadata
 
 
 def iter_project_files(root: Path) -> list[Path]:

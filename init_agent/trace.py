@@ -25,6 +25,8 @@ RUNTIME_FILE_RELATIONS = {
     "imports",
     "imports_symbol",
     "calls",
+    "inherits",
+    "implements",
     "route_to_handler",
     "renders_template",
 }

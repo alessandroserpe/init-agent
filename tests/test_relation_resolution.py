@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 
 from init_agent.agent_tools import repo_reading_plan, repo_reading_plan_finish
+from init_agent.exporter import export_graph
 from init_agent.feedback import add_feedback
 from init_agent.graph_store import GraphStore
 from init_agent.memory import add_note
 from init_agent.plan_feedback import reading_plan_stats
-from init_agent.query import related
+from init_agent.query import callers_for_symbol, related
 from init_agent.refresh import refresh_index
 from init_agent.scanner import scan_project
 from init_agent.trace import trace_query
@@ -17,6 +19,159 @@ from init_agent.utils import ensure_agent_dir
 
 
 class RelationResolutionTests(unittest.TestCase):
+    def test_graph_store_migrates_legacy_symbol_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ensure_agent_dir(root)
+            connection = sqlite3.connect(root / ".agent" / "graph.sqlite")
+            connection.execute(
+                """
+                CREATE TABLE symbols (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    line INTEGER,
+                    signature TEXT
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE relations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_type TEXT NOT NULL,
+                    source_id INTEGER NOT NULL,
+                    relation TEXT NOT NULL,
+                    target_type TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    confidence REAL,
+                    metadata_json TEXT
+                )
+                """
+            )
+            connection.commit()
+            connection.close()
+
+            with GraphStore(root) as store:
+                store.initialize()
+                columns = {str(row["name"]) for row in store.connection.execute("PRAGMA table_info(symbols)")}
+                relation_columns = {
+                    str(row["name"])
+                    for row in store.connection.execute("PRAGMA table_info(relations)")
+                }
+            self.assertTrue({"qualified_name", "container_name", "end_line"}.issubset(columns))
+            self.assertIn("context_symbol_id", relation_columns)
+
+    def test_python_symbol_graph_resolves_calls_and_inheritance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "app/base.py", "class BaseHandler:\n    pass\n")
+            self._write(root, "app/service.py", "def save():\n    return True\n")
+            self._write(
+                root,
+                "app/handler.py",
+                "from app.base import BaseHandler\n"
+                "from app.service import save\n\n"
+                "class RequestHandler(BaseHandler):\n"
+                "    def dispatch(self):\n"
+                "        return save()\n",
+            )
+            self._map(root)
+
+            edges = self._resolved_symbol_edges(root)
+            self.assertIn(("app/handler.py", "RequestHandler", "inherits", "app/base.py", "BaseHandler"), edges)
+            self.assertIn(("app/handler.py", "RequestHandler.dispatch", "calls", "app/service.py", "save"), edges)
+
+            callers = callers_for_symbol(root, "save")
+            self.assertEqual(callers["callers"][0]["path"], "app/handler.py")
+            self.assertEqual(callers["callers"][0]["source_qualified_name"], "RequestHandler.dispatch")
+            related_handler = related(root, "app/handler.py")
+            self.assertIsNotNone(related_handler)
+            relation_names = {item["relation"] for item in related_handler["symbol_relations"]}
+            self.assertEqual(relation_names, {"calls", "inherits"})
+            exported = export_graph(root)
+            symbol_edges = [
+                item
+                for item in exported["relations"]
+                if item["source_type"] == "symbol" and item["target_type"] == "resolved_symbol"
+            ]
+            self.assertTrue(any(item.get("source_symbol", {}).get("qualified_name") == "RequestHandler.dispatch" for item in symbol_edges))
+            self.assertTrue(any(item.get("target_symbol", {}).get("qualified_name") == "BaseHandler" for item in symbol_edges))
+            scoped_raw_calls = [
+                item
+                for item in exported["relations"]
+                if item["source_type"] == "file"
+                and item["relation"] == "calls"
+                and item.get("context_symbol")
+            ]
+            self.assertTrue(
+                any(item["context_symbol"]["qualified_name"] == "RequestHandler.dispatch" for item in scoped_raw_calls)
+            )
+
+    def test_python_receiver_calls_stay_within_verified_class_hierarchy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(
+                root,
+                "app/base.py",
+                "class ParentView:\n"
+                "    def get_success_url(self):\n"
+                "        return '/done'\n\n"
+                "    def form_valid(self):\n"
+                "        return True\n",
+            )
+            self._write(
+                root,
+                "app/views.py",
+                "from app.base import ParentView\n\n"
+                "class UnrelatedView:\n"
+                "    def get_user(self):\n"
+                "        return None\n\n"
+                "class LoginView(ParentView):\n"
+                "    def form_valid(self, form):\n"
+                "        self.get_user()\n"
+                "        form.get_user()\n"
+                "        self.get_success_url()\n"
+                "        return super().form_valid()\n",
+            )
+            self._map(root)
+
+            edges = self._resolved_symbol_edges(root)
+            self.assertIn(
+                ("app/views.py", "LoginView.form_valid", "calls", "app/base.py", "ParentView.get_success_url"),
+                edges,
+            )
+            self.assertIn(
+                ("app/views.py", "LoginView.form_valid", "calls", "app/base.py", "ParentView.form_valid"),
+                edges,
+            )
+            self.assertNotIn(
+                ("app/views.py", "LoginView.form_valid", "calls", "app/views.py", "UnrelatedView.get_user"),
+                edges,
+            )
+
+    def test_php_symbol_graph_resolves_calls_and_inheritance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "base.php", "<?php class BaseController {}\n")
+            self._write(root, "helpers.php", "<?php function renderPage() { return true; }\n")
+            self._write(
+                root,
+                "admin.php",
+                "<?php\n"
+                "require_once 'base.php';\n"
+                "require_once 'helpers.php';\n"
+                "class AdminController extends BaseController {\n"
+                "    public function show() { return renderPage(); }\n"
+                "}\n",
+            )
+            self._map(root)
+
+            edges = self._resolved_symbol_edges(root)
+            self.assertIn(("admin.php", "AdminController", "inherits", "base.php", "BaseController"), edges)
+            self.assertIn(("admin.php", "AdminController::show", "calls", "helpers.php", "renderPage"), edges)
+
     def test_python_imported_calls_resolve_without_ambiguous_global_edges(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -92,6 +247,21 @@ class RelationResolutionTests(unittest.TestCase):
             self.assertIn(("main.py", "calls", "app/second.py"), resolved)
             self.assertNotIn(("main.py", "calls", "app/first.py"), resolved)
 
+    def test_incremental_refresh_removes_obsolete_symbol_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "service.py", "def save():\n    return True\n")
+            self._write(root, "main.py", "from service import save\n\ndef run():\n    return save()\n")
+            self._map(root)
+            self.assertTrue(any(edge[1] == "run" and edge[2] == "calls" for edge in self._resolved_symbol_edges(root)))
+
+            self._write(root, "main.py", "from service import save\n\ndef execute():\n    return save()\n")
+            refreshed = refresh_index(root)
+            self.assertEqual(refreshed["status"], "OK")
+            edges = self._resolved_symbol_edges(root)
+            self.assertFalse(any(edge[1] == "run" for edge in edges))
+            self.assertTrue(any(edge[1] == "execute" and edge[2] == "calls" for edge in edges))
+
     def test_plan_manifest_reclassifies_new_missing_file_as_created(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -155,6 +325,7 @@ class RelationResolutionTests(unittest.TestCase):
             self.assertGreaterEqual(stats["signal_impact"]["feedback"]["observed_useful_files"], 1)
             self.assertGreaterEqual(stats["signal_impact"]["tags"]["observed_useful_files"], 1)
 
+
     @staticmethod
     def _write(root: Path, relative: str, content: str) -> None:
         path = root / relative
@@ -181,6 +352,36 @@ class RelationResolutionTests(unittest.TestCase):
                 """
             ).fetchall()
         return {(str(row["source"]), str(row["relation"]), str(row["target_id"])) for row in rows}
+
+    @staticmethod
+    def _resolved_symbol_edges(root: Path) -> set[tuple[str, str, str, str, str]]:
+        with GraphStore(root) as store:
+            store.initialize()
+            rows = store.connection.execute(
+                """
+                SELECT source_file.path AS source_path,
+                       source.qualified_name AS source_symbol,
+                       r.relation,
+                       target_file.path AS target_path,
+                       target.qualified_name AS target_symbol
+                FROM relations r
+                JOIN symbols source ON source.id = r.source_id
+                JOIN files source_file ON source_file.id = source.file_id
+                JOIN symbols target ON target.id = CAST(r.target_id AS INTEGER)
+                JOIN files target_file ON target_file.id = target.file_id
+                WHERE r.source_type = 'symbol' AND r.target_type = 'resolved_symbol'
+                """
+            ).fetchall()
+        return {
+            (
+                str(row["source_path"]),
+                str(row["source_symbol"]),
+                str(row["relation"]),
+                str(row["target_path"]),
+                str(row["target_symbol"]),
+            )
+            for row in rows
+        }
 
 
 if __name__ == "__main__":

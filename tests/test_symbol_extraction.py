@@ -16,6 +16,24 @@ class SymbolExtractionTests(InitAgentTestCase):
         self.assertIn(("Session", "class"), [(item.name, item.kind) for item in symbols])
         self.assertIn(("resolve_redirects", "method"), [(item.name, item.kind) for item in symbols])
 
+    def test_python_extracts_qualified_symbols_and_inheritance_scope(self) -> None:
+        content = (
+            "from framework import BaseHandler\n"
+            "class RequestHandler(BaseHandler):\n"
+            "    def dispatch(self):\n"
+            "        return handle_request()\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "python", "app/handlers.py")
+        by_name = {item.name: item for item in symbols}
+        self.assertEqual(by_name["RequestHandler"].qualified_name, "RequestHandler")
+        self.assertEqual(by_name["dispatch"].qualified_name, "RequestHandler.dispatch")
+        self.assertEqual(by_name["dispatch"].container_name, "RequestHandler")
+        inheritance = next(item for item in relations if item.relation == "inherits")
+        self.assertEqual(inheritance.target, "BaseHandler")
+        self.assertEqual(inheritance.source_qualified_name, "RequestHandler")
+        call = next(item for item in relations if item.relation == "calls" and item.target == "handle_request")
+        self.assertEqual(call.source_qualified_name, "RequestHandler.dispatch")
+
     def test_python_ast_call_and_syntax_fallback_extraction(self) -> None:
         content = (
             "from service import build\n"
@@ -213,6 +231,24 @@ class SymbolExtractionTests(InitAgentTestCase):
         self.assertNotIn("mysqli_num_rows", calls)
         self.assertNotIn("json_decode", calls)
         self.assertNotIn("file_get_contents", calls)
+
+    def test_php_extracts_qualified_methods_and_type_relations(self) -> None:
+        content = (
+            "<?php\n"
+            "class AdminController extends BaseController implements Auditable, Renderable {\n"
+            "    public function show() { return renderPage(); }\n"
+            "}\n"
+        )
+        symbols, relations = extract_symbols_and_relations(content, "php")
+        by_name = {item.name: item for item in symbols}
+        self.assertEqual(by_name["AdminController"].qualified_name, "AdminController")
+        self.assertEqual(by_name["show"].qualified_name, "AdminController::show")
+        type_edges = {(item.relation, item.target, item.source_qualified_name) for item in relations}
+        self.assertIn(("inherits", "BaseController", "AdminController"), type_edges)
+        self.assertIn(("implements", "Auditable", "AdminController"), type_edges)
+        self.assertIn(("implements", "Renderable", "AdminController"), type_edges)
+        call = next(item for item in relations if item.relation == "calls" and item.target == "renderPage")
+        self.assertEqual(call.source_qualified_name, "AdminController::show")
 
     def test_php_sql_table_usage_extraction(self) -> None:
         content = (

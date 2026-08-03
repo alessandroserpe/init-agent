@@ -36,6 +36,10 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
         entry = candidates.setdefault(path, _empty_candidate(path))
         entry["graph_rank"] = index
         entry["graph_score"] = float(item.get("score") or 0.0)
+        entry["structural_score"] = max(
+            float(entry.get("structural_score") or 0.0),
+            float(item.get("structural_score") or 0.0),
+        )
         entry["sources"].add("graph")
         entry["reasons"].extend(str(reason) for reason in item.get("reasons", [])[:3])
 
@@ -95,7 +99,10 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
                 "path": path,
                 "rank": 0,
                 "score": round(score, 4),
-                "base_score": round(components["graph"] + components["trace"], 4),
+                "base_score": round(
+                    components["graph"] + components["trace"] + components["structure"],
+                    4,
+                ),
                 "score_components": {key: round(value, 4) for key, value in components.items()},
                 "action": action,
                 "confidence": confidence,
@@ -137,6 +144,7 @@ def _empty_candidate(path: str) -> dict[str, Any]:
         "reasons": [],
         "graph_rank": None,
         "graph_score": 0.0,
+        "structural_score": 0.0,
         "trace_rank": None,
         "trace_score": 0.0,
         "memory_score": 0.0,
@@ -222,6 +230,7 @@ def _score_components(entry: dict[str, Any], notes: list[dict[str, Any]]) -> dic
     return {
         "graph": 10.0 * float(entry.get("graph_score") or 0.0),
         "trace": 0.35 * float(entry.get("trace_score") or 0.0),
+        "structure": 5.75 * float(entry.get("structural_score") or 0.0),
         "memory": memory,
         "feedback": float(feedback.get("boost") or 0.0) * 0.4 + float(feedback.get("penalty") or 0.0) * 0.8,
         "tags": 1.5 * float(entry.get("tag_score") or 0.0),

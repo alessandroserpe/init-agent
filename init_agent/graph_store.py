@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS symbols (
     kind TEXT NOT NULL,
     line INTEGER,
     signature TEXT,
+    qualified_name TEXT,
+    container_name TEXT,
+    end_line INTEGER,
     FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
 );
 
@@ -45,6 +48,7 @@ CREATE TABLE IF NOT EXISTS relations (
     relation TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT NOT NULL,
+    context_symbol_id INTEGER,
     confidence REAL,
     metadata_json TEXT
 );
@@ -216,6 +220,7 @@ CREATE TABLE IF NOT EXISTS reading_plan_workstreams (
     FOREIGN KEY(plan_id) REFERENCES reading_plans(id) ON DELETE CASCADE,
     UNIQUE(plan_id, workstream_key)
 );
+
 """
 
 
@@ -252,6 +257,22 @@ class GraphStore:
         self._ensure_column("reading_plan_items", "base_score", "REAL")
         self._ensure_column("reading_plan_items", "rank_lift", "INTEGER")
         self._ensure_column("reading_plan_items", "signal_contributions_json", "TEXT")
+        self._ensure_column("symbols", "qualified_name", "TEXT")
+        self._ensure_column("symbols", "container_name", "TEXT")
+        self._ensure_column("symbols", "end_line", "INTEGER")
+        self._ensure_column("relations", "context_symbol_id", "INTEGER")
+        self.connection.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
+            CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+            CREATE INDEX IF NOT EXISTS idx_relations_source
+                ON relations(source_type, source_id, relation, target_type);
+            CREATE INDEX IF NOT EXISTS idx_relations_target
+                ON relations(target_type, target_id, relation);
+            CREATE INDEX IF NOT EXISTS idx_relations_context_symbol
+                ON relations(context_symbol_id);
+            """
+        )
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -317,16 +338,50 @@ class GraphStore:
     ) -> None:
         symbol_items = list(symbols)
         relation_items = list(relations)
+        previous_symbol_ids = [
+            str(row["id"])
+            for row in self.connection.execute("SELECT id FROM symbols WHERE file_id = ?", (file_id,)).fetchall()
+        ]
+        if previous_symbol_ids:
+            placeholders = ",".join("?" for _ in previous_symbol_ids)
+            self.connection.execute(
+                f"DELETE FROM relations WHERE source_type = 'symbol' AND source_id IN ({placeholders})",
+                previous_symbol_ids,
+            )
+            self.connection.execute(
+                f"DELETE FROM relations WHERE target_type IN ('symbol', 'resolved_symbol') AND target_id IN ({placeholders})",
+                previous_symbol_ids,
+            )
         self.connection.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
         self.connection.execute("DELETE FROM relations WHERE source_type = 'file' AND source_id = ?", (file_id,))
         self.connection.executemany(
-            "INSERT INTO symbols(file_id, name, kind, line, signature) VALUES(?, ?, ?, ?, ?)",
-            [(file_id, item["name"], item["kind"], item["line"], item["signature"]) for item in symbol_items],
+            """
+            INSERT INTO symbols(
+                file_id, name, kind, line, signature, qualified_name, container_name, end_line
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    file_id,
+                    item["name"],
+                    item["kind"],
+                    item["line"],
+                    item["signature"],
+                    item.get("qualified_name") or item["name"],
+                    item.get("container_name") or "",
+                    item.get("end_line"),
+                )
+                for item in symbol_items
+            ],
         )
         symbol_rows = self.connection.execute(
-            "SELECT id, name, kind, line FROM symbols WHERE file_id = ?",
+            "SELECT id, name, kind, line, qualified_name FROM symbols WHERE file_id = ?",
             (file_id,),
         ).fetchall()
+        symbol_by_qualified_name = {
+            str(row["qualified_name"] or row["name"]): int(row["id"])
+            for row in symbol_rows
+        }
         relation_items.extend(
             {
                 "relation": "defines",
@@ -339,8 +394,10 @@ class GraphStore:
         )
         self.connection.executemany(
             """
-            INSERT INTO relations(source_type, source_id, relation, target_type, target_id, confidence, metadata_json)
-            VALUES('file', ?, ?, ?, ?, ?, ?)
+            INSERT INTO relations(
+                source_type, source_id, relation, target_type, target_id,
+                context_symbol_id, confidence, metadata_json
+            ) VALUES('file', ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -348,8 +405,16 @@ class GraphStore:
                     item["relation"],
                     item["target_type"],
                     str(item["target_id"]),
+                    symbol_by_qualified_name.get(str(item.get("metadata", {}).get("source_qualified_name") or "")),
                     item.get("confidence", 0.75),
-                    json.dumps(item.get("metadata", {}), sort_keys=True),
+                    json.dumps(
+                        {
+                            key: value
+                            for key, value in item.get("metadata", {}).items()
+                            if key != "source_qualified_name"
+                        },
+                        sort_keys=True,
+                    ),
                 )
                 for item in relation_items
             ],
@@ -417,7 +482,12 @@ class GraphStore:
         self.connection.execute("DELETE FROM file_tags WHERE file_id = ?", (file_id,))
         if symbol_ids:
             placeholders = ",".join("?" for _ in symbol_ids)
+            self.connection.execute(f"DELETE FROM relations WHERE source_type = 'symbol' AND source_id IN ({placeholders})", symbol_ids)
             self.connection.execute(f"DELETE FROM relations WHERE target_type = 'symbol' AND target_id IN ({placeholders})", symbol_ids)
+            self.connection.execute(
+                f"DELETE FROM relations WHERE target_type = 'resolved_symbol' AND target_id IN ({placeholders})",
+                symbol_ids,
+            )
         self.connection.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
         self.connection.execute("DELETE FROM files WHERE id = ?", (file_id,))
 

@@ -331,6 +331,122 @@ class IndexContextTests(InitAgentTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_context_resolved_relation_adds_one_hop_support_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app").mkdir()
+            (root / "app" / "base.py").write_text(
+                "class AbstractEndpoint:\n    pass\n",
+                encoding="utf-8",
+            )
+            (root / "app" / "handler.py").write_text(
+                "from app.base import AbstractEndpoint\n\n"
+                "class RequestHandler(AbstractEndpoint):\n"
+                "    def dispatch(self):\n"
+                "        return True\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "request handler dispatch")
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertEqual(paths[0], "app/handler.py")
+                self.assertIn("app/base.py", paths)
+                base = next(item for item in pack["candidate_files"] if item["path"] == "app/base.py")
+                self.assertIn("related to app/handler.py", base["reasons"])
+            finally:
+                os.chdir(previous)
+
+    def test_context_structural_reranker_promotes_source_from_matching_test_symbol(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app").mkdir()
+            (root / "tests").mkdir()
+            (root / "app" / "loader.py").write_text(
+                "def render_to_string():\n    return 'ok'\n",
+                encoding="utf-8",
+            )
+            (root / "app" / "unrelated.py").write_text(
+                "def unrelated_helper():\n    return 'noise'\n",
+                encoding="utf-8",
+            )
+            for name in ("javascript", "escaping"):
+                (root / "app" / f"{name}.py").write_text(
+                    f"def {name}_helper():\n    return True\n",
+                    encoding="utf-8",
+                )
+            for index in range(8):
+                (root / "app" / f"admin_{index}.py").write_text(
+                    f"def admin_output_{index}():\n    return True\n",
+                    encoding="utf-8",
+                )
+            (root / "tests" / "test_templates.py").write_text(
+                "from app.loader import render_to_string\n\n"
+                "def test_javascript_escaping_corrupts_inline_output():\n"
+                "    return render_to_string()\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "test_admin_views.py").write_text(
+                "from app.unrelated import unrelated_helper\n\n"
+                "class JavascriptInlineAdminOutputTests:\n"
+                "    def test_unrelated(self):\n"
+                "        return unrelated_helper()\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(
+                    root,
+                    "javascript escaping corrupts inline admin output",
+                )
+                paths = [item["path"] for item in pack["candidate_files"]]
+                self.assertIn("app/loader.py", paths[:3])
+                self.assertNotIn("app/unrelated.py", paths[:3])
+                loader = next(item for item in pack["candidate_files"] if item["path"] == "app/loader.py")
+                self.assertIn(
+                    "structural calls path from tests/test_templates.py",
+                    loader["reasons"],
+                )
+            finally:
+                os.chdir(previous)
+
+    def test_context_structural_reranker_keeps_direct_match_for_non_symptom_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+            (root / "app").mkdir()
+            (root / "tests").mkdir()
+            (root / "app" / "javascript.py").write_text(
+                "def configure_javascript():\n    return True\n",
+                encoding="utf-8",
+            )
+            (root / "app" / "loader.py").write_text(
+                "def render_to_string():\n    return 'ok'\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "test_templates.py").write_text(
+                "from app.loader import render_to_string\n\n"
+                "def test_javascript_template_output():\n"
+                "    return render_to_string()\n",
+                encoding="utf-8",
+            )
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                main(["init"])
+                main(["map"])
+                pack = build_context_pack(root, "javascript configuration")
+                self.assertEqual(pack["candidate_files"][0]["path"], "app/javascript.py")
+            finally:
+                os.chdir(previous)
+
     def test_context_php_login_json_output_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_php_login_fixture(Path(tmp))

@@ -30,7 +30,16 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
         file_row = conn.execute("SELECT * FROM files WHERE path = ?", (normalized,)).fetchone()
         if not file_row:
             return None
-        symbols = [dict(row) for row in conn.execute("SELECT name, kind, line FROM symbols WHERE file_id = ? ORDER BY line", (file_row["id"],))]
+        symbols = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT name, kind, line, end_line, qualified_name, container_name
+                FROM symbols WHERE file_id = ? ORDER BY line
+                """,
+                (file_row["id"],),
+            )
+        ]
         relations = [
             dict(row)
             for row in conn.execute(
@@ -47,6 +56,7 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
         ]
         resolved_calls = _resolved_calls(conn, int(file_row["id"]))
         callers = _callers_for_file_symbols(conn, int(file_row["id"]))
+        symbol_relations = _resolved_symbol_relations(conn, int(file_row["id"]))
         commits = [
             dict(row)
             for row in conn.execute(
@@ -84,6 +94,7 @@ def related(root: Path, file_path: str) -> dict[str, object] | None:
             "symbols": symbols,
             "relations": relations,
             "resolved_calls": resolved_calls,
+            "symbol_relations": symbol_relations,
             "callers": callers,
             "commits": commits,
             "cochanged_files": cochanged,
@@ -100,7 +111,8 @@ def callers_for_symbol(root: Path, symbol_name: str, limit: int = 50) -> dict[st
             dict(row)
             for row in conn.execute(
                 """
-                SELECT s.name, s.kind, s.line, f.path, f.language
+                SELECT s.id, s.name, s.kind, s.line, s.end_line,
+                       s.qualified_name, s.container_name, f.path, f.language
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 WHERE s.name = ?
@@ -110,25 +122,88 @@ def callers_for_symbol(root: Path, symbol_name: str, limit: int = 50) -> dict[st
                 (name,),
             )
         ]
-        callers = [
-            dict(row)
-            for row in conn.execute(
-                """
-                SELECT f.path, f.language, f.role, COUNT(*) AS call_count, MIN(json_extract(r.metadata_json, '$.line')) AS first_line
-                FROM relations r
-                JOIN files f ON f.id = r.source_id
-                WHERE r.source_type = 'file'
-                  AND r.relation = 'calls'
-                  AND r.target_type = 'symbol_name'
-                  AND r.target_id = ?
-                GROUP BY f.id
-                ORDER BY call_count DESC, f.path
-                LIMIT ?
-                """,
-                (name, limit),
-            )
-        ]
+        definition_ids = [str(item["id"]) for item in definitions]
+        callers = _resolved_symbol_callers(conn, definition_ids, limit)
+        if not callers:
+            callers = [
+                dict(row)
+                for row in conn.execute(
+                    """
+                    SELECT f.path, f.language, f.role, COUNT(*) AS call_count,
+                           MIN(json_extract(r.metadata_json, '$.line')) AS first_line
+                    FROM relations r
+                    JOIN files f ON f.id = r.source_id
+                    WHERE r.source_type = 'file'
+                      AND r.relation = 'calls'
+                      AND r.target_type = 'symbol_name'
+                      AND r.target_id = ?
+                    GROUP BY f.id
+                    ORDER BY call_count DESC, f.path
+                    LIMIT ?
+                    """,
+                    (name, limit),
+                )
+            ]
         return {"symbol": name, "definitions": definitions, "callers": callers}
+
+
+def _resolved_symbol_callers(
+    conn: sqlite3.Connection,
+    definition_ids: list[str],
+    limit: int,
+) -> list[dict[str, object]]:
+    if not definition_ids:
+        return []
+    placeholders = ",".join("?" for _ in definition_ids)
+    rows = conn.execute(
+        f"""
+        SELECT f.path, f.language, f.role,
+               source.name AS source_symbol,
+               source.qualified_name AS source_qualified_name,
+               COUNT(*) AS call_count,
+               MIN(json_extract(r.metadata_json, '$.line')) AS first_line,
+               MAX(r.confidence) AS confidence
+        FROM relations r
+        JOIN symbols source ON source.id = r.source_id
+        JOIN files f ON f.id = source.file_id
+        WHERE r.source_type = 'symbol'
+          AND r.relation = 'calls'
+          AND r.target_type = 'resolved_symbol'
+          AND r.target_id IN ({placeholders})
+        GROUP BY f.id, source.id
+        ORDER BY call_count DESC, f.path, source.line
+        LIMIT ?
+        """,
+        (*definition_ids, limit),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _resolved_symbol_relations(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:
+    rows = conn.execute(
+        """
+        SELECT source.name AS source_symbol,
+               source.qualified_name AS source_qualified_name,
+               r.relation,
+               target.name AS target_symbol,
+               target.qualified_name AS target_qualified_name,
+               target_file.path AS target_path,
+               r.confidence,
+               json_extract(r.metadata_json, '$.resolver') AS resolver,
+               json_extract(r.metadata_json, '$.provenance') AS provenance
+        FROM relations r
+        JOIN symbols source ON source.id = r.source_id
+        JOIN symbols target ON target.id = CAST(r.target_id AS INTEGER)
+        JOIN files target_file ON target_file.id = target.file_id
+        WHERE r.source_type = 'symbol'
+          AND source.file_id = ?
+          AND r.target_type = 'resolved_symbol'
+        ORDER BY source.line, r.relation, target_file.path, target.line
+        LIMIT 50
+        """,
+        (file_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _resolved_calls(conn: sqlite3.Connection, file_id: int) -> list[dict[str, object]]:

@@ -72,6 +72,10 @@ Initial focus areas:
 Improve entrypoint detection, relation extraction and noisy-file filtering in
 these ecosystems before expanding broadly.
 
+The first deep-graph increment now stores qualified Python/PHP symbols,
+callable scope, resolved symbol calls and inheritance edges. Before adding more
+languages, validate precision, index size and ranking impact on real projects.
+
 ## Longer-Term Ideas
 
 - Dependency-aware incremental refresh.

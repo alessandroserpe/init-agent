@@ -24,7 +24,8 @@ def export_graph(root: Path) -> dict[str, Any]:
             _symbol_dict(dict(row))
             for row in conn.execute(
                 """
-                SELECT s.id, s.file_id, f.path AS file, s.name, s.kind, s.line, s.signature
+                SELECT s.id, s.file_id, f.path AS file, s.name, s.kind, s.line,
+                       s.end_line, s.signature, s.qualified_name, s.container_name
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 ORDER BY f.path, s.line, s.name
@@ -36,7 +37,8 @@ def export_graph(root: Path) -> dict[str, Any]:
             _relation_dict(dict(row), file_by_id, symbol_by_id)
             for row in conn.execute(
                 """
-                SELECT id, source_type, source_id, relation, target_type, target_id, confidence, metadata_json
+                SELECT id, source_type, source_id, relation, target_type, target_id,
+                       context_symbol_id, confidence, metadata_json
                 FROM relations
                 ORDER BY id
                 """
@@ -99,7 +101,10 @@ def _symbol_dict(row: dict[str, Any]) -> dict[str, Any]:
         "name": row["name"],
         "kind": row["kind"],
         "line": row["line"],
+        "end_line": row["end_line"],
         "signature": row["signature"],
+        "qualified_name": row["qualified_name"],
+        "container_name": row["container_name"],
     }
 
 
@@ -119,23 +124,48 @@ def _relation_dict(
         "target_id": row["target_id"],
         "target_path": None,
         "target_symbol": None,
+        "context_symbol": None,
         "confidence": row["confidence"],
         "metadata": metadata,
     }
     if row["source_type"] == "file":
         source = file_by_id.get(int(row["source_id"]))
         item["source_path"] = source["path"] if source else None
+    elif row["source_type"] == "symbol":
+        source_symbol = symbol_by_id.get(int(row["source_id"]))
+        if source_symbol:
+            item["source_path"] = source_symbol["file"]
+            item["source_symbol"] = {
+                "id": source_symbol["id"],
+                "name": source_symbol["name"],
+                "qualified_name": source_symbol["qualified_name"],
+                "kind": source_symbol["kind"],
+                "line": source_symbol["line"],
+            }
+    if row.get("context_symbol_id") is not None:
+        context_symbol = symbol_by_id.get(int(row["context_symbol_id"]))
+        if context_symbol:
+            item["context_symbol"] = {
+                "id": context_symbol["id"],
+                "name": context_symbol["name"],
+                "qualified_name": context_symbol["qualified_name"],
+                "kind": context_symbol["kind"],
+                "file": context_symbol["file"],
+                "line": context_symbol["line"],
+            }
     if row["target_type"] == "file":
         item["target_path"] = str(row["target_id"])
-    elif row["target_type"] == "symbol":
+    elif row["target_type"] in {"symbol", "resolved_symbol"}:
         try:
             target_symbol = symbol_by_id.get(int(row["target_id"]))
         except (TypeError, ValueError):
             target_symbol = None
         if target_symbol:
+            item["target_path"] = target_symbol["file"]
             item["target_symbol"] = {
                 "id": target_symbol["id"],
                 "name": target_symbol["name"],
+                "qualified_name": target_symbol["qualified_name"],
                 "kind": target_symbol["kind"],
                 "file": target_symbol["file"],
                 "line": target_symbol["line"],

@@ -438,9 +438,10 @@ Returns the indexed neighborhood for one file:
 init-agent tool repo_related_file --path src/auth/session.py --json
 ```
 
-The response includes file metadata, symbols defined in the file, lightweight
-relations, resolved calls where available, caller files, recent commits,
-co-changed files, follow-up commands and warnings.
+The response includes file metadata, qualified symbols defined in the file,
+lightweight relations, resolved calls and symbol-level call/inheritance
+relations where available, caller files, recent commits, co-changed files,
+follow-up commands and warnings.
 
 ## `init-agent tool repo_symbol_callers`
 
@@ -451,6 +452,8 @@ init-agent tool repo_symbol_callers --symbol validateSession --json
 ```
 
 The response includes definitions, callers, follow-up commands and warnings.
+On current Python/PHP indexes, resolved callers also identify the qualified
+function or method containing the call.
 It is designed for agents that need to move from a symbol name to the files
 that define or call it.
 
@@ -767,9 +770,9 @@ tool integrations.
 init-agent export --json
 ```
 
-The export includes project metadata, stats, files, symbols, relations, recent
-Git commits, local feedback and runs. It does not include full source file
-contents.
+The export includes project metadata, stats, files, qualified symbols,
+file-level and symbol-level relations, recent Git commits, local feedback and
+runs. It does not include full source file contents.
 
 ## Symbol And File Commands
 
@@ -779,9 +782,10 @@ init-agent callers buildForm
 init-agent symbol buildForm
 ```
 
-`related` shows symbols, relations, PHP calls, caller files and recent commits
-around one file.
+`related` shows qualified symbols, file relations, resolved symbol relations,
+caller files and recent commits around one file.
 
-`callers` shows indexed definitions and files that call a symbol.
+`callers` shows indexed definitions and, when structurally resolvable, the
+qualified functions or methods that call a symbol.
 
 `symbol` combines definitions, callers, candidate files and recent commits.

@@ -21,7 +21,8 @@ it is "where does this behavior live?"
 `init-agent` gives the agent a local Project Orientation Layer:
 
 - a compact repository overview;
-- resolved runtime-flow edges for imports, includes, calls, routes and templates;
+- resolved runtime-flow edges for imports, includes, calls, inheritance, routes and templates;
+- qualified Python/PHP symbols with scoped caller and type relationships;
 - task-specific context packs;
 - reading plans with a bounded first-read budget;
 - feedback for verified useful, noisy or missing files;
@@ -246,9 +247,14 @@ See [docs/security.md](docs/security.md).
 ## Current Limits
 
 - Ranking is heuristic and may surface relevant-looking but non-essential files.
-- Symbol extraction remains intentionally lightweight and local.
-- Raw relations are preserved; imports, includes, calls, routes and templates
-  are resolved to concrete files only when the target is unambiguous.
+- Symbol extraction remains local and varies by language: Python uses AST,
+  PHP can use optional tree-sitter, and other supported languages remain
+  lighter-weight.
+- Raw relations are preserved; imports, includes, calls, inheritance, routes
+  and templates are resolved only when the target is unambiguous.
+- Deep symbol-to-symbol call and inheritance resolution currently focuses on
+  Python and PHP. Dynamic dispatch, reflection and dependency injection can
+  remain unresolved by design.
 - Entrypoint discovery may miss custom boot files.
 - Refresh is incremental by file hash, but not dependency-aware.
 - No built-in LLM execution.

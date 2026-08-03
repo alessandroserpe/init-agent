@@ -120,7 +120,9 @@ def evaluate_ranking(root: Path, store: GraphStore, case: FlowCase) -> dict[str,
     if not case.ranking_query or not case.ranking_expected:
         return None
     assisted = build_reading_plan(root, case.ranking_query, limit=10, read_budget=3)
-    store.connection.execute("DELETE FROM relations WHERE target_type = 'resolved_file'")
+    store.connection.execute(
+        "DELETE FROM relations WHERE target_type IN ('resolved_file', 'resolved_symbol')"
+    )
     store.connection.commit()
     baseline = build_reading_plan(root, case.ranking_query, limit=10, read_budget=3)
     rebuild_resolved_relations(store)
@@ -180,6 +182,22 @@ def evaluate_expectation(graph: dict[str, Any], expectation: dict[str, Any]) -> 
         extracted = has_template(graph, expectation["source"], expectation["template"])
         if expectation.get("target"):
             resolved = has_resolved_file_relation(graph, expectation["source"], "renders_template", expectation["target"])
+    elif kind == "symbol_relation":
+        extracted = has_scoped_symbol_relation(
+            graph,
+            expectation["source"],
+            expectation["source_symbol"],
+            expectation["relation"],
+            expectation["target_symbol"],
+        )
+        resolved = has_resolved_symbol_relation(
+            graph,
+            expectation["source"],
+            expectation["source_symbol"],
+            expectation["relation"],
+            expectation["target"],
+            expectation["target_symbol"],
+        )
     elif kind == "unresolved_call":
         extracted = has_call(graph, expectation["source"], expectation["symbol"])
         resolved = not has_any_resolved_relation(graph, expectation["source"], "calls", expectation.get("target"))
@@ -311,6 +329,62 @@ def has_resolved_file_relation(graph: dict[str, Any], source: str, relation: str
         and item["relation"] == relation
         and item["target_type"] == "resolved_file"
         and item["target_id"] == target
+        for item in graph["relations"]
+    )
+
+
+def has_scoped_symbol_relation(
+    graph: dict[str, Any],
+    source: str,
+    source_symbol: str,
+    relation: str,
+    target_symbol: str,
+) -> bool:
+    source_file_id = graph["path_to_id"].get(source)
+    if source_file_id is None:
+        return False
+    source_symbol_ids = {
+        int(item["id"])
+        for item in graph["symbols"]
+        if int(item["file_id"]) == source_file_id and item["qualified_name"] == source_symbol
+    }
+    return any(
+        item.get("context_symbol_id") in source_symbol_ids
+        and item["relation"] == relation
+        and item["target_type"] == "symbol_name"
+        and item["target_id"] == target_symbol
+        for item in graph["relations"]
+    )
+
+
+def has_resolved_symbol_relation(
+    graph: dict[str, Any],
+    source: str,
+    source_symbol: str,
+    relation: str,
+    target: str,
+    target_symbol: str,
+) -> bool:
+    source_file_id = graph["path_to_id"].get(source)
+    target_file_id = graph["path_to_id"].get(target)
+    if source_file_id is None or target_file_id is None:
+        return False
+    source_symbol_ids = {
+        int(item["id"])
+        for item in graph["symbols"]
+        if int(item["file_id"]) == source_file_id and item["qualified_name"] == source_symbol
+    }
+    target_symbol_ids = {
+        str(item["id"])
+        for item in graph["symbols"]
+        if int(item["file_id"]) == target_file_id and item["qualified_name"] == target_symbol
+    }
+    return any(
+        item["source_type"] == "symbol"
+        and int(item["source_id"]) in source_symbol_ids
+        and item["relation"] == relation
+        and item["target_type"] == "resolved_symbol"
+        and item["target_id"] in target_symbol_ids
         for item in graph["relations"]
     )
 
@@ -491,6 +565,15 @@ def cases() -> list[FlowCase]:
                 present("file_relation", "bootstrap.php requires functions.php", source="include/bootstrap.php", relation="require_once", target="include/functions.php"),
                 present("call", "page.php calls renderPageTitle defined in functions.php", source="include/page.php", symbol="renderPageTitle", target="include/functions.php"),
                 present("call", "renderPageTitle calls fetchPageTitle in same file", source="include/functions.php", symbol="fetchPageTitle", target="include/functions.php"),
+                present(
+                    "symbol_relation",
+                    "renderPageTitle symbol resolves its call to fetchPageTitle",
+                    source="include/functions.php",
+                    source_symbol="renderPageTitle",
+                    relation="calls",
+                    target="include/functions.php",
+                    target_symbol="fetchPageTitle",
+                ),
                 present("sql_table", "functions.php records pages table usage", source="include/functions.php", table="pages"),
             ],
             ranking_query="render page title from request",
@@ -547,6 +630,15 @@ def cases() -> list[FlowCase]:
                 present("call", "route handler calls create_item service", source="src/shop/routers/items.py", symbol="create_item", target="src/shop/services/items.py"),
                 present("import", "service imports repository module", source="src/shop/services/items.py", module="shop.repositories.items", target="src/shop/repositories/items.py"),
                 present("call", "service calls save_item repository function", source="src/shop/services/items.py", symbol="save_item", target="src/shop/repositories/items.py"),
+                present(
+                    "symbol_relation",
+                    "create_item symbol resolves its repository call",
+                    source="src/shop/services/items.py",
+                    source_symbol="create_item",
+                    relation="calls",
+                    target="src/shop/repositories/items.py",
+                    target_symbol="save_item",
+                ),
                 present("import", "repository imports model module", source="src/shop/repositories/items.py", module="shop.models", target="src/shop/models.py"),
             ],
             ranking_query="create item route service repository",
@@ -630,6 +722,93 @@ def cases() -> list[FlowCase]:
             ranking_expected=("src/components/TaskList.tsx", "src/api/tasks.ts"),
         ),
         FlowCase(
+            name="python_inheritance_flow",
+            description="Python imported base class and scoped method call resolve to concrete symbols.",
+            files={
+                "app/contracts.py": """
+                    class ProtocolRoot:
+                        pass
+                """,
+                "app/service.py": """
+                    def save_request():
+                        return True
+                """,
+                "app/handler.py": """
+                    from app.contracts import ProtocolRoot
+                    from app.service import save_request
+
+                    class RequestHandler(ProtocolRoot):
+                        def dispatch(self):
+                            return save_request()
+                """,
+            },
+            expectations=[
+                present(
+                    "symbol_relation",
+                    "RequestHandler inherits imported ProtocolRoot",
+                    source="app/handler.py",
+                    source_symbol="RequestHandler",
+                    relation="inherits",
+                    target="app/contracts.py",
+                    target_symbol="ProtocolRoot",
+                ),
+                present(
+                    "symbol_relation",
+                    "dispatch resolves save_request to its imported function",
+                    source="app/handler.py",
+                    source_symbol="RequestHandler.dispatch",
+                    relation="calls",
+                    target="app/service.py",
+                    target_symbol="save_request",
+                ),
+            ],
+            ranking_query="request handler dispatch",
+            ranking_expected=("app/contracts.py",),
+            ranking_allowed=("app/handler.py", "app/contracts.py", "app/service.py"),
+        ),
+        FlowCase(
+            name="php_inheritance_flow",
+            description="PHP class inheritance and a scoped method call resolve inside an include component.",
+            files={
+                "base.php": """
+                    <?php class BaseController {}
+                """,
+                "render.php": """
+                    <?php function renderPage() { return true; }
+                """,
+                "admin.php": """
+                    <?php
+                    require_once 'base.php';
+                    require_once 'render.php';
+                    class AdminController extends BaseController {
+                        public function show() { return renderPage(); }
+                    }
+                """,
+            },
+            expectations=[
+                present(
+                    "symbol_relation",
+                    "AdminController resolves its BaseController inheritance",
+                    source="admin.php",
+                    source_symbol="AdminController",
+                    relation="inherits",
+                    target="base.php",
+                    target_symbol="BaseController",
+                ),
+                present(
+                    "symbol_relation",
+                    "show resolves renderPage through the include component",
+                    source="admin.php",
+                    source_symbol="AdminController::show",
+                    relation="calls",
+                    target="render.php",
+                    target_symbol="renderPage",
+                ),
+            ],
+            ranking_query="admin controller base render page",
+            ranking_expected=("admin.php", "base.php", "render.php"),
+        ),
+        FlowCase(
             name="scoped_call_ranking",
             description="Imported call bindings should avoid unrelated duplicate definitions during trace ranking.",
             files={
@@ -665,6 +844,49 @@ def cases() -> list[FlowCase]:
             ranking_query="startup request lifecycle",
             ranking_expected=("app/runner.py", "app/service.py"),
             ranking_allowed=("main.py", "app/runner.py", "app/service.py"),
+        ),
+        FlowCase(
+            name="hidden_test_symbol_ranking",
+            description="A symptom query matching a test method should promote its resolved production call without broad file expansion.",
+            files={
+                "app/loader.py": """
+                    def render_to_string():
+                        return 'ok'
+                """,
+                "app/javascript.py": """
+                    def configure_javascript():
+                        return True
+                """,
+                "app/escaping.py": """
+                    def escaping_helper():
+                        return True
+                """,
+                "tests/test_templates.py": """
+                    from app.loader import render_to_string
+
+                    def test_javascript_escaping_corrupts_inline_output():
+                        return render_to_string()
+                """,
+            },
+            expectations=[
+                present(
+                    "symbol_relation",
+                    "matching test method resolves its call to the production loader",
+                    source="tests/test_templates.py",
+                    source_symbol="test_javascript_escaping_corrupts_inline_output",
+                    relation="calls",
+                    target="app/loader.py",
+                    target_symbol="render_to_string",
+                ),
+            ],
+            ranking_query="javascript escaping corrupts inline output",
+            ranking_expected=("app/loader.py",),
+            ranking_allowed=(
+                "app/javascript.py",
+                "app/escaping.py",
+                "tests/test_templates.py",
+                "app/loader.py",
+            ),
         ),
         FlowCase(
             name="ambiguous_symbol_guard",

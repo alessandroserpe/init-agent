@@ -94,10 +94,10 @@ skipping every external repository. A broader local benchmark can declare a
 higher minimum after the optional target repositories are installed.
 
 The separate flow-graph guard checks the lower graph layer: raw extraction,
-resolution to concrete repository files, ambiguity precision guards and
-rank/noise changes with resolved edges enabled. Expected targets are declared
-in fixture cases before execution; the evaluator does not resolve targets on
-behalf of the graph.
+resolution to concrete repository files and symbols, scoped callers, Python/PHP
+inheritance, ambiguity precision guards and rank/noise changes with resolved
+edges enabled. Expected targets are declared in fixture cases before execution;
+the evaluator does not resolve targets on behalf of the graph.
 
 Use `--case <name>` to isolate one query and `--rebuild-index` after changing
 scanner, symbol extraction, role detection or scoring code.

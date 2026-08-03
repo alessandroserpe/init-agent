@@ -16,6 +16,9 @@ class ExtractedSymbol:
     kind: str
     line: int
     signature: str
+    qualified_name: str = ""
+    container_name: str = ""
+    end_line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,8 @@ class ExtractedRelation:
     line: int
     confidence: float = 0.75
     metadata: dict[str, object] | None = None
+    source_qualified_name: str = ""
+    provenance: str = "extracted"
 
 
 PY_DEF_RE = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -36,6 +41,8 @@ PY_FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_\.]+)\s+import\s+(.+)$")
 
 PHP_FUNCTION_RE = re.compile(r"\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 PHP_CLASS_RE = re.compile(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+PHP_EXTENDS_RE = re.compile(r"\bextends\s+([A-Za-z_\\][A-Za-z0-9_\\]*)", re.IGNORECASE)
+PHP_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([^\{]+)", re.IGNORECASE)
 PHP_CONST_RE = re.compile(r"\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s*=")
 PHP_DEFINE_RE = re.compile(r"\bdefine\s*\(\s*[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']")
 PHP_INCLUDE_RE = re.compile(
@@ -404,12 +411,50 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
     class Visitor(ast.NodeVisitor):
         def __init__(self) -> None:
             self.class_depth = 0
+            self.scope_stack: list[str] = []
+            self.callable_stack: list[str] = []
+
+        def _qualified(self, name: str) -> str:
+            return ".".join([*self.scope_stack, name])
+
+        def _container(self) -> str:
+            return ".".join(self.scope_stack)
+
+        def _current_callable(self) -> str:
+            return self.callable_stack[-1] if self.callable_stack else ""
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            symbols.append(ExtractedSymbol(node.name, "class", node.lineno, _python_line(lines, node.lineno)))
+            qualified_name = self._qualified(node.name)
+            symbols.append(
+                ExtractedSymbol(
+                    node.name,
+                    "class",
+                    node.lineno,
+                    _python_line(lines, node.lineno),
+                    qualified_name,
+                    self._container(),
+                    getattr(node, "end_lineno", None),
+                )
+            )
+            for base in node.bases:
+                base_name = _python_dotted_name(base)
+                if base_name:
+                    relations.append(
+                        ExtractedRelation(
+                            "inherits",
+                            "symbol_name",
+                            base_name.rsplit(".", 1)[-1],
+                            node.lineno,
+                            0.8,
+                            {"qualified_name": base_name},
+                            qualified_name,
+                        )
+                    )
+            self.scope_stack.append(node.name)
             self.class_depth += 1
             self.generic_visit(node)
             self.class_depth -= 1
+            self.scope_stack.pop()
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             self._visit_function(node)
@@ -419,11 +464,26 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
 
         def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             kind = "method" if self.class_depth else "function"
-            symbols.append(ExtractedSymbol(node.name, kind, node.lineno, _python_line(lines, node.lineno)))
+            qualified_name = self._qualified(node.name)
+            symbols.append(
+                ExtractedSymbol(
+                    node.name,
+                    kind,
+                    node.lineno,
+                    _python_line(lines, node.lineno),
+                    qualified_name,
+                    self._container(),
+                    getattr(node, "end_lineno", None),
+                )
+            )
             for route, route_line, route_signature in _python_flask_routes_from_decorators(node.decorator_list, lines):
                 symbols.append(ExtractedSymbol(route, "route", route_line, route_signature))
                 relations.append(ExtractedRelation("route_to_handler", "symbol_name", node.name, route_line, 0.8))
+            self.scope_stack.append(node.name)
+            self.callable_stack.append(qualified_name)
             self.generic_visit(node)
+            self.callable_stack.pop()
+            self.scope_stack.pop()
 
         def visit_Assign(self, node: ast.Assign) -> None:
             self._record_constant_targets(node.targets, node.lineno)
@@ -502,6 +562,7 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                             node.lineno,
                             0.45,
                             {"qualified_name": _python_dotted_name(node.func)},
+                            self._current_callable(),
                         )
                     )
             if template := _python_render_template(node):
@@ -656,6 +717,8 @@ def _python_render_template(node: ast.Call) -> str:
 def _python_dotted_name(node: ast.expr) -> str:
     if isinstance(node, ast.Name):
         return node.id
+    if isinstance(node, ast.Call) and _python_dotted_name(node.func) == "super":
+        return "super"
     if isinstance(node, ast.Attribute):
         parent = _python_dotted_name(node.value)
         return f"{parent}.{node.attr}" if parent else node.attr
@@ -691,16 +754,58 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     in_class = False
+    current_class = ""
     class_brace_balance = 0
+    current_callable = ""
+    callable_brace_balance = 0
     for line_no, line in enumerate(content.splitlines(), start=1):
         class_match = PHP_CLASS_RE.search(line)
         if class_match:
             in_class = True
+            current_class = class_match.group(1)
             class_brace_balance = max(class_brace_balance, 0)
-            symbols.append(ExtractedSymbol(class_match.group(1), "class", line_no, line.strip()))
+            symbols.append(ExtractedSymbol(current_class, "class", line_no, line.strip(), current_class))
+            if match := PHP_EXTENDS_RE.search(line):
+                parent = match.group(1).lstrip("\\")
+                relations.append(
+                    ExtractedRelation(
+                        "inherits",
+                        "symbol_name",
+                        parent.rsplit("\\", 1)[-1],
+                        line_no,
+                        0.8,
+                        {"qualified_name": parent},
+                        current_class,
+                    )
+                )
+            if match := PHP_IMPLEMENTS_RE.search(line):
+                for interface in _php_type_list(match.group(1)):
+                    relations.append(
+                        ExtractedRelation(
+                            "implements",
+                            "symbol_name",
+                            interface.rsplit("\\", 1)[-1],
+                            line_no,
+                            0.8,
+                            {"qualified_name": interface},
+                            current_class,
+                        )
+                    )
         if match := PHP_FUNCTION_RE.search(line):
             kind = "method" if in_class else "function"
-            symbols.append(ExtractedSymbol(match.group(1), kind, line_no, line.strip()))
+            name = match.group(1)
+            current_callable = f"{current_class}::{name}" if current_class else name
+            callable_brace_balance = 0
+            symbols.append(
+                ExtractedSymbol(
+                    name,
+                    kind,
+                    line_no,
+                    line.strip(),
+                    current_callable,
+                    current_class,
+                )
+            )
         if match := PHP_CONST_RE.search(line):
             symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, line.strip()))
         if match := PHP_DEFINE_RE.search(line):
@@ -712,13 +817,28 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
             if handler:
                 relations.append(ExtractedRelation("route_to_handler", "symbol_name", handler, line_no, 0.65))
         for call_name in _php_calls_in_line(line):
-            relations.append(ExtractedRelation("calls", "symbol_name", call_name, line_no, 0.45))
+            relations.append(
+                ExtractedRelation(
+                    "calls",
+                    "symbol_name",
+                    call_name,
+                    line_no,
+                    0.45,
+                    None,
+                    current_callable,
+                )
+            )
         for table in _sql_tables_in_text(line):
             relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
         if in_class:
             class_brace_balance += line.count("{") - line.count("}")
             if class_brace_balance <= 0 and "}" in line:
                 in_class = False
+                current_class = ""
+        if current_callable:
+            callable_brace_balance += line.count("{") - line.count("}")
+            if callable_brace_balance <= 0 and "}" in line:
+                current_callable = ""
     return symbols, relations
 
 
@@ -730,36 +850,116 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
 
-    def walk(node: object) -> None:
+    def walk(node: object, class_name: str = "", callable_name: str = "") -> None:
         node_type = getattr(node, "type", "")
         line_no = getattr(node, "start_point")[0] + 1
         if node_type == "class_declaration":
             if name := _tree_sitter_name(source, node):
-                symbols.append(ExtractedSymbol(name, "class", line_no, _tree_sitter_line(content, line_no)))
+                class_name = name
+                symbols.append(
+                    ExtractedSymbol(
+                        name,
+                        "class",
+                        line_no,
+                        _tree_sitter_line(content, line_no),
+                        name,
+                        "",
+                        getattr(node, "end_point")[0] + 1,
+                    )
+                )
+                for relation, target in _php_declaration_relations(_tree_sitter_text(source, node)):
+                    relations.append(
+                        ExtractedRelation(
+                            relation,
+                            "symbol_name",
+                            target.rsplit("\\", 1)[-1],
+                            line_no,
+                            0.85,
+                            {"qualified_name": target},
+                            name,
+                        )
+                    )
         elif node_type in {"interface_declaration", "trait_declaration", "enum_declaration"}:
             if name := _tree_sitter_name(source, node):
-                symbols.append(ExtractedSymbol(name, node_type.removesuffix("_declaration"), line_no, _tree_sitter_line(content, line_no)))
+                class_name = name
+                symbols.append(
+                    ExtractedSymbol(
+                        name,
+                        node_type.removesuffix("_declaration"),
+                        line_no,
+                        _tree_sitter_line(content, line_no),
+                        name,
+                        "",
+                        getattr(node, "end_point")[0] + 1,
+                    )
+                )
         elif node_type == "function_definition":
             if name := _tree_sitter_name(source, node):
-                symbols.append(ExtractedSymbol(name, "function", line_no, _tree_sitter_line(content, line_no)))
+                callable_name = name
+                symbols.append(
+                    ExtractedSymbol(
+                        name,
+                        "function",
+                        line_no,
+                        _tree_sitter_line(content, line_no),
+                        name,
+                        "",
+                        getattr(node, "end_point")[0] + 1,
+                    )
+                )
         elif node_type == "method_declaration":
             if name := _tree_sitter_name(source, node):
-                symbols.append(ExtractedSymbol(name, "method", line_no, _tree_sitter_line(content, line_no)))
+                callable_name = f"{class_name}::{name}" if class_name else name
+                symbols.append(
+                    ExtractedSymbol(
+                        name,
+                        "method",
+                        line_no,
+                        _tree_sitter_line(content, line_no),
+                        callable_name,
+                        class_name,
+                        getattr(node, "end_point")[0] + 1,
+                    )
+                )
         elif node_type in {"function_call_expression", "member_call_expression", "scoped_call_expression"}:
             if name := _tree_sitter_call_name(source, node):
                 if name.lower() not in PHP_CALL_EXCLUDES and not _tree_sitter_php_route_call(source, node, name):
-                    relations.append(ExtractedRelation("calls", "symbol_name", name, line_no, 0.45))
+                    relations.append(
+                        ExtractedRelation(
+                            "calls",
+                            "symbol_name",
+                            name,
+                            line_no,
+                            0.45,
+                            None,
+                            callable_name,
+                        )
+                    )
         elif node_type in {"include_expression", "include_once_expression", "require_expression", "require_once_expression"}:
             if target := _tree_sitter_first_string(source, node):
                 relations.append(ExtractedRelation(node_type.removesuffix("_expression"), "file", target, line_no, 0.8))
         for child in getattr(node, "named_children", []):
-            walk(child)
+            walk(child, class_name, callable_name)
 
     walk(tree.root_node)
     for line_no, line in enumerate(content.splitlines(), start=1):
         for table in _sql_tables_in_text(line):
             relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
     return symbols, relations
+
+
+def _php_declaration_relations(declaration: str) -> list[tuple[str, str]]:
+    header = declaration.split("{", 1)[0]
+    relations: list[tuple[str, str]] = []
+    if match := PHP_EXTENDS_RE.search(header):
+        relations.append(("inherits", match.group(1).lstrip("\\")))
+    if match := PHP_IMPLEMENTS_RE.search(header):
+        relations.extend(("implements", item) for item in _php_type_list(match.group(1)))
+    return relations
+
+
+def _php_type_list(value: str) -> list[str]:
+    return [item.strip().lstrip("\\") for item in value.split(",") if item.strip()]
 
 
 def _php_tree_sitter_parser() -> tuple[object, object]:
