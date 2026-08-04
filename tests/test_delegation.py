@@ -22,6 +22,19 @@ def _plan_item(path: str, rank: int, confidence: str = "medium") -> dict[str, ob
 
 
 class DelegationTests(InitAgentTestCase):
+    def test_reading_plan_does_not_create_workstreams_without_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            plan = repo_reading_plan(root, "debug login session across source tests and documentation", read_budget=3)
+            self.assertEqual(plan["delegation"]["strategy"], "direct")
+            self.assertFalse(plan["delegation"]["recommended"])
+            self.assertEqual(plan["delegation"]["workstreams"], [])
+            with GraphStore(root) as store:
+                store.initialize()
+                count = store.connection.execute("SELECT COUNT(*) FROM reading_plan_workstreams").fetchone()[0]
+            self.assertEqual(count, 0)
+
     def test_small_high_confidence_plan_stays_direct(self) -> None:
         advice = build_delegation_advice(
             "change button color",
@@ -55,7 +68,12 @@ class DelegationTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            plan = repo_reading_plan(root, "debug login session across source tests and documentation", read_budget=3)
+            plan = repo_reading_plan(
+                root,
+                "debug login session across source tests and documentation",
+                read_budget=3,
+                delegate=True,
+            )
             workstreams = plan["delegation"]["workstreams"]
             self.assertTrue(workstreams)
             key = workstreams[0]["key"]

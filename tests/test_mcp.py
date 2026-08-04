@@ -2,9 +2,9 @@ from tests.support import *
 
 
 class McpTests(InitAgentTestCase):
-    def test_mcp_initialize_and_tools_list(self) -> None:
+    def test_mcp_full_profile_lists_legacy_and_administrative_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            server = InitAgentMcpServer(Path(tmp))
+            server = InitAgentMcpServer(Path(tmp), profile="full")
             initialized = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
             self.assertIsNotNone(initialized)
             self.assertEqual(initialized["result"]["serverInfo"]["name"], "init-agent")
@@ -49,9 +49,39 @@ class McpTests(InitAgentTestCase):
                 },
             )
 
-    def test_mcp_initialize_negotiates_supported_protocol_version(self) -> None:
+    def test_mcp_default_profile_lists_only_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = InitAgentMcpServer(Path(tmp))
+            listed = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+            self.assertIsNotNone(listed)
+            self.assertEqual(
+                {item["name"] for item in listed["result"]["tools"]},
+                {
+                    "repo_overview",
+                    "repo_reading_plan",
+                    "repo_reading_plan_finish",
+                    "repo_related_file",
+                    "repo_symbol_callers",
+                    "repo_memory_search",
+                    "repo_memory_add",
+                    "repo_session_close",
+                },
+            )
+
+            hidden = server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "repo_graph_search", "arguments": {"query": "login"}},
+                }
+            )
+            self.assertTrue(hidden["result"]["isError"])
+            self.assertIn("--profile full", hidden["result"]["content"][0]["text"])
+
+    def test_mcp_initialize_negotiates_supported_protocol_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = InitAgentMcpServer(Path(tmp), profile="full")
             initialized = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -65,7 +95,7 @@ class McpTests(InitAgentTestCase):
 
     def test_mcp_ignores_messages_without_method(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            server = InitAgentMcpServer(Path(tmp))
+            server = InitAgentMcpServer(Path(tmp), profile="full")
             self.assertIsNone(server.handle({"jsonrpc": "2.0", "result": {"ok": True}}))
             self.assertIsNone(server.handle({"jsonrpc": "2.0", "id": None}))
 
@@ -82,7 +112,7 @@ class McpTests(InitAgentTestCase):
             previous_debug = os.environ.get("INIT_AGENT_MCP_DEBUG_LOG")
             os.environ["INIT_AGENT_MCP_DEBUG_LOG"] = str(debug_log)
             try:
-                server = InitAgentMcpServer(Path(tmp))
+                server = InitAgentMcpServer(Path(tmp), profile="full")
                 server._debug("request", {"id": 1, "method": "initialize"})
             finally:
                 if previous_debug is None:
@@ -137,7 +167,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -157,7 +187,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_php_trace_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -181,7 +211,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_overview_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -202,7 +232,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             added = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -241,7 +271,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             memory_added = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -368,7 +398,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             plan_response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -379,6 +409,7 @@ class McpTests(InitAgentTestCase):
                         "arguments": {
                             "query": "debug login session across source tests and docs",
                             "read_budget": 3,
+                            "delegate": True,
                         },
                     },
                 }
@@ -425,7 +456,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             plan_response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -495,7 +526,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             added = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -736,7 +767,7 @@ class McpTests(InitAgentTestCase):
             root = Path(tmp)
             (root / "src").mkdir()
             (root / "src" / "app.py").write_text("def main():\n    return True\n", encoding="utf-8")
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             response = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -755,7 +786,7 @@ class McpTests(InitAgentTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_php_call_fixture(Path(tmp))
             _prepare_index(root)
-            server = InitAgentMcpServer(root)
+            server = InitAgentMcpServer(root, profile="full")
             related = server.handle(
                 {
                     "jsonrpc": "2.0",
@@ -780,7 +811,7 @@ class McpTests(InitAgentTestCase):
 
     def test_mcp_unknown_tool_returns_tool_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            server = InitAgentMcpServer(Path(tmp))
+            server = InitAgentMcpServer(Path(tmp), profile="full")
             response = server.handle(
                 {
                     "jsonrpc": "2.0",

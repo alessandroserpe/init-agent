@@ -159,6 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("text", nargs="+", help="Free-text task or question.")
     plan_parser.add_argument("--limit", type=int, default=10, help="Maximum plan items to return.")
     plan_parser.add_argument("--read", type=int, default=3, help="Number of plan items to mark as read_now.")
+    plan_parser.add_argument("--delegate", action="store_true", help="Include optional delegated workstream advice.")
     plan_parser.add_argument("--id", type=int, help="Plan id for plan tracking operations.")
     plan_parser.add_argument("--file", action="append", default=[], help="For `plan read`: file that was opened.")
     plan_parser.add_argument("--note", default="", help="For `plan read`: optional note for opened files.")
@@ -214,9 +215,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     mcp_parser = subparsers.add_parser("mcp", help="Run or install the MCP stdio server for agent integrations.")
     mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    mcp_parser.add_argument("--profile", choices=("core", "full"), default="core", help="MCP tool surface. Defaults to core.")
     mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
     mcp_install_codex = mcp_subparsers.add_parser("install-codex", help="Register init-agent MCP with Codex using `codex mcp add`.")
     mcp_install_codex.add_argument("--root", help="Optional repository root to pin. Omit to use the Codex session working directory.")
+    mcp_install_codex.add_argument("--profile", choices=("core", "full"), default="core", help="MCP tool surface. Defaults to core.")
     mcp_install_codex.add_argument("--server-name", default="init_agent", help="MCP server name to register.")
     mcp_install_codex.add_argument("--replace", action="store_true", help="Remove an existing Codex MCP server with the same name before adding it.")
     mcp_install_codex.add_argument("--codex-command", help="Override the codex executable path, mainly for testing.")
@@ -634,6 +637,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         read_budget=args.read,
         source=args.source,
         kind=args.kind or "real",
+        delegate=args.delegate,
     )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -683,7 +687,7 @@ def cmd_web(args: argparse.Namespace) -> int:
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
-    return mcp_main(["--root", args.root])
+    return mcp_main(["--root", args.root, "--profile", args.profile])
 
 
 def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
@@ -725,6 +729,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
                 config_path=Path(args.config_path) if args.config_path else None,
                 server_name=args.server_name,
                 replace=args.replace,
+                profile=args.profile,
             )
             result["method"] = "manual_config"
         else:
@@ -733,6 +738,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
                 server_name=args.server_name,
                 codex_command=args.codex_command,
                 replace=args.replace,
+                profile=args.profile,
             )
     except Exception as exc:
         if args.json:
@@ -756,6 +762,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
             print(f"Backup: {result['backup_path']}")
         print(f"Server: {result['server_name']}")
         print(f"Command: {result['command']}")
+        print(f"Profile: {result.get('profile', args.profile)}")
         if result.get("root"):
             print(f"Root: {result['root']}")
         else:

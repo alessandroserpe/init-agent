@@ -38,10 +38,11 @@ init-agent tool repo_feedback_add --query "find app entrypoints" --path parser.p
 init-agent tool repo_feedback_explain --query "find app entrypoints" --json
 ```
 
-MCP-capable agents can call `repo_feedback_add` and `repo_feedback_explain`
-directly. Feedback is optional; it is useful when an agent has verified files
-and wants future similar queries to understand what was useful, noisy or
-missing.
+The default MCP core workflow records useful/noisy/missing outcomes through
+`repo_reading_plan_finish`, so a normal agent task does not need separate
+feedback calls. `repo_feedback_add` and `repo_feedback_explain` remain available
+through the CLI and the MCP `full` profile for manual correction, diagnostics
+and integrations that manage feedback directly.
 
 ## Agent Workflow
 
@@ -51,20 +52,25 @@ reading files.
 1. Run orientation:
 
 ```bash
-init-agent run "find app entrypoints" --markdown
+init-agent plan "find app entrypoints" --read 3
 ```
 
 2. Verify by reading the real files suggested by the context pack.
 
-3. Record feedback only for verified outcomes:
+3. Finish the reading plan with verified outcomes. This records the bounded
+feedback needed by future similar plans:
 
 ```bash
-init-agent tool repo_feedback_add --query "find app entrypoints" --path pyproject.toml --rating crucial --reason "verified console script declarations" --json
-init-agent tool repo_feedback_add --query "find app entrypoints" --path frontend/src/types/index.ts --rating noisy --reason "verified type declarations only, not runtime entrypoint" --json
-init-agent tool repo_feedback_add --query "find app entrypoints" --path frontend/src/main.tsx --rating missing --reason "verified frontend runtime entrypoint absent from initial suggestions" --json
+init-agent plan finish --id <id> \
+  --read-file pyproject.toml \
+  --central pyproject.toml \
+  --noisy frontend/src/types/index.ts \
+  --missing frontend/src/main.tsx \
+  --summary "Verified runtime entrypoints."
 ```
 
-4. Inspect the effect before trusting future ranking changes:
+4. Use the lower-level feedback commands only when correcting or diagnosing the
+stored signal:
 
 ```bash
 init-agent tool repo_feedback_explain --query "find app entrypoints" --json

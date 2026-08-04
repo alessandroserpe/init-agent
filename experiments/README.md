@@ -1,154 +1,54 @@
 # init-agent Experiments
 
-This folder is for validating whether `init-agent` is useful on real tasks.
+This directory contains repeatable orientation benchmarks and archived paired
+agent observations. They measure whether useful files appear early and how much
+noise remains; they do not prove that an agent will solve a task faster or
+produce a better patch.
 
-The goal is not to prove that every ranking is perfect. The goal is to collect
-repeatable cases where we can compare:
+The complete methodology, metrics, setup instructions and interpretation limits
+are documented in [../docs/experiments.md](../docs/experiments.md).
 
-- the query
-- the files `init-agent` suggests first
-- the files we expected to be useful
-- obvious noise
-- rough timing
+## Deterministic Orientation Benchmark
 
-Run the evaluator from the project root:
+Run the local deterministic cases:
 
 ```bash
 python3 experiments/evaluate.py
-python3 experiments/evaluate.py --case django-auth-session-middleware
 python3 experiments/evaluate.py --strict --min-cases 4
+```
+
+External benchmark repositories under `/tmp/init-agent-bench-*` are optional
+and skipped when absent. Rebuild their indexes after extractor or scoring
+changes:
+
+```bash
 python3 experiments/evaluate.py --strict --min-cases 4 --rebuild-index
-python3 experiments/evaluate.py --case django-auth-session-middleware --measure-manual-scan
+```
+
+Write JSON, CSV and Markdown artifacts with:
+
+```bash
 python3 experiments/evaluate.py --strict --min-cases 4 --output-dir experiments/results
+```
+
+Charts require optional `matplotlib`:
+
+```bash
 python3 experiments/plot_results.py experiments/results/results.csv
 ```
 
-For lower-level graph diagnostics, run:
+## Graph Resolution Diagnostic
+
+The flow-graph fixture suite checks whether supported imports, includes, calls,
+routes and templates resolve to real files without broad ambiguous edges:
 
 ```bash
-python3 experiments/flow-graph/evaluate.py
 python3 experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
 ```
 
-That experiment builds small framework-shaped fixture repositories and checks
-whether the SQLite graph extracts runtime-flow relations and resolves
-unambiguous include/import/call/route/template targets to real files. It also
-checks ambiguity guards and compares ranking noise with resolved edges enabled.
+## Agent Runs
 
-By default it expects local benchmark repositories under `/tmp`, for example:
-
-- `/tmp/init-agent-bench-django`
-- `/tmp/init-agent-bench-express`
-- `/tmp/init-agent-bench-flask`
-- `/tmp/init-agent-bench-fastify`
-- `/tmp/init-agent-bench-gin`
-- `/tmp/init-agent-bench-mini-redis`
-- `/tmp/init-agent-bench-requests`
-- `/tmp/init-agent-bench-vite`
-- `/tmp/init-agent-bench-pytest`
-- `/tmp/init-agent-bench-vue-core`
-- `/tmp/init-agent-bench-init-agent`
-- `/tmp/init-agent-bench-laravel-framework`
-
-Missing repositories are skipped.
-
-If `/tmp/init-agent-bench-init-agent` is missing, the
-`init-agent-repository-overview` case falls back to the current checkout. This
-keeps CI useful even when the larger optional benchmark repositories are not
-available.
-
-Suggested setup for public benchmark repositories:
-
-```bash
-git clone https://github.com/django/django.git /tmp/init-agent-bench-django
-git clone https://github.com/expressjs/express.git /tmp/init-agent-bench-express
-git clone https://github.com/pallets/flask.git /tmp/init-agent-bench-flask
-git clone https://github.com/fastify/fastify.git /tmp/init-agent-bench-fastify
-git clone https://github.com/gin-gonic/gin.git /tmp/init-agent-bench-gin
-git clone https://github.com/tokio-rs/mini-redis.git /tmp/init-agent-bench-mini-redis
-git clone https://github.com/psf/requests.git /tmp/init-agent-bench-requests
-git clone https://github.com/vitejs/vite.git /tmp/init-agent-bench-vite
-git clone https://github.com/pytest-dev/pytest.git /tmp/init-agent-bench-pytest
-git clone https://github.com/vuejs/core.git /tmp/init-agent-bench-vue-core
-git clone https://github.com/YOUR_USERNAME/init-agent.git /tmp/init-agent-bench-init-agent
-git clone https://github.com/laravel/framework.git /tmp/init-agent-bench-laravel-framework
-```
-
-Use `--rebuild-index` after changing scanner, role detection, symbol extraction
-or scoring code. It runs `init`, `map` and `git` once per benchmark repository
-before evaluating cases, so results are not based on stale `.agent/` indexes.
-
-Each case reports:
-
-- `top1_hit`
-- `top3_hit`
-- `top5_hit`
-- `expected_file_ranks`
-- `missing_expected_files`
-- `expected_hits`
-- `noise_hits`
-- `elapsed_seconds`
-- `candidate_file_count`
-- `manual_scan_file_count`
-- `manual_scan_reduction_percent`
-
-By default the evaluator prints JSON to stdout. Use `--output-dir` to write the
-standard reproducible artifacts:
-
-- `results.json`
-- `results.csv`
-- `summary.md`
-
-Use `experiments/plot_results.py` to generate simple PNG charts from the CSV:
-
-- Top-1 / Top-3 / Top-5 hit rate
-- noise hits per case
-- elapsed seconds per case
-- manual scan reduction percent per case
-
-`matplotlib` is optional and only required for chart generation.
-
-Use `--case <name>` to isolate one benchmark while tuning a ranking issue. The
-flag can be passed more than once.
-
-Use `--measure-manual-scan` when you want an explicit local IO comparison. It
-reads all indexed files for each case repository and adds:
-
-- `manual_scan_elapsed_seconds`
-- `manual_scan_characters`
-
-This is not a human-time estimate. It is a reproducible baseline for "how long
-does a broad local read take compared with generating the context pack?"
-
-The manifest intentionally includes both normal operational queries and
-counter-cases where documentation, examples, tests, CSS or migrations should be
-allowed to rank highly. This helps catch overfitting from one benchmark fix.
-Cases with `"command": "overview"` use `init-agent run --overview --json` and
-measure broad repository orientation instead of task-specific context ranking.
-
-Cases may include `notes` for known weak areas. For example, Vue compiler
-transform queries currently have overlapping compiler/runtime terminology that
-can surface nearby relevant files before the exact expected transform files.
-
-## Manual Validation Notes
-
-- OpenJarvis: overview mode produced a useful first map for a large
-  multi-language AI agent repository, including Python server/CLI entry points,
-  frontend/Tauri files, Rust workspace manifests and major subsystems. A local
-  nested checkout was excluded with `exclude_dirs`, confirming that
-  project-specific ignore configuration remains important.
-
-`--strict` exits non-zero if the summary misses the configured thresholds.
-Defaults are:
-
-- top-3 hit rate >= 0.85
-- top-5 hit rate >= 1.0
-- total noise hits <= 2
-- executed cases >= `--min-cases` (default 1; CI declares 4)
-
-The manifest contains four cases that always resolve to the current checkout.
-They make the CI guard deterministic. External repositories under `/tmp` remain
-optional and are needed for broader cross-project evidence.
-
-This is intentionally small and local. It does not call an LLM and does not
-send repository contents anywhere.
+`django-hidden-cause/` preserves one observed paired run with prompts, logs,
+patches and limitations. `agent-runs/` documents the layout for future A/B
+runs. These artifacts are workflow evidence, not a scientific performance
+claim.

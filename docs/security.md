@@ -29,8 +29,9 @@ summaries, but not full source file contents.
 
 ## MCP Server
 
-`init-agent mcp` exposes the same local metadata contracts over stdio for
-MCP-capable agents. It does not contact external services and does not execute
+`init-agent mcp` exposes a compact core set of local metadata contracts over
+stdio; `--profile full` retains the complete compatibility surface. It does not
+contact external services and does not execute
 an LLM. The tools are read-only for project source files and read the existing
 SQLite index without auto-mapping or refreshing the repository.
 

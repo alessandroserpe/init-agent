@@ -15,6 +15,7 @@ from typing import Any
 DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_SERVER_NAME = "init_agent"
 SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+MCP_PROFILES = ("core", "full")
 
 
 def codex_mcp_status(
@@ -70,9 +71,11 @@ def install_codex_mcp_cli(
     command: str | None = None,
     codex_command: str | None = None,
     replace: bool = False,
+    profile: str = "core",
 ) -> dict[str, Any]:
     """Install the server through Codex's own MCP management command."""
     _validate_server_name(server_name)
+    normalized_profile = _validate_profile(profile)
     resolved_root = root.expanduser().resolve() if root is not None else None
     resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
     resolved_codex = codex_command or shutil.which("codex")
@@ -85,6 +88,7 @@ def install_codex_mcp_cli(
             "root": str(resolved_root) if resolved_root else None,
             "root_mode": "pinned" if resolved_root else "dynamic",
             "command": resolved_command,
+            "profile": normalized_profile,
             "message": "Could not find the codex executable. Install Codex or use --manual-config --experimental.",
         }
 
@@ -104,6 +108,8 @@ def install_codex_mcp_cli(
         server_name,
         "--",
         resolved_command,
+        "--profile",
+        normalized_profile,
     ]
     if resolved_root is not None:
         add_command.extend(["--root", str(resolved_root)])
@@ -117,6 +123,7 @@ def install_codex_mcp_cli(
             "root": str(resolved_root) if resolved_root else None,
             "root_mode": "pinned" if resolved_root else "dynamic",
             "command": resolved_command,
+            "profile": normalized_profile,
             "codex_command": add_command,
             "returncode": add_result.returncode,
             "stdout": add_result.stdout,
@@ -142,6 +149,7 @@ def install_codex_mcp_cli(
         "root": str(resolved_root) if resolved_root else None,
         "root_mode": "pinned" if resolved_root else "dynamic",
         "command": resolved_command,
+        "profile": normalized_profile,
         "codex_command": add_command,
         "stdout": add_result.stdout,
         "stderr": add_result.stderr,
@@ -200,15 +208,17 @@ def install_codex_mcp_config(
     server_name: str = DEFAULT_SERVER_NAME,
     command: str | None = None,
     replace: bool = False,
+    profile: str = "core",
 ) -> dict[str, Any]:
     _validate_server_name(server_name)
+    normalized_profile = _validate_profile(profile)
 
     target_config = config_path or DEFAULT_CODEX_CONFIG
     target_config = target_config.expanduser()
     resolved_root = root.expanduser().resolve() if root is not None else None
     resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
     section_header = f"[mcp_servers.{server_name}]"
-    block = _config_block(section_header, resolved_command, resolved_root)
+    block = _config_block(section_header, resolved_command, resolved_root, normalized_profile)
 
     original = ""
     if target_config.exists():
@@ -227,6 +237,7 @@ def install_codex_mcp_config(
                     "root": str(resolved_root) if resolved_root else None,
                     "root_mode": "pinned" if resolved_root else "dynamic",
                     "command": resolved_command,
+                    "profile": normalized_profile,
                     "message": "Codex MCP config updated. Restart Codex to load init-agent MCP tools.",
                 }
             return {
@@ -238,6 +249,7 @@ def install_codex_mcp_config(
                 "root": str(resolved_root) if resolved_root else None,
                 "root_mode": "pinned" if resolved_root else "dynamic",
                 "command": resolved_command,
+                "profile": normalized_profile,
                 "message": f"Codex MCP server already exists: {section_header}. Use --replace to update only that section.",
             }
 
@@ -259,6 +271,7 @@ def install_codex_mcp_config(
         "root": str(resolved_root) if resolved_root else None,
         "root_mode": "pinned" if resolved_root else "dynamic",
         "command": resolved_command,
+        "profile": normalized_profile,
         "message": "Codex MCP config updated. Restart Codex to load init-agent MCP tools.",
     }
 
@@ -378,8 +391,11 @@ def _backup_config(config_path: Path) -> Path:
     return backup_path
 
 
-def _config_block(section_header: str, command: str, root: Path | None) -> str:
-    args_line = f'args = ["--root", "{_toml_string(str(root))}"]\n' if root is not None else "args = []\n"
+def _config_block(section_header: str, command: str, root: Path | None, profile: str = "core") -> str:
+    args = ["--profile", _validate_profile(profile)]
+    if root is not None:
+        args.extend(["--root", str(root)])
+    args_line = "args = [" + ", ".join(f'"{_toml_string(value)}"' for value in args) + "]\n"
     return (
         f"{section_header}\n"
         f'command = "{_toml_string(command)}"\n'
@@ -391,6 +407,13 @@ def _config_block(section_header: str, command: str, root: Path | None) -> str:
 
 def _toml_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _validate_profile(profile: str) -> str:
+    normalized = profile.strip().lower()
+    if normalized not in MCP_PROFILES:
+        raise ValueError(f"MCP profile must be one of: {', '.join(MCP_PROFILES)}")
+    return normalized
 
 
 def _replace_section(original: str, section_header: str, block: str) -> str:

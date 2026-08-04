@@ -12,14 +12,14 @@ and `estimate` also accept unquoted multi-word text.
 |---|---|---|
 | Orient | `init-agent overview` | You are new to the repository or want a broad map. |
 | Plan | `init-agent plan "<task>" --read 3` | You are about to inspect, debug or change code. |
-| Record reads | `init-agent plan read --id <id> --file <path>` | You opened a planned or unplanned file. |
-| Finish plan | `init-agent plan finish --id <id> ...` | You verified useful, noisy or missing files. |
+| Finish plan | `init-agent plan finish --id <id> --read-file <path> ...` | You verified which files were central, supporting, noisy or missing. |
 | Handoff | `init-agent session close` | You are wrapping up and want a checklist. |
 | Score | `init-agent scorecard` | You want to see whether recent reading plans oriented the agent well. |
 | Observe | `init-agent web` | You want a read-only browser view of local agent metadata. |
 
-Everything below is still supported. Treat it as the reference surface for
-scripts, MCP clients and targeted follow-up.
+Everything below is still supported. Treat it as the complete CLI reference,
+not a checklist for every agent task. Commands marked as legacy bookkeeping or
+administrative are normally unnecessary in the default MCP core workflow.
 
 ## Summary
 
@@ -37,8 +37,8 @@ scripts, MCP clients and targeted follow-up.
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
 | `init-agent trace "<task>"` | Trace likely investigation paths through the local graph. |
 | `init-agent plan "<task>" --read 3` | Build a memory-, feedback-, tag- and stale-aware reading plan with a bounded first-read budget. |
-| `init-agent plan read --id <id> --file <path>` | Record a file opened while following a saved reading plan. |
-| `init-agent plan diff --id <id>` | Compare planned files with recorded reads and outcomes. |
+| `init-agent plan read --id <id> --file <path>` | Legacy/advanced bookkeeping: record a file before the final plan outcome. |
+| `init-agent plan diff --id <id>` | Legacy/advanced bookkeeping: compare planned files with incremental read events. |
 | `init-agent plan finish --id <id> --verified <path> --useful <path>` | Close a saved reading plan and record verified outcomes. |
 | `init-agent plan report --id <id> --workstream <key> --summary <text>` | Submit a delegated worker report for parent review. |
 | `init-agent plan review --id <id> --workstream <key> --decision accepted` | Record the parent orchestrator's decision. |
@@ -256,11 +256,8 @@ tags, local memory notes, feedback and stale state:
 ```bash
 init-agent plan "installare server mcp codex"
 init-agent plan "installare server mcp codex" --read 3
+init-agent plan "installare server mcp codex" --read 3 --delegate
 init-agent plan "installare server mcp codex" --json
-init-agent plan read --id 7 --file init_agent/mcp_server.py --note "Opened MCP server implementation."
-init-agent plan diff --id 7
-init-agent plan report --id 7 --workstream ws-1 --agent explorer --summary "Verified the assigned scope." --read-file init_agent/mcp_server.py --finding "The stdio loop is owned here."
-init-agent plan review --id 7 --workstream ws-1 --decision accepted --note "Parent checked the file and evidence."
 init-agent plan finish --id 7 --read-file init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path."
 init-agent plan stats
 ```
@@ -280,8 +277,9 @@ before editing.
 explicit file budget instead of opening every candidate when the ranking is
 noisy.
 
-`plan read` records files the agent actually opened while following a saved
-plan. `plan diff` compares the saved plan with recorded activity:
+Most agents should pass the ordered files they opened directly to `plan finish`.
+For scripts that require incremental bookkeeping, `plan read` records each file
+as it is opened and `plan diff` compares the saved plan with recorded activity:
 
 - `read_now_not_read`: high-priority suggestions not yet opened
 - `suggested_not_read`: any planned file that has not been opened
@@ -290,6 +288,10 @@ plan. `plan diff` compares the saved plan with recorded activity:
   outcome yet
 
 This is explicit agent metadata, not automatic editor telemetry.
+
+Delegated plans may additionally use `plan report` and `plan review`. These
+commands are coordination records for an orchestrator; they are not part of the
+normal single-agent workflow.
 
 `plan finish` records the agent's verified outcome for a saved plan. Use
 `--read-file` for files actually opened and `--verified` for files whose role
@@ -360,12 +362,7 @@ Returns the reading plan as a stable JSON contract:
 
 ```bash
 init-agent tool repo_reading_plan --query "installare server mcp codex" --read 3 --json
-init-agent tool repo_reading_plan_read --id 7 --path init_agent/mcp_server.py --note "Opened MCP server implementation." --json
-init-agent tool repo_reading_plan_diff --id 7 --json
 init-agent tool repo_reading_plan_finish --id 7 --read init_agent/mcp_server.py --verified init_agent/mcp_server.py --central init_agent/mcp_server.py --support init_agent/mcp_tools.py --summary "Verified MCP startup path." --json
-init-agent tool repo_workstream_report --id 7 --workstream ws-1 --agent explorer --summary "Verified the assigned scope." --read-file init_agent/mcp_server.py --json
-init-agent tool repo_workstream_review --id 7 --workstream ws-1 --decision accepted --note "Parent checked the evidence." --json
-init-agent tool repo_reading_plan_mark --id 7 --kind smoke --json
 init-agent tool repo_reading_plan_stats --json
 ```
 
@@ -373,9 +370,9 @@ The response includes query tokens, plan items, memory matches, repo-wide
 memory context, recommended actions and warnings. Each plan item includes an
 action, confidence, base and assisted ranks, signal rank lift, tags, compact
 memory notes and feedback signals. Saved plans include an `id` so agents can finish the loop after
-reading files. `repo_reading_plan_read` records files opened during the session,
-and `repo_reading_plan_diff` highlights unread suggestions, unplanned reads and
-opened files that still need an outcome. `repo_reading_plan_mark` labels smoke,
+reading files. Pass the ordered read list directly to `repo_reading_plan_finish`.
+The legacy `repo_reading_plan_read` and `repo_reading_plan_diff` commands remain
+available for scripts requiring incremental bookkeeping. `repo_reading_plan_mark` labels smoke,
 experiment, planning, diagnostic or docs-only plans so they do not pollute the
 default scorecard. `repo_reading_plan_stats` and `init-agent scorecard` report
 orientation metrics such as Top-1/Top-3/Top-5 central-file hit rate, missing
@@ -678,39 +675,19 @@ init-agent mcp install-codex --root /path/to/repository
 init-agent mcp uninstall-codex
 ```
 
-The server exposes:
+The default MCP `core` profile exposes:
 
-- `repo_graph_search`
-- `repo_trace`
 - `repo_reading_plan`
-- `repo_reading_plan_read`
-- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
-- `repo_workstream_report`
-- `repo_workstream_review`
-- `repo_reading_plan_stats`
 - `repo_overview`
-- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
-- `repo_feedback_add`
-- `repo_feedback_explain`
 - `repo_memory_add`
-- `repo_memory_audit`
-- `repo_memory_list`
 - `repo_memory_search`
 - `repo_session_close`
-- `repo_session_summary`
-- `repo_memory_topics`
-- `repo_memory_delete`
-- `repo_memory_update`
-- `repo_flow_topics`
-- `repo_task_add`
-- `repo_task_list`
-- `repo_task_note`
-- `repo_task_update`
-- `repo_task_close`
-- `repo_file_notes`
+
+Use `init-agent-mcp --profile full` for the complete legacy and administrative
+surface documented in this reference.
 
 The server does not modify project source files and is lazy against the
 existing SQLite index. Feedback and memory tools may write metadata to

@@ -3,40 +3,21 @@
 `init-agent` includes a minimal MCP stdio server for agents that can consume
 Model Context Protocol tools.
 
-The MCP server exposes the same local repo tool contracts as the CLI:
+The default `core` profile exposes the small daily agent loop:
 
-- `repo_graph_search`
-- `repo_trace`
 - `repo_reading_plan`
-- `repo_reading_plan_read`
-- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
-- `repo_reading_plan_mark`
-- `repo_reading_plan_stats`
-- `repo_workstream_report`
-- `repo_workstream_review`
 - `repo_overview`
-- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
-- `repo_feedback_add`
-- `repo_feedback_explain`
 - `repo_memory_add`
-- `repo_memory_audit`
-- `repo_memory_list`
 - `repo_memory_search`
 - `repo_session_close`
-- `repo_session_summary`
-- `repo_memory_topics`
-- `repo_memory_delete`
-- `repo_memory_update`
-- `repo_flow_topics`
-- `repo_task_add`
-- `repo_task_list`
-- `repo_task_note`
-- `repo_task_update`
-- `repo_task_close`
-- `repo_file_notes`
+
+Start `init-agent-mcp --profile full` when an existing integration needs all
+legacy, maintenance, scorecard, task and delegated-workstream contracts. These
+tools also remain available through `init-agent tool ...`; reducing the MCP
+surface does not remove their functionality.
 
 It does not call an LLM and does not modify project source files. Most MCP tool
 calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
@@ -54,7 +35,8 @@ bounded `read_now` list, record files actually opened, inspect the diff between
 planned and actual reads, and later classify central, supporting, created,
 verification, noisy or missing files. `useful` remains available for backward
 compatibility. This is explicit local metadata, not automatic editor telemetry.
-Reading plans can also include optional delegation advice. If an orchestrator
+Reading plans include optional delegation advice only when the caller passes
+`delegate=true` or the CLI uses `--delegate`. If an orchestrator
 uses a proposed workstream, `repo_workstream_report` records the worker's
 structured evidence and `repo_workstream_review` records the parent's explicit
 acceptance, rework request or rejection. Unused proposals do not block plan
@@ -128,38 +110,17 @@ PY
 Expected result: framed JSON-RPC responses. The `tools/list` response should
 include:
 
-- `repo_graph_search`
-- `repo_trace`
 - `repo_reading_plan`
-- `repo_reading_plan_read`
-- `repo_reading_plan_diff`
 - `repo_reading_plan_finish`
-- `repo_reading_plan_mark`
-- `repo_reading_plan_stats`
-- `repo_workstream_report`
-- `repo_workstream_review`
 - `repo_overview`
-- `repo_entrypoints`
 - `repo_related_file`
 - `repo_symbol_callers`
-- `repo_feedback_add`
-- `repo_feedback_explain`
 - `repo_memory_add`
-- `repo_memory_audit`
-- `repo_memory_list`
 - `repo_memory_search`
 - `repo_session_close`
-- `repo_session_summary`
-- `repo_memory_topics`
-- `repo_memory_delete`
-- `repo_memory_update`
-- `repo_flow_topics`
-- `repo_task_add`
-- `repo_task_list`
-- `repo_task_note`
-- `repo_task_update`
-- `repo_task_close`
-- `repo_file_notes`
+
+Add `--profile full` to the subprocess command when smoke-testing the complete
+legacy surface.
 
 ## Codex Configuration
 
@@ -175,7 +136,7 @@ init-agent mcp install-codex
 Under the hood, this runs the equivalent of:
 
 ```bash
-codex mcp add init_agent -- init-agent-mcp
+codex mcp add init_agent -- init-agent-mcp --profile core
 ```
 
 Restart Codex after running it, then check `/mcp` inside Codex. In this
@@ -255,7 +216,7 @@ current working directory used when Codex starts the server:
 ```toml
 [mcp_servers.init_agent]
 command = "/Users/me/.local/bin/init-agent-mcp"
-args = []
+args = ["--profile", "core"]
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
@@ -268,7 +229,7 @@ Inside a repository:
 # .codex/config.toml
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
-args = []
+args = ["--profile", "core"]
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
@@ -283,21 +244,20 @@ directory:
 ```toml
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
-args = ["--root", "/Users/me/projects/my-repo"]
+args = ["--profile", "core", "--root", "/Users/me/projects/my-repo"]
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 ```
 
-### Limit Exposed Tools
+### Full Compatibility Profile
 
-Codex supports tool allow/deny lists for MCP servers. For example, expose only
-overview and graph search:
+Use the full profile only for integrations that still call administrative or
+legacy contracts directly:
 
 ```toml
 [mcp_servers.init_agent]
 command = "init-agent-mcp"
-args = []
-enabled_tools = ["repo_overview", "repo_entrypoints", "repo_graph_search"]
+args = ["--profile", "full"]
 ```
 
 ## Fresh Codex Session Checklist
@@ -328,8 +288,8 @@ Expected result:
 
 - `init_agent` is listed as enabled.
 - The repo tools are available, for example `repo_overview`,
-  `repo_graph_search`, `repo_reading_plan`, `repo_reading_plan_diff`,
-  `repo_related_file`, `repo_memory_search` and `repo_memory_audit`.
+  `repo_reading_plan`, `repo_reading_plan_finish`, `repo_related_file`,
+  `repo_memory_search` and `repo_session_close`.
 - Calling `repo_overview` reports the same repository root you started Codex
   from, unless you intentionally pinned `--root`.
 

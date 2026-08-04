@@ -1102,7 +1102,7 @@ class CliToolsTests(InitAgentTestCase):
                 plan_output = StringIO()
                 with redirect_stdout(plan_output):
                     self.assertEqual(
-                        main(["plan", "debug login session across source tests and docs", "--read", "3", "--json"]),
+                        main(["plan", "debug login session across source tests and docs", "--read", "3", "--delegate", "--json"]),
                         0,
                     )
                 plan = json.loads(plan_output.getvalue())

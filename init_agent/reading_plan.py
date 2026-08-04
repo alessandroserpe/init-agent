@@ -16,7 +16,13 @@ from .text_tokens import tokenize_query
 from .trace import trace_query
 
 
-def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int = 3) -> dict[str, Any]:
+def build_reading_plan(
+    root: Path,
+    query: str,
+    limit: int = 10,
+    read_budget: int = 3,
+    delegate: bool = False,
+) -> dict[str, Any]:
     bounded_limit = max(1, min(limit, 30))
     bounded_read_budget = max(1, min(read_budget, 10))
     query_tokens = tokenize_query(query)
@@ -119,7 +125,17 @@ def build_reading_plan(root: Path, query: str, limit: int = 10, read_budget: int
     plan_items.sort(key=lambda item: int(item["rank"]))
     plan_items = plan_items[:bounded_limit]
     _assign_read_priorities(plan_items, bounded_read_budget)
-    delegation = build_delegation_advice(query, plan_items, bounded_read_budget)
+    delegation = (
+        build_delegation_advice(query, plan_items, bounded_read_budget)
+        if delegate
+        else {
+            "strategy": "direct",
+            "recommended": False,
+            "reason": "delegation was not requested",
+            "task_profile": {},
+            "workstreams": [],
+        }
+    )
 
     return {
         "query": query,

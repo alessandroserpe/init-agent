@@ -30,9 +30,13 @@ python -m unittest discover -s tests -v
 Before opening a pull request:
 
 - Add or update `unittest` coverage for behavior changes.
-- Update `README.md` and `CHANGELOG.md` when user-facing behavior changes.
+- Update the relevant public documentation when user-facing behavior changes.
 - Run the full test suite.
 - Keep changes focused on one feature or fix.
+
+Release history is maintained through
+[GitHub Releases](https://github.com/alessandroserpe/init-agent/releases)
+instead of a second manually synchronized changelog in the repository.
 
 ## Security And Privacy
 

@@ -11,8 +11,6 @@ For most non-trivial work, prefer this loop:
 ```bash
 init-agent plan "why does the login session expire after redirect" --read 3
 # read and verify the suggested files
-init-agent plan read --id <id> --file src/auth/session.py --note "Opened session flow."
-init-agent plan diff --id <id>
 init-agent plan finish --id <id> --read-file src/auth/session.py --verified src/auth/session.py --central src/auth/session.py --support tests/test_session.py --summary "Verified session path."
 init-agent session close
 ```
@@ -54,21 +52,18 @@ For context savings:
 init-agent estimate "debug login session redirect"
 ```
 
-For structured agent integrations, use the `tool repo_*` commands or the MCP
-tools directly. The most common groups are:
+For structured agent integrations, prefer the compact MCP `core` profile:
 
-- orientation: `repo_graph_search`, `repo_overview`, `repo_entrypoints`,
-  `repo_related_file`, `repo_symbol_callers`;
-- plans: `repo_reading_plan`, `repo_reading_plan_read`,
-  `repo_reading_plan_diff`, `repo_reading_plan_finish`,
-  `repo_reading_plan_stats`, `repo_workstream_report`,
-  `repo_workstream_review`;
-- feedback: `repo_feedback_add`, `repo_feedback_explain`;
-- memory: `repo_memory_add`, `repo_memory_search`, `repo_memory_audit`,
-  `repo_memory_topics`, `repo_flow_topics`, `repo_memory_list`,
-  `repo_memory_update`;
-- tasks and handoff: `repo_task_add`, `repo_task_note`, `repo_task_close`,
-  `repo_session_close`.
+- orient: `repo_overview`, then `repo_reading_plan`;
+- investigate: `repo_related_file` or `repo_symbol_callers` only when needed;
+- close the loop: `repo_reading_plan_finish`;
+- reuse durable context: `repo_memory_search`, `repo_memory_add`;
+- hand off: `repo_session_close`.
+
+The CLI and MCP `full` profile retain graph search, trace, scorecard, plan
+ledger, feedback maintenance, memory maintenance, task and delegated-workstream
+contracts for diagnostics, scripts and compatibility. Do not call them during a
+normal task merely because they exist.
 
 These commands return stable JSON contracts with candidate files, symbols, file
 neighborhoods, callers, commits, follow-up commands, optional feedback, local
@@ -83,14 +78,12 @@ the file, not trust the note.
 
 Use `--read N` to keep the first pass bounded. Items marked `read_now` are the
 initial file budget; `read_if_needed` and `context_only` are follow-ups. After
-opening files, call `repo_reading_plan_read` so the plan has an explicit read
-ledger. Use `repo_reading_plan_diff` before finishing when you need to see
-unread suggestions, unplanned reads or opened files that still need an outcome.
-After verification, call `repo_reading_plan_finish` with the plan id and the
-actual outcome: files read, verified, central, supporting, created,
+verification, call `repo_reading_plan_finish` once with the plan id, the ordered
+files read and the actual outcome: verified, central, supporting, created,
 verification-only, noisy or missing. This creates a small feedback loop without
-asking the agent to remember every opened file in chat. The read ledger is
-explicit metadata, not automatic editor telemetry. Use
+requiring separate read/diff calls. The legacy `repo_reading_plan_read` and
+`repo_reading_plan_diff` contracts remain in the full profile for scripts that
+need incremental bookkeeping. Use
 `repo_reading_plan_stats` or `init-agent scorecard` only when local metrics are
 useful. They measure orientation quality: whether central files appeared early,
 how often important pre-existing files were missing, and how quickly the read
@@ -103,7 +96,8 @@ Mark smoke, experiment, planning, diagnostic or docs-only plans with
 
 ### Optional Delegation
 
-A reading plan may include `delegation` advice. Treat it as a coordination
+A reading plan includes delegation advice only when explicitly requested with
+`--delegate` or `delegate=true`. Treat it as a coordination
 hint, not an instruction to spawn workers. Small or high-confidence plans use
 the `direct` strategy. Broader plans may propose one or more bounded,
 read-only workstreams and provider-agnostic model tiers (`fast`, `balanced`,
@@ -182,11 +176,12 @@ init-agent mcp
 Or point it at a root explicitly:
 
 ```bash
-init-agent-mcp --root /path/to/repository
+init-agent-mcp --profile core --root /path/to/repository
 ```
 
-The MCP server exposes the same `repo_*` tool contracts as the CLI. See
-[commands.md](commands.md) for the complete list.
+The MCP server exposes a compact core surface by default. CLI commands and the
+MCP `full` profile retain the complete compatibility surface. See
+[commands.md](commands.md) for the full command reference.
 
 See [mcp.md](mcp.md) for Codex `config.toml` examples and smoke testing.
 

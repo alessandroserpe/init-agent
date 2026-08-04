@@ -84,7 +84,6 @@ For day-to-day agent work, prefer the smaller loop:
 ```bash
 init-agent plan "fix login session bug" --read 3
 # read and verify the suggested files
-init-agent plan read --id <id> --file <path> --note "opened while investigating"
 init-agent plan finish --id <id> --read-file <path> --verified <path> --central <path> --support <path> --summary "short outcome"
 init-agent session close
 ```
@@ -98,7 +97,8 @@ init-agent web
 The dashboard is read-only and shows local memory, feedback, open tasks,
 reading plans, orientation scorecard metrics and recurring files.
 
-For larger plans, `init-agent` can also return conservative delegation advice.
+For larger plans, `init-agent plan "<task>" --delegate` can return conservative
+delegation advice. Delegation is disabled by default.
 It may propose bounded read-only workstreams with `fast`, `balanced` or `deep`
 model tiers and a reasoning-effort hint. The coding agent remains the
 orchestrator: it decides whether to delegate, every worker must submit a
@@ -152,10 +152,10 @@ Useful follow-ups:
 
 See [docs/commands.md](docs/commands.md) for the full command reference.
 
-For MCP and scripted integrations, the same loop is available through JSON
-tools such as `repo_reading_plan_read`, `repo_reading_plan_diff`,
-`repo_reading_plan_finish`, `repo_workstream_report`,
-`repo_workstream_review`, `repo_task_note` and `repo_task_close`.
+The default MCP `core` profile exposes only the daily agent loop: overview,
+reading plan, plan finish, targeted file/symbol follow-up, memory search/write
+and session close. Administrative and legacy contracts remain available through
+the CLI or the explicit MCP `full` profile.
 
 ## Use With Codex
 
@@ -164,6 +164,13 @@ Install the CLI once, then register the MCP server with Codex:
 ```bash
 pipx install git+https://github.com/alessandroserpe/init-agent.git
 init-agent mcp install-codex
+```
+
+The installer registers the compact `core` MCP profile. Existing integrations
+that require every legacy and administrative tool can use:
+
+```bash
+init-agent mcp install-codex --profile full --replace
 ```
 
 This registers `init-agent` as a general Codex MCP server. It uses the current

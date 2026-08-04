@@ -9,7 +9,22 @@ because they are possible.
 
 ## Near-Term Priorities
 
-### 1. Clearer Evaluation
+### 1. Validate The Compact Agent Loop
+
+Observe whether fresh agents can complete normal work with the default MCP
+core profile:
+
+```bash
+init-agent overview
+init-agent plan "<task>" --read 3
+init-agent plan finish --id <id> --read-file <path> ...
+init-agent session close
+```
+
+Only promote a full-profile tool back into the core when repeated real tasks
+show that the smaller loop cannot express the required workflow.
+
+### 2. Longitudinal Orientation Evidence
 
 Keep improving small, repeatable experiments that measure orientation quality:
 
@@ -20,20 +35,6 @@ Keep improving small, repeatable experiments that measure orientation quality:
 
 These metrics should stay separate from broad claims about agent speed or patch
 quality.
-
-### 2. Better Agent Workflow
-
-Make the recommended agent loop easier to follow:
-
-```bash
-init-agent plan "<task>" --read 3
-init-agent plan read --id <id> --file <path>
-init-agent plan finish --id <id> ...
-init-agent session close
-```
-
-Future work may add a higher-level helper around this loop, but the underlying
-plan/read/finish metadata should remain inspectable.
 
 ### 3. More Useful Dashboard
 
@@ -48,7 +49,7 @@ Keep the dashboard read-only, but improve how it explains local agent behavior:
 The dashboard should help humans understand what the agent did without turning
 into a project management system.
 
-### 4. Ranking And Memory Quality
+### 4. Ranking, Memory And Feedback Quality
 
 Validate that feedback, memory and tags make later orientation better:
 
@@ -63,7 +64,7 @@ The scorecard should stay honest about weak areas instead of hiding them.
 
 Prefer depth over broad shallow support.
 
-Initial focus areas:
+Current focus areas:
 
 - Python;
 - JavaScript and TypeScript;
@@ -72,17 +73,17 @@ Initial focus areas:
 Improve entrypoint detection, relation extraction and noisy-file filtering in
 these ecosystems before expanding broadly.
 
-The first deep-graph increment now stores qualified Python/PHP symbols,
-callable scope, resolved symbol calls and inheritance edges. Before adding more
+The graph already stores qualified Python/PHP symbols, callable scope, resolved
+symbol calls and inheritance edges. Before adding more relation types or
 languages, validate precision, index size and ranking impact on real projects.
 
 ## Longer-Term Ideas
 
 - Dependency-aware incremental refresh.
-- Optional static HTML graph exports.
 - More agent-install helpers after each client format is verified.
 - Broader optional tree-sitter support where it provides clear value.
 - Structured experiment archives for paired agent runs.
+- Optional bounded graph views inside the existing read-only dashboard.
 
 ## Positioning
 

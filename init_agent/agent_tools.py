@@ -281,6 +281,7 @@ def repo_reading_plan(
     prepare: bool = True,
     source: str = "agent",
     kind: str = "real",
+    delegate: bool = False,
 ) -> dict[str, Any]:
     """Return a reading plan composed from graph, trace, memory, feedback and tags."""
 
@@ -294,17 +295,14 @@ def repo_reading_plan(
         readiness = _readiness(root)
         preparation = _lazy_preparation(readiness["warnings"])
         warnings = list(readiness["warnings"])
-    plan = build_reading_plan(root, query, limit=bounded_limit) if prepare or readiness["ready"] else {
-        "query": query,
-        "query_tokens": [],
-        "plan_items": [],
-        "memory_matches": [],
-        "repo_memory_context": [],
-        "recommended_actions": [],
-        "warnings": [],
-    }
     if prepare or readiness["ready"]:
-        plan = build_reading_plan(root, query, limit=bounded_limit, read_budget=bounded_read_budget)
+        plan = build_reading_plan(
+            root,
+            query,
+            limit=bounded_limit,
+            read_budget=bounded_read_budget,
+            delegate=delegate,
+        )
         saved_plan = save_reading_plan(
             root,
             query,
@@ -315,6 +313,15 @@ def repo_reading_plan(
             delegation=plan.get("delegation"),
         )
     else:
+        plan = {
+            "query": query,
+            "query_tokens": [],
+            "plan_items": [],
+            "memory_matches": [],
+            "repo_memory_context": [],
+            "recommended_actions": [],
+            "warnings": [],
+        }
         saved_plan = None
     return {
         "tool": "repo_reading_plan",

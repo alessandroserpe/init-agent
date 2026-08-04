@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .mcp_tools import MCP_TOOL_HANDLERS, mcp_tool_definitions
+from .mcp_tools import MCP_TOOL_HANDLERS, MCP_TOOL_PROFILES, mcp_tool_definitions, mcp_tool_names
 
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -24,20 +24,28 @@ JsonRpcMessage = tuple[dict[str, Any], str]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="init-agent-mcp", description="Run the init-agent MCP stdio server.")
     parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
+    parser.add_argument(
+        "--profile",
+        choices=MCP_TOOL_PROFILES,
+        default="core",
+        help="MCP tool surface: core for the daily agent loop, full for legacy/advanced tools.",
+    )
     args = parser.parse_args(argv)
-    server = InitAgentMcpServer(Path(args.root).resolve())
+    server = InitAgentMcpServer(Path(args.root).resolve(), profile=args.profile)
     return server.serve()
 
 
 class InitAgentMcpServer:
     """Small JSON-RPC server for MCP clients over stdin/stdout."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, profile: str = "core") -> None:
         self.root = root
+        self.profile = profile
+        self.enabled_tools = mcp_tool_names(profile)
         self.debug_log = Path(os.environ["INIT_AGENT_MCP_DEBUG_LOG"]).expanduser() if os.environ.get("INIT_AGENT_MCP_DEBUG_LOG") else None
 
     def serve(self) -> int:
-        self._debug("server_start", {"root": str(self.root), "version": __version__})
+        self._debug("server_start", {"root": str(self.root), "version": __version__, "profile": self.profile})
         input_stream = sys.stdin.buffer
         output_stream = sys.stdout.buffer
         while True:
@@ -69,7 +77,7 @@ class InitAgentMcpServer:
         if method == "notifications/initialized":
             return None
         if method == "tools/list":
-            return _result_response(request_id, {"tools": mcp_tool_definitions()})
+            return _result_response(request_id, {"tools": mcp_tool_definitions(self.profile)})
         if method == "tools/call":
             return _result_response(request_id, self._call_tool(params))
         if method == "ping":
@@ -82,6 +90,11 @@ class InitAgentMcpServer:
         handler = MCP_TOOL_HANDLERS.get(name)
         if handler is None:
             return _tool_error(f"unknown tool: {name}")
+        if name not in self.enabled_tools:
+            return _tool_error(
+                f"tool not enabled in MCP profile {self.profile}: {name}; "
+                "start init-agent-mcp with --profile full for legacy and administrative tools"
+            )
         try:
             result = handler(self.root, arguments)
         except ValueError as exc:

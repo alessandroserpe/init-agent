@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from init_agent.mcp_installer import codex_mcp_status
 from init_agent.skill_installer import SKILL_MANIFEST, codex_skill_status, sync_codex_skill
@@ -10,22 +11,20 @@ class DocsInstallTests(InitAgentTestCase):
     def test_agent_skill_template_documents_core_workflow(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skill_path = root / "skills" / "init-agent-orientation" / "SKILL.md"
+        bundled_path = root / "init_agent" / "resources" / "skills" / "init-agent-orientation" / "SKILL.md"
         self.assertTrue(skill_path.exists())
         content = skill_path.read_text(encoding="utf-8")
+        self.assertEqual(content, bundled_path.read_text(encoding="utf-8"))
         self.assertIn("init-agent run --overview", content)
-        self.assertIn("init-agent run", content)
-        self.assertIn("Default to the smallest useful loop", content)
-        self.assertIn("init-agent symbol", content)
-        self.assertIn("init-agent callers", content)
-        self.assertIn("init-agent related", content)
-        self.assertIn("init-agent feedback add", content)
-        self.assertIn("init-agent feedback explain", content)
-        self.assertIn("keep a tiny verification ledger", content)
-        self.assertIn("Noisy Or Empty Results", content)
-        self.assertIn("do not start reading the whole repository", content)
-        self.assertIn("Feedback is expected after non-trivial verified work", content)
-        self.assertIn("Memory is expected after non-trivial work", content)
-        self.assertIn("Do not treat the context pack as source of truth", content)
+        self.assertIn("Use the smallest useful loop", content)
+        self.assertIn("repo_reading_plan", content)
+        self.assertIn("repo_reading_plan_finish", content)
+        self.assertIn("repo_related_file", content)
+        self.assertIn("repo_symbol_callers", content)
+        self.assertIn("repo_memory_add", content)
+        self.assertIn("repo_session_close", content)
+        self.assertIn("Do not call every available command", content)
+        self.assertIn("Delegation advice is disabled by default", content)
 
     def test_agent_skill_readme_documents_install_and_shim(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -36,8 +35,57 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("init-agent sync", content)
         self.assertIn("cp -R skills/init-agent-orientation ~/.codex/skills/", content)
         self.assertIn("PYTHONPATH", content)
-        self.assertIn("init-agent: command not found", content)
-        self.assertIn("Argument expected for the -m option", content)
+        self.assertIn("MCP `core` profile", content)
+        self.assertIn("repo_reading_plan_finish", content)
+        self.assertIn("repo_session_close", content)
+
+    def test_public_docs_keep_the_default_loop_compact(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        agent_usage = (root / "docs" / "agent-usage.md").read_text(encoding="utf-8")
+        commands = (root / "docs" / "commands.md").read_text(encoding="utf-8")
+
+        readme_loop = readme.split("## Example Output", 1)[0]
+        agent_loop = agent_usage.split("## Generic Workflow", 1)[0]
+        commands_loop = commands.split("## Summary", 1)[0]
+        for section in (readme_loop, agent_loop, commands_loop):
+            self.assertIn("plan finish", section)
+            self.assertNotIn("plan read", section)
+            self.assertNotIn("plan diff", section)
+
+    def test_release_and_task_history_use_single_sources(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        contributing = (root / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertFalse((root / "CHANGELOG.md").exists())
+        self.assertFalse((root / "TASKS.md").exists())
+        self.assertIn("GitHub Releases", contributing)
+
+    def test_experiments_readme_points_to_full_methodology(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "experiments" / "README.md").read_text(encoding="utf-8")
+        self.assertIn("../docs/experiments.md", content)
+        self.assertIn("do not prove", content)
+        self.assertIn("--strict --min-cases 4", content)
+
+    def test_public_markdown_links_resolve_locally(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        paths = [root / "README.md", root / "CONTRIBUTING.md"]
+        paths.extend(sorted((root / "docs").glob("*.md")))
+        paths.extend(sorted((root / "experiments").glob("**/*.md")))
+        paths.append(root / "skills" / "README.md")
+
+        for path in paths:
+            content = path.read_text(encoding="utf-8")
+            for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", content):
+                if target.startswith(("http://", "https://", "#")):
+                    continue
+                local_target = target.split("#", 1)[0]
+                if not local_target:
+                    continue
+                self.assertTrue(
+                    (path.parent / local_target).resolve().exists(),
+                    f"broken Markdown link in {path.relative_to(root)}: {target}",
+                )
 
     def test_main_readme_documents_two_command_codex_install(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -60,7 +108,8 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("--manual-config --experimental", content)
         self.assertIn("Content-Length", content)
         self.assertIn("tools/list", content)
-        self.assertIn("repo_graph_search", content)
+        self.assertIn("repo_reading_plan", content)
+        self.assertIn("--profile full", content)
 
     def test_docs_cover_session_close_and_optional_tree_sitter(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -82,31 +131,20 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("init-agent scorecard", commands)
         self.assertIn("repo_flow_topics", commands)
         self.assertIn("init-agent web", commands)
-        self.assertIn("repo_task_note", readme)
         self.assertIn("init-agent web", readme)
-        self.assertIn("repo_reading_plan_finish", readme)
-        self.assertIn("repo_reading_plan_read", readme)
-        self.assertIn("repo_reading_plan_diff", readme)
+        self.assertIn("init-agent plan finish", readme)
+        self.assertIn("MCP `core` profile", readme)
         self.assertIn("init-agent scorecard", readme)
-        self.assertIn("repo_task_close", mcp)
         self.assertIn("repo_reading_plan_finish", mcp)
-        self.assertIn("repo_reading_plan_read", mcp)
-        self.assertIn("repo_reading_plan_diff", mcp)
-        self.assertIn("repo_reading_plan_mark", mcp)
-        self.assertIn("repo_workstream_report", mcp)
-        self.assertIn("repo_workstream_review", mcp)
-        self.assertIn("repo_flow_topics", mcp)
-        self.assertIn("repo_task_list", skill)
+        self.assertIn("repo_memory_search", mcp)
+        self.assertIn("repo_session_close", mcp)
+        self.assertIn("--profile full", mcp)
+        self.assertIn("Full Compatibility Profile", mcp)
         self.assertIn("repo_reading_plan_finish", skill)
-        self.assertIn("repo_reading_plan_read", skill)
-        self.assertIn("repo_reading_plan_diff", skill)
-        self.assertIn("init-agent scorecard", skill)
-        self.assertIn("repo_workstream_report", skill)
-        self.assertIn("repo_workstream_review", skill)
-        self.assertIn("init-agent plan \"<user task>\" --read 3", skill)
-        self.assertIn("Do not wait for the user to ask", skill)
-        self.assertIn("Prefer updating an existing memory", skill)
-        self.assertIn("Only fall back to broad filesystem exploration after this recovery loop fails", skill)
+        self.assertIn("repo_reading_plan", skill)
+        self.assertIn("repo_memory_add", skill)
+        self.assertIn("repo_session_close", skill)
+        self.assertIn("Only then broaden filesystem exploration", skill)
         self.assertIn("pipx inject init-agent tree-sitter tree-sitter-php", commands)
         self.assertIn("tree-sitter", parsing)
         self.assertIn("falls back to the built-in PHP parser", parsing)
@@ -142,7 +180,8 @@ class DocsInstallTests(InitAgentTestCase):
             self.assertEqual(data["timeout_patch"]["status"], "updated")
             args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
             self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
-            self.assertEqual(len(args), 5)
+            self.assertEqual(len(args), 7)
+            self.assertEqual(args[-2:], ["--profile", "core"])
             self.assertNotIn("--root", args)
             config = (codex_home / "config.toml").read_text(encoding="utf-8")
             self.assertIn("startup_timeout_sec = 120", config)
@@ -179,6 +218,30 @@ class DocsInstallTests(InitAgentTestCase):
             args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
             self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
             self.assertEqual(args[-2:], ["--root", str(root.resolve())])
+
+    def test_mcp_install_codex_can_request_full_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            log_path = Path(tmp) / "codex_args.json"
+            fake_codex = _fake_codex(Path(tmp), log_path)
+
+            previous_codex_home = os.environ.get("CODEX_HOME")
+            os.environ["CODEX_HOME"] = str(codex_home)
+            try:
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(
+                        main(["mcp", "install-codex", "--profile", "full", "--codex-command", str(fake_codex), "--json"]),
+                        0,
+                    )
+            finally:
+                if previous_codex_home is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = previous_codex_home
+
+            args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
+            self.assertEqual(args[-2:], ["--profile", "full"])
 
     def test_mcp_uninstall_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,7 +291,7 @@ class DocsInstallTests(InitAgentTestCase):
             self.assertTrue(updated.startswith(original))
             self.assertIn("[mcp_servers.init_agent]", updated)
             self.assertRegex(updated, r'command = ".*init-agent-mcp"')
-            self.assertIn(f'args = ["--root", "{root.resolve()}"]', updated)
+            self.assertIn(f'args = ["--profile", "core", "--root", "{root.resolve()}"]', updated)
             self.assertIn("startup_timeout_sec = 120", updated)
             backups = list(config.parent.glob("config.toml.bak-*"))
             self.assertEqual(len(backups), 1)
@@ -306,7 +369,7 @@ class DocsInstallTests(InitAgentTestCase):
             updated = config.read_text(encoding="utf-8")
             self.assertIn('model = "gpt-5.5"', updated)
             self.assertIn("[mcp_servers.node_repl]", updated)
-            self.assertIn(f'args = ["--root", "{root.resolve()}"]', updated)
+            self.assertIn(f'args = ["--profile", "core", "--root", "{root.resolve()}"]', updated)
             self.assertIn("startup_timeout_sec = 120", updated)
             self.assertNotIn('args = ["--root", "/old"]', updated)
             backups = list(config.parent.glob("config.toml.bak-*"))

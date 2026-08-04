@@ -1,168 +1,97 @@
-# init-agent Skills
+# init-agent Skill
 
-This directory contains optional agent-facing skill templates.
+This directory contains the public source of the optional
+`init-agent-orientation` skill. The skill teaches a coding agent when to use the
+local init-agent map and how to keep the workflow bounded.
 
-They are not required for the `init-agent` CLI. They are small instruction files
-that tell coding agents how to use `init-agent` as an orientation tool before
-reading a repository broadly.
-
-## Available Skills
-
-- `init-agent-orientation`: run `init-agent run --overview` for broad repo
-  orientation, run `init-agent run "<task>"` for task-specific context, then
-  use `symbol`, `callers`, `related`, `feedback`, `estimate` and `doctor` for
-  targeted follow-up.
+The CLI and MCP server work without the skill. The packaged copy used by
+`init-agent install-skill codex` lives under `init_agent/resources/skills/` and
+is kept identical by tests.
 
 ## Install For Codex
 
-If `init-agent` is installed, use the bundled installer:
+After installing init-agent:
 
 ```bash
 init-agent install-skill codex
+init-agent mcp install-codex
 ```
 
-After upgrading the package, refresh the copied skill with:
+After a package upgrade, synchronize the installed skill and inspect the MCP
+registration:
 
 ```bash
 init-agent sync
 ```
 
-The installed skill includes a local manifest used by `init-agent doctor` to
-detect stale or locally modified copies. Backups are stored outside the Codex
-skill discovery directory under `~/.codex/init-agent-backups/skills/`.
+Backups are stored outside Codex's skill discovery directory under
+`~/.codex/init-agent-backups/skills/`.
 
-Open a new Codex session and ask:
-
-```text
-Usa la skill init-agent-orientation per orientarti in questo repository.
-```
-
-From a source checkout, manual installation also works:
+From a source checkout, manual installation is also possible:
 
 ```bash
 mkdir -p ~/.codex/skills
 cp -R skills/init-agent-orientation ~/.codex/skills/
 ```
 
+Restart Codex after installation or synchronization.
+
+## Workflow Taught By The Skill
+
+The default loop is intentionally small:
+
+1. Use `repo_overview` when broad orientation is needed.
+2. Create one bounded `repo_reading_plan` for the task.
+3. Read and verify the suggested files directly.
+4. Use `repo_related_file` or `repo_symbol_callers` only for a concrete
+   follow-up.
+5. Finish once with `repo_reading_plan_finish`, including the ordered files read
+   and verified outcomes.
+6. Store memory only for stable facts worth reusing.
+7. Use `repo_session_close` before handoff.
+
+The default MCP `core` profile exposes this loop. Administrative, diagnostic,
+scorecard, task and legacy ledger tools remain available through the CLI or the
+explicit MCP `full` profile, but the skill does not call them merely because
+they exist.
+
 ## Other Coding Agents
 
-`init-agent install-skill codex` is intentionally specific to Codex because
-that installation path has been verified.
-
-For Claude Code, Aider, OpenCode and similar tools, use the copy-paste workflow
-below unless you have confirmed the tool's native skill or instruction format.
-For example, an agent can still run:
+Only the Codex installation path is automated because it has been verified.
+Other agents can use the Markdown workflow without a native skill installer:
 
 ```bash
 init-agent run --overview --markdown
-init-agent run "<task>" --markdown
-init-agent symbol "<name>"
-init-agent callers "<name>"
-init-agent related path/to/file
+init-agent plan "<task>" --read 3
+# verify files directly
+init-agent plan finish --id <id> --read-file <path> --verified <path> --central <path> --summary "Verified outcome."
+init-agent session close
 ```
 
-A dedicated installer such as `init-agent install-skill claude-code` should be
-added only after its expected files, paths and reload behavior are tested.
+Do not add a client-specific installer until that client's instruction format,
+installation path and reload behavior have been tested.
 
-## Local CLI Shim
+## Local Development
 
-If `init-agent` is installed in editable mode, the normal command should work:
+For an editable installation:
 
 ```bash
 python3 -m pip install -e /path/to/init-agent
 init-agent --version
 ```
 
-For local development without installing a package, create a small shim.
-Replace `/path/to/init-agent` with your checkout path:
+Without installing the package, commands can run from the checkout with:
 
 ```bash
-mkdir -p ~/.local/bin
-printf '%s\n' '#!/usr/bin/env bash' \
-  'exec env PYTHONPATH="/path/to/init-agent" python3 -m init_agent.cli "$@"' \
-  > ~/.local/bin/init-agent
-chmod +x ~/.local/bin/init-agent
+PYTHONPATH=/path/to/init-agent python3 -m init_agent.cli --version
 ```
 
-Make sure `~/.local/bin` is in your `PATH`:
-
-```bash
-echo "$PATH"
-which init-agent
-init-agent --version
-```
-
-If needed, add this to your shell profile:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-## Troubleshooting
-
-### `init-agent: command not found`
-
-The command is not in `PATH`.
-
-Check:
+If `init-agent` is not found, check the active installation and `PATH`:
 
 ```bash
 which init-agent
 python3 -m init_agent.cli --version
 ```
 
-If `python3 -m init_agent.cli --version` works from the `init-agent` checkout,
-install the package or create the shim above.
-
-### `Argument expected for the -m option`
-
-The shim is broken, usually because the command was split across lines or the
-redirection wrote to the wrong path.
-
-Recreate it with the `printf` command above. Avoid manually wrapping this line:
-
-```bash
-exec env PYTHONPATH="/path/to/init-agent" python3 -m init_agent.cli "$@"
-```
-
-### The skill runs but ranking is noisy
-
-Run a more specific follow-up instead of only rephrasing the same question:
-
-```bash
-init-agent symbol "<symbol>"
-init-agent callers "<symbol>"
-init-agent related path/to/file
-```
-
-The context pack is an orientation layer. The agent should still read the files
-it plans to rely on.
-
-## Copy-Paste Workflow For Other Agents
-
-Use this short instruction with Codex, Claude Code, Aider, OpenCode or similar
-CLI agents:
-
-```text
-Before broad repository inspection, run:
-init-agent run --overview --markdown
-
-For a specific task, run:
-init-agent run "<my task>" --markdown
-
-Use the suggested first reads as candidates, then verify by reading files.
-If the task mentions a function/class/symbol, also run:
-init-agent symbol "<name>"
-init-agent callers "<name>"
-
-If a likely file is found, run:
-init-agent related path/to/file
-
-After verifying files, optionally record local feedback:
-init-agent feedback add "<my task>" path/to/file --rating useful --source agent
-init-agent feedback add "<my task>" path/to/noisy-file --rating noisy --source agent
-init-agent feedback explain "<my task>"
-
-Do not treat init-agent output as source of truth. It is a local orientation
-map, not an LLM and not a semantic analyzer.
-```
+The skill provides orientation, not authority. Agents must still read the real
+files before editing and verify changes with the repository's tests.

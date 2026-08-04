@@ -47,6 +47,21 @@ from .agent_tools import (
 ToolHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
 
 
+MCP_CORE_TOOL_NAMES = frozenset(
+    {
+        "repo_overview",
+        "repo_reading_plan",
+        "repo_reading_plan_finish",
+        "repo_related_file",
+        "repo_symbol_callers",
+        "repo_memory_search",
+        "repo_memory_add",
+        "repo_session_close",
+    }
+)
+MCP_TOOL_PROFILES = ("core", "full")
+
+
 def _handle_repo_graph_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     query = str(arguments.get("query") or "").strip()
     if not query:
@@ -71,7 +86,19 @@ def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str
     limit = int(arguments.get("limit") or 10)
     read_budget = int(arguments.get("read_budget") or arguments.get("read") or 3)
     kind = str(arguments.get("kind") or "real")
-    return _mcp_result(arguments, repo_reading_plan(root, query, limit=limit, read_budget=read_budget, prepare=False, kind=kind))
+    delegate = bool(arguments.get("delegate") or False)
+    return _mcp_result(
+        arguments,
+        repo_reading_plan(
+            root,
+            query,
+            limit=limit,
+            read_budget=read_budget,
+            prepare=False,
+            kind=kind,
+            delegate=delegate,
+        ),
+    )
 
 
 def _handle_repo_reading_plan_read(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -461,8 +488,11 @@ MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
 }
 
 
-def mcp_tool_definitions() -> list[dict[str, Any]]:
-    return [
+def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
+    normalized_profile = profile.strip().lower()
+    if normalized_profile not in MCP_TOOL_PROFILES:
+        raise ValueError(f"unknown MCP tool profile: {profile}")
+    definitions = [
         {
             "name": "repo_graph_search",
             "description": "Search the local init-agent graph for a coding task and return candidate files, symbols and follow-up commands.",
@@ -504,6 +534,11 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
                         "enum": ["real", "smoke", "experiment", "planning", "diagnostic", "docs"],
                         "default": "real",
                         "description": "Plan kind for scorecard filtering.",
+                    },
+                    "delegate": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include optional delegated workstream advice. Disabled by default.",
                     },
                     "include_details": {"type": "boolean", "default": False, "description": "Return the full unbounded plan contract."},
                 },
@@ -974,3 +1009,10 @@ def mcp_tool_definitions() -> list[dict[str, Any]]:
             },
         },
     ]
+    if normalized_profile == "full":
+        return definitions
+    return [definition for definition in definitions if definition["name"] in MCP_CORE_TOOL_NAMES]
+
+
+def mcp_tool_names(profile: str = "core") -> frozenset[str]:
+    return frozenset(definition["name"] for definition in mcp_tool_definitions(profile))
