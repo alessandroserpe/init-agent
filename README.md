@@ -157,6 +157,12 @@ reading plan, plan finish, targeted file/symbol follow-up, memory search/write
 and session close. Administrative and legacy contracts remain available through
 the CLI or the explicit MCP `full` profile.
 
+Core orientation responses include a lightweight `index_health` check. Agents
+can see when files changed, disappeared or were added after the last map instead
+of silently trusting stale metadata. Targeted related/caller responses are
+bounded by default and expose counts plus truncation flags; full detail remains
+available explicitly with `include_details=true`.
+
 ## Use With Codex
 
 Install the CLI once, then register the MCP server with Codex:

@@ -181,6 +181,21 @@ def normalize_repo_path(path: str | Path | None) -> str:
     return "" if normalized == "." else normalized
 
 
+def is_live_repo_file(root: Path, path: str | Path | None) -> bool:
+    """Return whether a normalized path is a regular file inside the project."""
+
+    normalized = normalize_repo_path(path)
+    relative = Path(normalized)
+    if not normalized or relative.is_absolute() or ".." in relative.parts:
+        return False
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError:
+        return False
+    return candidate.is_file()
+
+
 def load_ignore_rules(root: Path) -> dict[str, set[str]]:
     rules = {
         "exclude_dirs": set(DEFAULT_EXCLUDED_DIRS),

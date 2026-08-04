@@ -49,9 +49,20 @@ tasks and unfinished reading plans are included in `repo_session_summary` and
 `init-agent run --overview --markdown` or `init-agent run "<task>" --markdown`
 first when you want automatic init/map/refresh behavior.
 
-Reading-plan, session and flow tools return compact MCP payloads by default to
-avoid spending agent context on repeated plan items and event history. Pass
+Reading-plan, session, flow, related-file and symbol-caller tools return compact
+MCP payloads by default to avoid spending agent context on repeated metadata.
+Related/caller contracts include original counts and truncation flags. Pass
 `include_details: true` only when diagnosing the complete persisted record.
+
+Read-only core orientation calls also expose lightweight index freshness data.
+Overview, plan and targeted graph contracts place it under
+`preparation.index_health`; session contracts expose `index_health` directly.
+The status becomes `stale` when indexed files changed or disappeared, new
+indexable files appeared, or the extractor version changed. Results remain
+available with deleted paths filtered, but agents should run `init-agent map`
+before relying on graph-sensitive conclusions. The probe compares paths, sizes
+and mtimes and uses a short process-local cache; it does not hash or remap the
+whole repository.
 
 For decision-log and area-map patterns, see
 [memory-workflows.md](memory-workflows.md).

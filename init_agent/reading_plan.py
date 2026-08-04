@@ -14,6 +14,7 @@ from .graph_store import GraphStore
 from .memory import list_notes, search_notes
 from .text_tokens import tokenize_query
 from .trace import trace_query
+from .utils import is_live_repo_file
 
 
 def build_reading_plan(
@@ -28,7 +29,10 @@ def build_reading_plan(
     query_tokens = tokenize_query(query)
     context = build_context_pack(root, query)
     trace = trace_query(root, query, limit=bounded_limit, max_depth=4)
-    file_tags = _file_tags(root)
+    file_tags = {
+        path: tags for path, tags in _file_tags(root).items()
+        if is_live_repo_file(root, path)
+    }
     tag_document_counts = _tag_document_counts(file_tags)
     indexed_paths = set(file_tags)
     feedback = feedback_signals(root, query_tokens, indexed_paths)
@@ -39,6 +43,8 @@ def build_reading_plan(
 
     for index, item in enumerate(context.get("candidate_files", []), start=1):
         path = str(item["path"])
+        if not is_live_repo_file(root, path):
+            continue
         entry = candidates.setdefault(path, _empty_candidate(path))
         entry["graph_rank"] = index
         entry["graph_score"] = float(item.get("score") or 0.0)
@@ -51,6 +57,8 @@ def build_reading_plan(
 
     for index, item in enumerate(trace.get("paths", []), start=1):
         path = str(item["target"])
+        if not is_live_repo_file(root, path):
+            continue
         entry = candidates.setdefault(path, _empty_candidate(path))
         entry["trace_rank"] = index
         entry["trace_score"] = float(item.get("score") or 0.0)
@@ -71,7 +79,7 @@ def build_reading_plan(
         if match.get("scope") == "repo":
             continue
         path = str(match.get("path") or "")
-        if not path:
+        if not path or not is_live_repo_file(root, path):
             continue
         entry = candidates.setdefault(path, _empty_candidate(path))
         entry["sources"].add("memory")
@@ -142,7 +150,11 @@ def build_reading_plan(
         "query_tokens": query_tokens,
         "read_budget": bounded_read_budget,
         "plan_items": plan_items,
-        "memory_matches": [_compact_memory(item) for item in memory_matches[:10]],
+        "memory_matches": [
+            _compact_memory(item)
+            for item in memory_matches
+            if item.get("scope") == "repo" or is_live_repo_file(root, item.get("path"))
+        ][:10],
         "repo_memory_context": [_compact_memory(note) for note in repo_notes[:5]],
         "recommended_actions": _recommended_actions(query, plan_items),
         "delegation": delegation,

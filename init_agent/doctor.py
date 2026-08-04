@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from . import __version__
 from .git_reader import git_available, status_short
 from .graph_store import SCHEMA
-from .scanner import INDEX_VERSION, iter_project_files
+from .index_health import index_readiness
+from .scanner import INDEX_VERSION
 from .skill_installer import codex_skill_status
 from .updates import check_latest_release
-from .utils import agent_dir, config_path, db_path, relative_path
+from .utils import agent_dir, config_path, db_path
 
 
 REQUIRED_TABLES = {
@@ -103,7 +103,6 @@ def run_doctor(
             return _finalize(checks, stats, warnings, suggested_commands, environment)
 
         stats = _stats(conn)
-        indexed_paths = _indexed_paths(conn)
         index_version = _project_meta(conn, "index_version")
         git_run_indexed = _successful_run_exists(conn, "git")
     except sqlite3.Error as exc:
@@ -149,27 +148,27 @@ def run_doctor(
     else:
         _add_check(checks, "git_uncommitted_changes", True, "info", "No uncommitted Git changes detected.")
 
-    real_paths = _real_project_paths(root)
-    changed_after_map = _changed_after_last_map(root, indexed_paths, stats["last_map"])
-    missing_indexed = sorted(path for path in indexed_paths if path not in real_paths)
-    unindexed_real = sorted(path for path in real_paths if path not in indexed_paths)
+    health = index_readiness(root, use_cache=False)["health"]
+    changed_after_map = int(health.get("changed_count") or 0)
+    missing_indexed = int(health.get("missing_count") or 0)
+    unindexed_real = int(health.get("unindexed_count") or 0)
 
     if changed_after_map:
-        message = f"{len(changed_after_map)} files changed since last map. Run: init-agent map"
+        message = f"{changed_after_map} files changed since last map. Run: init-agent map"
         _add_warning(checks, warnings, "files_changed_after_map", message)
         _suggest(suggested_commands, "init-agent map")
     else:
         _add_check(checks, "files_changed_after_map", True, "info", "No indexed files changed after last map.")
 
     if missing_indexed:
-        message = f"{len(missing_indexed)} indexed files no longer exist. Run: init-agent map"
+        message = f"{missing_indexed} indexed files no longer exist. Run: init-agent map"
         _add_warning(checks, warnings, "indexed_files_missing", message)
         _suggest(suggested_commands, "init-agent map")
     else:
         _add_check(checks, "indexed_files_missing", True, "info", "No missing indexed files detected.")
 
     if unindexed_real:
-        message = f"{len(unindexed_real)} project files are not indexed. Run: init-agent map"
+        message = f"{unindexed_real} project files are not indexed. Run: init-agent map"
         _add_warning(checks, warnings, "real_files_not_indexed", message)
         _suggest(suggested_commands, "init-agent map")
     else:
@@ -203,10 +202,6 @@ def _stats(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
-def _indexed_paths(conn: sqlite3.Connection) -> set[str]:
-    return {row["path"] for row in conn.execute("SELECT path FROM files").fetchall()}
-
-
 def _project_meta(conn: sqlite3.Connection, key: str) -> str | None:
     row = conn.execute("SELECT value FROM project_meta WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else None
@@ -227,37 +222,6 @@ def _latest_map(conn: sqlite3.Connection) -> str | None:
         "SELECT finished_at FROM runs WHERE command = 'map' AND status = 'ok' ORDER BY id DESC LIMIT 1"
     ).fetchone()
     return row["finished_at"] if row else None
-
-
-def _real_project_paths(root: Path) -> set[str]:
-    paths = set()
-    for path in iter_project_files(root):
-        try:
-            paths.add(relative_path(path, root))
-        except ValueError:
-            continue
-    return paths
-
-
-def _changed_after_last_map(root: Path, indexed_paths: set[str], last_map: str | None) -> list[str]:
-    if not last_map:
-        return []
-    try:
-        last_map_time = datetime.fromisoformat(last_map)
-    except ValueError:
-        return []
-    if last_map_time.tzinfo is None:
-        last_map_time = last_map_time.replace(tzinfo=timezone.utc)
-
-    changed = []
-    for rel_path in indexed_paths:
-        path = root / rel_path
-        if not path.exists():
-            continue
-        modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
-        if modified > last_map_time + timedelta(seconds=1):
-            changed.append(rel_path)
-    return sorted(changed)
 
 
 def _add_check(checks: list[dict[str, Any]], name: str, ok: bool, severity: str, message: str) -> None:

@@ -10,10 +10,11 @@ from .contracts import TOOL_CONTRACT_VERSION
 from .feedback import list_feedback
 from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
+from .index_health import index_readiness
 from .memory import audit_notes, list_notes
 from .plan_feedback import list_reading_plans
 from .tasks import list_tasks
-from .utils import db_path, ensure_agent_dir
+from .utils import db_path, ensure_agent_dir, is_live_repo_file
 
 
 def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
@@ -85,6 +86,7 @@ def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
         "tool": "repo_session_summary",
         "contract": TOOL_CONTRACT_VERSION,
         "project": _project_summary(root),
+        "index_health": readiness["health"],
         "git": git,
         "recent_memory": recent_memory,
         "recent_feedback": recent_feedback,
@@ -117,6 +119,9 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         int(audit_summary.get(key) or 0)
         for key in ("unknown_evidence", "missing_topic", "short_note", "duplicate_file_topic")
     )
+    index_health = summary.get("index_health") or {}
+    index_status = str(index_health.get("status") or "missing")
+    index_needs_attention = index_status != "ready"
 
     checklist: list[dict[str, Any]] = []
     checklist.append(
@@ -130,6 +135,19 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
                 else "Working tree is clean according to indexed session metadata."
             ),
             "command": "git status --short",
+        }
+    )
+    checklist.append(
+        {
+            "id": "refresh_repository_index",
+            "status": "needed" if index_needs_attention else "clean",
+            "title": "Refresh repository index",
+            "reason": (
+                "Repository index is not current; refresh it before relying on graph orientation."
+                if index_needs_attention
+                else "Repository index matches the current project files."
+            ),
+            "command": "init-agent map",
         }
     )
     checklist.append(
@@ -203,11 +221,12 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         }
     )
 
-    suggested_feedback, suggested_memory = _session_suggestions(summary, summary.get("plan_activity") or {})
+    suggested_feedback, suggested_memory = _session_suggestions(root, summary, summary.get("plan_activity") or {})
     return {
         "tool": "repo_session_close",
         "contract": TOOL_CONTRACT_VERSION,
         "project": summary.get("project", {}),
+        "index_health": index_health,
         "git": git,
         "memory_audit": summary.get("memory_audit", {}),
         "recent_memory": summary.get("recent_memory", []),
@@ -217,7 +236,13 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
         "suggested_feedback": suggested_feedback,
         "suggested_memory": suggested_memory,
         "checklist": checklist,
-        "close_ready": status_count == 0 and stale_count == 0 and quality_issue_count == 0 and task_count == 0,
+        "close_ready": (
+            status_count == 0
+            and stale_count == 0
+            and quality_issue_count == 0
+            and task_count == 0
+            and not index_needs_attention
+        ),
         "followup_commands": summary.get("followup_commands", []),
         "warnings": summary.get("warnings", []),
         "safety": [
@@ -229,21 +254,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
 
 
 def _readiness(root: Path) -> dict[str, Any]:
-    db_path = root / ".agent" / "graph.sqlite"
-    if not db_path.is_file():
-        return {"ready": False, "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"]}
-    conn: sqlite3.Connection | None = None
-    try:
-        conn = sqlite3.connect(db_path)
-        files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    except sqlite3.Error as exc:
-        return {"ready": False, "warnings": [f"init-agent index could not be read: {exc}"]}
-    finally:
-        if conn is not None:
-            conn.close()
-    if files <= 0:
-        return {"ready": False, "warnings": ["init-agent index is empty. Run: init-agent run --overview --markdown"]}
-    return {"ready": True, "warnings": []}
+    return index_readiness(root)
 
 
 def _memory_readiness(root: Path) -> dict[str, Any]:
@@ -356,9 +367,19 @@ def _recent_plan_activity(root: Path, limit: int) -> dict[str, Any]:
     }
 
 
-def _session_suggestions(summary: dict[str, Any], plan_activity: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+def _session_suggestions(
+    root: Path,
+    summary: dict[str, Any],
+    plan_activity: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     feedback: list[dict[str, str]] = []
     memory: list[dict[str, str]] = []
+    fresh_memory_paths = {
+        str(note.get("path") or "")
+        for note in list_notes(root, limit=500)
+        if note.get("path") and note.get("stale") is False
+    }
+    suggested_paths: set[str] = set()
     for plan in plan_activity.get("unfinished_plans", [])[:5]:
         feedback.append(
             {
@@ -374,6 +395,13 @@ def _session_suggestions(summary: dict[str, Any], plan_activity: dict[str, Any])
             if event.get("event") in {"central", "useful"}
         ]
         for path in useful_paths[:3]:
+            if (
+                path in suggested_paths
+                or path in fresh_memory_paths
+                or not is_live_repo_file(root, path)
+            ):
+                continue
+            suggested_paths.add(path)
             memory.append(
                 {
                     "kind": "memory_for_useful_file",

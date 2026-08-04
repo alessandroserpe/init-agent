@@ -223,7 +223,7 @@ def _handle_repo_related_file(root: Path, arguments: dict[str, Any]) -> dict[str
     path = str(arguments.get("path") or "").strip()
     if not path:
         raise ValueError("repo_related_file requires path")
-    return repo_related_file(root, path, prepare=False)
+    return _mcp_result(arguments, repo_related_file(root, path, prepare=False))
 
 
 def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -231,7 +231,7 @@ def _handle_repo_symbol_callers(root: Path, arguments: dict[str, Any]) -> dict[s
     if not symbol:
         raise ValueError("repo_symbol_callers requires symbol")
     limit = int(arguments.get("limit") or 50)
-    return repo_symbol_callers(root, symbol, limit=limit, prepare=False)
+    return _mcp_result(arguments, repo_symbol_callers(root, symbol, limit=limit, prepare=False))
 
 
 def _handle_repo_feedback_add(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -693,7 +693,14 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
             "description": "Inspect one indexed file neighborhood: symbols, relations, calls, callers and recent commits.",
             "inputSchema": {
                 "type": "object",
-                "properties": {"path": {"type": "string", "description": "Project-relative file path."}},
+                "properties": {
+                    "path": {"type": "string", "description": "Project-relative file path."},
+                    "include_details": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return the full uncompressed neighborhood contract.",
+                    },
+                },
                 "required": ["path"],
                 "additionalProperties": False,
             },
@@ -706,6 +713,11 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
                 "properties": {
                     "symbol": {"type": "string", "description": "Symbol name."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
+                    "include_details": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return the full uncompressed caller contract.",
+                    },
                 },
                 "required": ["symbol"],
                 "additionalProperties": False,

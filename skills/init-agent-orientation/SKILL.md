@@ -67,6 +67,13 @@ init-agent run "<user task>" --markdown
 Do not repeatedly rebuild the map during the same task unless files changed in
 a way that materially affects orientation.
 
+Read `preparation.index_health` before trusting overview, plan or targeted
+graph results. A `stale` status reports bounded counts and path samples for
+changed, removed and unindexed files. The tools may still return useful live
+candidates, but deleted paths are filtered and the map should be refreshed
+before graph-sensitive work. The freshness probe is read-only, lightweight and
+briefly cached; it does not hash or remap the whole repository.
+
 If `init-agent doctor` says the installed skill differs from the bundled copy,
 tell the user to run `init-agent sync`. Do not perform remote update checks
 implicitly.
@@ -103,6 +110,10 @@ If the first plan is weak:
 
 Only then broaden filesystem exploration. Do not keep calling orientation tools
 after the relevant implementation path is already known.
+
+`repo_related_file` and `repo_symbol_callers` are compact by default. Use their
+counts and truncation flags first; request `include_details=true` only when the
+bounded result omits evidence required for the task.
 
 ## Memory
 
@@ -141,9 +152,9 @@ Do not delegate tiny, sequential or tightly coupled tasks.
 ## End Of Session
 
 Run `repo_session_close` after non-trivial investigation or modification. Use
-its checklist to notice Git changes, stale memory, unfinished plans, open tasks
-and missing verification. It is advisory and does not create commits or modify
-source files.
+its checklist to notice a stale repository index, Git changes, stale memory,
+unfinished plans, open tasks and missing verification. It is advisory and does
+not create commits or modify source files.
 
 Do not run it for a tiny one-shot answer.
 

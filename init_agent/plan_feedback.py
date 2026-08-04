@@ -11,7 +11,7 @@ from typing import Any
 from .feedback import add_feedback
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, iter_indexable_files, normalize_repo_path, relative_path, utc_now
+from .utils import ensure_agent_dir, is_live_repo_file, iter_indexable_files, normalize_repo_path, relative_path, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
@@ -253,7 +253,7 @@ def finish_reading_plan(
         "plan": details,
         "events": events,
         "feedback": feedback,
-        "suggested_memory": _suggested_memory_commands(details),
+        "suggested_memory": _suggested_memory_commands(root, details),
     }
 
 
@@ -919,10 +919,15 @@ def _event_paths(events: list[dict[str, Any]], event_names: set[str]) -> list[st
     return result
 
 
-def _suggested_memory_commands(plan: dict[str, Any] | None) -> list[dict[str, str]]:
+def _suggested_memory_commands(root: Path, plan: dict[str, Any] | None) -> list[dict[str, str]]:
     if not plan:
         return []
-    useful = [event["path"] for event in plan.get("events", []) if event.get("event") in {"central", "useful"}]
+    useful = [
+        event["path"]
+        for event in plan.get("events", [])
+        if event.get("event") in {"central", "useful"}
+        and is_live_repo_file(root, event.get("path"))
+    ]
     return [
         {
             "path": path,

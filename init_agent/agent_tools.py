@@ -11,6 +11,7 @@ from .context_builder import build_context_pack
 from .feedback import add_feedback, explain_feedback, list_feedback
 from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
+from .index_health import index_readiness
 from .memory import add_note, audit_notes, delete_note, list_notes, search_notes, topic_summaries, update_note
 from .overview import build_overview_pack
 from .plan_feedback import (
@@ -29,7 +30,7 @@ from .reading_plan import build_reading_plan
 from .run import run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .trace import trace_query
-from .utils import db_path, ensure_agent_dir, normalize_repo_path
+from .utils import db_path, ensure_agent_dir, is_live_repo_file, normalize_repo_path
 from .session_tools import repo_session_close, repo_session_summary
 from .renderers import (
     render_repo_graph_search_text,
@@ -77,11 +78,17 @@ def repo_graph_search(root: Path, query: str, limit: int = 10, prepare: bool = T
         warnings = _warnings(run_result)
     else:
         readiness = _readiness(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
         context = build_context_pack(root, query) if readiness["ready"] else _empty_context(query)
-    candidate_files = list(context.get("candidate_files", []))[:bounded_limit]
-    symbols = list(context.get("related_symbols", []))[:10]
+    candidate_files = [
+        item for item in context.get("candidate_files", [])
+        if is_live_repo_file(root, item.get("path"))
+    ][:bounded_limit]
+    symbols = [
+        item for item in context.get("related_symbols", [])
+        if not item.get("path") or is_live_repo_file(root, item.get("path"))
+    ][:10]
     related_commits = list(context.get("recent_commits", []))[:5]
     return {
         "tool": "repo_graph_search",
@@ -109,9 +116,10 @@ def repo_related_file(root: Path, path: str, prepare: bool = True) -> dict[str, 
         warnings = _warnings(run_result)
     else:
         readiness = _readiness(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
-    related_data = related(root, normalized_path) if prepare or readiness["ready"] else None
+    live_file = is_live_repo_file(root, normalized_path)
+    related_data = related(root, normalized_path) if live_file and (prepare or readiness["ready"]) else None
     result = {
         "tool": "repo_related_file",
         "contract": TOOL_CONTRACT_VERSION,
@@ -128,17 +136,26 @@ def repo_related_file(root: Path, path: str, prepare: bool = True) -> dict[str, 
         "warnings": warnings,
     }
     if related_data is None:
-        result["warnings"].append(f"file not found in index: {normalized_path}")
+        reason = "file no longer exists" if not live_file else "file not found in index"
+        result["warnings"].append(f"{reason}: {normalized_path}")
         return result
     result.update(
         {
             "file": _trim_file_record(related_data["file"]),
             "symbols": list(related_data["symbols"])[:30],
             "relations": list(related_data["relations"])[:30],
-            "calls": list(related_data["resolved_calls"])[:30],
-            "called_by": list(related_data["callers"])[:30],
+            "calls": _live_calls(root, list(related_data["resolved_calls"]))[:30],
+            "called_by": _live_path_records(root, list(related_data["callers"]))[:30],
             "recent_commits": _compact_commits(list(related_data["commits"])[:5]),
-            "cochanged_files": list(related_data["cochanged_files"])[:20],
+            "cochanged_files": _live_path_records(root, list(related_data["cochanged_files"]))[:20],
+            "counts": {
+                "symbols": len(related_data["symbols"]),
+                "relations": len(related_data["relations"]),
+                "calls": len(related_data["resolved_calls"]),
+                "called_by": len(related_data["callers"]),
+                "recent_commits": len(related_data["commits"]),
+                "cochanged_files": len(related_data["cochanged_files"]),
+            },
             "followup_commands": _related_followup_commands(normalized_path, related_data),
         }
     )
@@ -156,21 +173,26 @@ def repo_symbol_callers(root: Path, symbol: str, limit: int = 50, prepare: bool 
         warnings = _warnings(run_result)
     else:
         readiness = _readiness(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
     data = callers_for_symbol(root, normalized_symbol, limit=bounded_limit) if prepare or readiness["ready"] else {
         "symbol": normalized_symbol,
         "definitions": [],
         "callers": [],
     }
+    definitions = _live_path_records(root, list(data["definitions"]))
+    callers = _live_path_records(root, list(data["callers"]))
+    filtered_data = {"symbol": data["symbol"], "definitions": definitions, "callers": callers}
     return {
         "tool": "repo_symbol_callers",
         "contract": TOOL_CONTRACT_VERSION,
         "symbol": data["symbol"],
         "preparation": preparation,
-        "definitions": list(data["definitions"]),
-        "callers": list(data["callers"]),
-        "followup_commands": _symbol_followup_commands(data),
+        "definitions": definitions,
+        "callers": callers,
+        "counts": {"definitions": len(definitions), "callers": len(callers)},
+        "limit_reached": len(callers) >= bounded_limit,
+        "followup_commands": _symbol_followup_commands(filtered_data),
         "warnings": warnings,
     }
 
@@ -186,8 +208,9 @@ def repo_overview(root: Path, prepare: bool = True) -> dict[str, Any]:
     else:
         readiness = _readiness(root)
         overview = build_overview_pack(root) if readiness["ready"] else _empty_overview(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
+    overview = _live_overview(root, overview)
     return {
         "tool": "repo_overview",
         "contract": TOOL_CONTRACT_VERSION,
@@ -214,8 +237,10 @@ def repo_entrypoints(root: Path, prepare: bool = True, limit: int = 12) -> dict[
     else:
         readiness = _readiness(root)
         overview = build_overview_pack(root) if readiness["ready"] else _empty_overview(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
+
+    overview = _live_overview(root, overview)
 
     entry_points = _focused_entry_points(list(overview.get("entry_points", [])), bounded_limit)
     suggested = list(overview.get("suggested_first_reads", []))
@@ -249,7 +274,7 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
         warnings = _warnings(run_result)
     else:
         readiness = _readiness(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
     trace = trace_query(root, query, limit=bounded_limit, max_depth=bounded_depth) if prepare or readiness["ready"] else {
         "query": query,
@@ -259,16 +284,21 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
         "suggested_first_reads": [],
         "warnings": [],
     }
+    paths = [item for item in trace.get("paths", []) if is_live_repo_file(root, item.get("target"))]
+    starts = [item for item in trace.get("starts", []) if is_live_repo_file(root, item.get("path") or item.get("target"))]
+    suggested_first_reads = [
+        path for path in trace.get("suggested_first_reads", []) if is_live_repo_file(root, path)
+    ]
     return {
         "tool": "repo_trace",
         "contract": TOOL_CONTRACT_VERSION,
         "query": query,
         "preparation": preparation,
         "profile": trace.get("profile", "entrypoint_trace"),
-        "starts": trace.get("starts", []),
-        "paths": trace.get("paths", []),
-        "suggested_first_reads": trace.get("suggested_first_reads", []),
-        "followup_commands": _trace_followup_commands(trace.get("paths", [])),
+        "starts": starts,
+        "paths": paths,
+        "suggested_first_reads": suggested_first_reads,
+        "followup_commands": _trace_followup_commands(paths),
         "warnings": [*warnings, *trace.get("warnings", [])],
     }
 
@@ -293,7 +323,7 @@ def repo_reading_plan(
         warnings = _warnings(run_result)
     else:
         readiness = _readiness(root)
-        preparation = _lazy_preparation(readiness["warnings"])
+        preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
     if prepare or readiness["ready"]:
         plan = build_reading_plan(
@@ -996,21 +1026,7 @@ def repo_task_close(
 
 
 def _readiness(root: Path) -> dict[str, Any]:
-    db_path = root / ".agent" / "graph.sqlite"
-    if not db_path.is_file():
-        return {"ready": False, "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"]}
-    conn: sqlite3.Connection | None = None
-    try:
-        conn = sqlite3.connect(db_path)
-        files = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-    except sqlite3.Error as exc:
-        return {"ready": False, "warnings": [f"init-agent index could not be read: {exc}"]}
-    finally:
-        if conn is not None:
-            conn.close()
-    if files <= 0:
-        return {"ready": False, "warnings": ["init-agent index is empty. Run: init-agent run --overview --markdown"]}
-    return {"ready": True, "warnings": []}
+    return index_readiness(root)
 
 
 def _memory_readiness(root: Path) -> dict[str, Any]:
@@ -1129,12 +1145,13 @@ def _flow_topics(root: Path, tag: str | None = None, limit: int = 20) -> dict[st
     return {"tag": selected, "flows": flows[:bounded_limit]}
 
 
-def _lazy_preparation(warnings: list[str]) -> dict[str, Any]:
+def _lazy_preparation(warnings: list[str], health: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "init": "skipped",
         "map": "skipped",
         "refresh": "skipped",
         "git": "skipped",
+        "index_health": health or {},
         "warnings": warnings,
     }
 
@@ -1326,6 +1343,31 @@ def _entrypoint_followup_commands(entry_points: list[dict[str, Any]], supporting
         if len(commands) >= 6:
             break
     return commands
+
+
+def _live_path_records(root: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if is_live_repo_file(root, item.get("path"))]
+
+
+def _live_calls(root: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for item in items:
+        compact = dict(item)
+        definitions = list(item.get("definitions") or [])
+        if definitions:
+            compact["definitions"] = _live_path_records(root, definitions)
+        result.append(compact)
+    return result
+
+
+def _live_overview(root: Path, overview: dict[str, Any]) -> dict[str, Any]:
+    result = dict(overview)
+    for key in ("suggested_first_reads", "entry_points", "manifests"):
+        result[key] = [
+            item for item in overview.get(key, [])
+            if is_live_repo_file(root, item.get("path"))
+        ]
+    return result
 
 
 def _trim_file_record(file_item: dict[str, Any]) -> dict[str, Any]:

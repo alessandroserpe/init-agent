@@ -26,6 +26,10 @@ def compact_mcp_result(result: dict[str, Any]) -> dict[str, Any]:
         return _compact_session_summary(result)
     if tool == "repo_session_close":
         return _compact_session_close(result)
+    if tool == "repo_related_file":
+        return _compact_related_file(result)
+    if tool == "repo_symbol_callers":
+        return _compact_symbol_callers(result)
     return result
 
 
@@ -278,6 +282,7 @@ def _compact_session_summary(result: dict[str, Any]) -> dict[str, Any]:
     return {
         **_base(result),
         "project": result.get("project", {}),
+        "index_health": result.get("index_health", {}),
         "git": result.get("git", {}),
         "recent_memory": [_compact_memory(note) for note in list(result.get("recent_memory") or [])[:3]],
         "recent_feedback": list(result.get("recent_feedback") or [])[:3],
@@ -293,6 +298,7 @@ def _compact_session_close(result: dict[str, Any]) -> dict[str, Any]:
     return {
         **_base(result),
         "project": result.get("project", {}),
+        "index_health": result.get("index_health", {}),
         "git": result.get("git", {}),
         "memory_audit": result.get("memory_audit", {}),
         "recent_tasks": list(result.get("recent_tasks") or [])[:5],
@@ -303,6 +309,123 @@ def _compact_session_close(result: dict[str, Any]) -> dict[str, Any]:
         "close_ready": bool(result.get("close_ready")),
         "followup_commands": list(result.get("followup_commands") or [])[:5],
         "compact": True,
+    }
+
+
+def _compact_related_file(result: dict[str, Any]) -> dict[str, Any]:
+    symbols = list(result.get("symbols") or [])
+    relations = list(result.get("relations") or [])
+    calls = list(result.get("calls") or [])
+    callers = list(result.get("called_by") or [])
+    commits = list(result.get("recent_commits") or [])
+    cochanged = list(result.get("cochanged_files") or [])
+    limits = {
+        "symbols": 12,
+        "relations": 12,
+        "calls": 10,
+        "called_by": 10,
+        "recent_commits": 3,
+        "cochanged_files": 8,
+    }
+    source_counts = dict(result.get("counts") or {})
+    return {
+        **_base(result),
+        "path": result.get("path", ""),
+        "preparation": result.get("preparation", {}),
+        "file": result.get("file"),
+        "symbols": [_compact_symbol(item) for item in symbols[: limits["symbols"]]],
+        "relations": [_compact_relation(item) for item in relations[: limits["relations"]]],
+        "calls": [_compact_call(item) for item in calls[: limits["calls"]]],
+        "called_by": [_compact_caller(item) for item in callers[: limits["called_by"]]],
+        "recent_commits": commits[: limits["recent_commits"]],
+        "cochanged_files": cochanged[: limits["cochanged_files"]],
+        "counts": {
+            "symbols": int(source_counts.get("symbols", len(symbols))),
+            "relations": int(source_counts.get("relations", len(relations))),
+            "calls": int(source_counts.get("calls", len(calls))),
+            "called_by": int(source_counts.get("called_by", len(callers))),
+            "recent_commits": int(source_counts.get("recent_commits", len(commits))),
+            "cochanged_files": int(source_counts.get("cochanged_files", len(cochanged))),
+        },
+        "truncated": {
+            key: int(source_counts.get(key, len(items))) > limits[key]
+            for key, items in {
+                "symbols": symbols,
+                "relations": relations,
+                "calls": calls,
+                "called_by": callers,
+                "recent_commits": commits,
+                "cochanged_files": cochanged,
+            }.items()
+        },
+        "followup_commands": list(result.get("followup_commands") or [])[:4],
+        "compact": True,
+    }
+
+
+def _compact_symbol_callers(result: dict[str, Any]) -> dict[str, Any]:
+    definitions = list(result.get("definitions") or [])
+    callers = list(result.get("callers") or [])
+    source_counts = dict(result.get("counts") or {})
+    definition_count = int(source_counts.get("definitions", len(definitions)))
+    caller_count = int(source_counts.get("callers", len(callers)))
+    return {
+        **_base(result),
+        "symbol": result.get("symbol", ""),
+        "preparation": result.get("preparation", {}),
+        "definitions": [_compact_symbol(item) for item in definitions[:10]],
+        "callers": [_compact_caller(item) for item in callers[:15]],
+        "counts": {"definitions": definition_count, "callers": caller_count},
+        "truncated": {"definitions": definition_count > 10, "callers": caller_count > 15},
+        "source_limit_reached": bool(result.get("limit_reached")),
+        "followup_commands": list(result.get("followup_commands") or [])[:4],
+        "compact": True,
+    }
+
+
+def _compact_symbol(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item[key]
+        for key in ("name", "kind", "line", "end_line", "qualified_name", "container_name", "path", "language")
+        if key in item and item[key] not in (None, "")
+    }
+
+
+def _compact_relation(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item[key]
+        for key in ("relation", "target_type", "target_id", "confidence")
+        if key in item and item[key] not in (None, "")
+    }
+
+
+def _compact_call(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in {
+            "name": item.get("name", ""),
+            "confidence": item.get("confidence"),
+            "definitions": [_compact_symbol(definition) for definition in list(item.get("definitions") or [])[:3]],
+        }.items()
+        if value not in (None, "", [])
+    }
+
+
+def _compact_caller(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: item[key]
+        for key in (
+            "path",
+            "language",
+            "role",
+            "source_symbol",
+            "source_qualified_name",
+            "call_count",
+            "first_line",
+            "confidence",
+            "commits_together",
+        )
+        if key in item and item[key] not in (None, "")
     }
 
 
