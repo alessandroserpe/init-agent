@@ -150,6 +150,24 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("falls back to the built-in PHP parser", parsing)
         self.assertIn("docs/parsing.md", readme)
 
+    def test_docs_define_optional_privacy_preserving_trajectory_workflow(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        commands = (root / "docs" / "commands.md").read_text(encoding="utf-8")
+        security = (root / "docs" / "security.md").read_text(encoding="utf-8")
+        trajectory = (root / "docs" / "trajectory.md").read_text(encoding="utf-8")
+        source_skill = (root / "skills" / "init-agent-orientation" / "SKILL.md").read_text(encoding="utf-8")
+        bundled_skill = (
+            root / "init_agent" / "resources" / "skills" / "init-agent-orientation" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("init-agent trajectory install-codex", readme)
+        self.assertIn("init-agent trajectory uninstall-codex", commands)
+        self.assertIn("does not store prompts", security)
+        self.assertIn("not model chain-of-thought", trajectory)
+        self.assertIn("Do not add telemetry calls", source_skill)
+        self.assertEqual(source_skill, bundled_skill)
+
     def test_mcp_install_codex_uses_codex_cli_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp) / ".codex"
@@ -514,7 +532,18 @@ class DocsInstallTests(InitAgentTestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["sync", "--target-dir", str(target), "--config-path", str(config), "--json"]),
+                    main(
+                        [
+                            "sync",
+                            "--target-dir",
+                            str(target),
+                            "--config-path",
+                            str(config),
+                            "--hooks-path",
+                            str(Path(tmp) / "hooks.json"),
+                            "--json",
+                        ]
+                    ),
                     0,
                 )
             data = json.loads(output.getvalue())

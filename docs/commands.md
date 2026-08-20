@@ -31,7 +31,7 @@ administrative are normally unnecessary in the default MCP core workflow.
 | `init-agent git` | Import Git branch, status and recent commit timeline. |
 | `init-agent status` | Print a short project/index summary. |
 | `init-agent doctor` | Run read-only diagnostics. |
-| `init-agent sync` | Synchronize copied Codex assets and inspect MCP registration. |
+| `init-agent sync` | Synchronize copied Codex assets and inspect MCP/hook registration. |
 | `init-agent overview` | Print a broad repository orientation pack. |
 | `init-agent run --overview --markdown` | Prepare the project and print an overview. |
 | `init-agent run "<task>" --markdown` | Prepare the project and print a context pack. |
@@ -71,6 +71,9 @@ administrative are normally unnecessary in the default MCP core workflow.
 | `init-agent tool repo_task_note --id <id> --note "..." --json` | Append progress, files, tests or remaining work to a task. |
 | `init-agent tool repo_task_close --id <id> --json` | Mark a local task/session item done. |
 | `init-agent web` | Serve a local read-only dashboard for memory, feedback, tasks, plans and file activity. |
+| `init-agent trajectory status` | Inspect optional Codex trajectory hook configuration. |
+| `init-agent trajectory install-codex` | Install privacy-preserving Codex lifecycle hooks. |
+| `init-agent trajectory uninstall-codex` | Remove only init-agent trajectory hooks. |
 | `init-agent mcp` | Run the MCP stdio wrapper for repo tool contracts. |
 | `init-agent estimate "<task>"` | Estimate token savings. |
 | `init-agent export --json` | Export the indexed graph metadata for external tools. |
@@ -178,7 +181,8 @@ failure is reported without making a healthy repository unusable.
 ## `init-agent sync`
 
 Synchronizes the copied Codex skill with the installed init-agent package and
-reads Codex MCP configuration to report whether `init_agent` is registered:
+reads Codex configuration to report whether the `init_agent` MCP server and
+optional trajectory hooks are registered:
 
 ```bash
 init-agent sync
@@ -189,7 +193,28 @@ The command writes an install manifest beside the skill and creates backups in
 `~/.codex/init-agent-backups/skills/` before replacing modified or untracked
 skill contents. Legacy backup directories are migrated out of
 `~/.codex/skills/` so Codex does not discover duplicate skills. The command
-does not modify Codex MCP configuration.
+does not modify Codex MCP or hook configuration.
+
+## `init-agent trajectory`
+
+Manages optional Codex lifecycle hooks used for a redacted technical timeline:
+
+```bash
+init-agent trajectory status
+init-agent trajectory install-codex
+init-agent trajectory uninstall-codex
+```
+
+Installation preserves unrelated hooks, creates a timestamped backup when
+updating `hooks.json`, and asks you to review trust with `/hooks` in Codex.
+Events are ingested by the lightweight `init-agent-hook` executable. The hook
+fails open, does not create an index, and records nothing when the current
+repository has no existing `.agent/graph.sqlite`.
+
+This is not an MCP command and agents do not need to call it during normal
+work. Once configured, supported Codex lifecycle events are recorded
+automatically. See [trajectory.md](trajectory.md) for the event set, retention,
+privacy boundaries and limitations.
 
 ## `init-agent context <text>`
 
@@ -597,7 +622,8 @@ init-agent web --snapshot-json
 ```
 
 The dashboard reads `.agent/graph.sqlite` and shows project counts, recent
-memory notes, recent feedback, open tasks, reading plans and file activity.
+memory notes, recent feedback, open tasks, reading plans, file activity and
+optional observable trajectory events.
 It is intended as a lightweight observability layer for developers who want to
 see what an agent has recorded while using init-agent. It does not modify the
 repository or write metadata.

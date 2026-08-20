@@ -29,6 +29,9 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
             "open_tasks": [],
             "recent_plans": [],
             "file_activity": [],
+            "trajectory_summary": {},
+            "trajectory_sessions": [],
+            "trajectory_events": [],
             "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"],
         }
 
@@ -42,6 +45,9 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         recent_plans = _recent_plans(conn, bounded_limit)
         file_activity = _file_activity(conn, bounded_limit)
         scorecard = _scorecard(conn, bounded_limit)
+        trajectory_summary = _trajectory_summary(conn)
+        trajectory_sessions = _trajectory_sessions(conn, bounded_limit)
+        trajectory_events = _trajectory_events(conn, bounded_limit)
 
     return {
         "project": project,
@@ -52,6 +58,9 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         "open_tasks": open_tasks,
         "recent_plans": recent_plans,
         "file_activity": file_activity,
+        "trajectory_summary": trajectory_summary,
+        "trajectory_sessions": trajectory_sessions,
+        "trajectory_events": trajectory_events,
         "warnings": [],
     }
 
@@ -69,6 +78,7 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
         ("scorecard", "Scorecard"),
         ("plans", "Plans"),
         ("files", "Files"),
+        ("trajectory", "Trajectory"),
     ]
     return "\n".join(
         [
@@ -112,6 +122,12 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
             _scorecard_block(snapshot.get("scorecard") or {}),
             _compact_list("Recent Plans", ["id", "status", "query", "summary"], snapshot.get("recent_plans") or []),
             _compact_list("Top File Activity", ["path", "memory", "feedback", "plan_events", "total"], snapshot.get("file_activity") or []),
+            _trajectory_block(snapshot.get("trajectory_summary") or {}),
+            _compact_list(
+                "Recent Trajectory Sessions",
+                ["session_id", "status", "model", "event_count", "tool_call_count", "error_count"],
+                snapshot.get("trajectory_sessions") or [],
+            ),
             "</div>",
             "</section>",
             '<section class="tab-panel" data-tab="memory">',
@@ -155,6 +171,19 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
                 "File Activity",
                 ["path", "memory", "feedback", "plan_events", "total"],
                 snapshot.get("file_activity") or [],
+            ),
+            "</section>",
+            '<section class="tab-panel" data-tab="trajectory">',
+            _trajectory_block(snapshot.get("trajectory_summary") or {}),
+            _table_block(
+                "Trajectory Sessions",
+                ["session_id", "status", "source", "model", "event_count", "tool_call_count", "error_count", "subagent_count", "started_at", "ended_at"],
+                snapshot.get("trajectory_sessions") or [],
+            ),
+            _table_block(
+                "Recent Observable Events",
+                ["id", "session_id", "event_name", "tool_name", "status", "duration_ms", "paths", "command_name", "created_at"],
+                snapshot.get("trajectory_events") or [],
             ),
             "</section>",
             "</main>",
@@ -213,6 +242,8 @@ def _counts(conn: sqlite3.Connection) -> dict[str, int]:
         "agent_tasks",
         "reading_plans",
         "reading_plan_events",
+        "trajectory_sessions",
+        "trajectory_events",
     ]
     return {table: _table_count(conn, table) for table in tables}
 
@@ -343,6 +374,131 @@ def _file_activity(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]
     ]
     activity.sort(key=lambda item: (-item["total"], item["path"]))
     return activity[:limit]
+
+
+def _trajectory_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    if not (_has_table(conn, "trajectory_sessions") and _has_table(conn, "trajectory_events")):
+        return {}
+    row = conn.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM trajectory_sessions) AS session_count,
+            COUNT(*) AS event_count,
+            SUM(CASE WHEN event_name = 'PostToolUse' THEN 1 ELSE 0 END) AS tool_call_count,
+            SUM(CASE WHEN event_name = 'PostToolUse' AND status = 'error' THEN 1 ELSE 0 END) AS error_count,
+            SUM(CASE WHEN event_name = 'SubagentStart' THEN 1 ELSE 0 END) AS subagent_count,
+            AVG(CASE WHEN event_name = 'PostToolUse' THEN duration_ms END) AS average_tool_duration_ms
+        FROM trajectory_events
+        """
+    ).fetchone()
+    durations = sorted(
+        int(item["duration_ms"])
+        for item in conn.execute(
+            "SELECT duration_ms FROM trajectory_events WHERE event_name = 'PostToolUse' AND duration_ms IS NOT NULL"
+        )
+    )
+    p95_index = max(0, min(len(durations) - 1, int((len(durations) - 1) * 0.95))) if durations else 0
+    top_tools = [
+        {"tool": str(item["tool_name"] or "unknown"), "count": int(item["count"])}
+        for item in conn.execute(
+            """
+            SELECT tool_name, COUNT(*) AS count
+            FROM trajectory_events
+            WHERE event_name = 'PostToolUse'
+            GROUP BY tool_name
+            ORDER BY count DESC, tool_name
+            LIMIT 5
+            """
+        )
+    ]
+    return {
+        "session_count": int(row["session_count"] or 0),
+        "event_count": int(row["event_count"] or 0),
+        "tool_call_count": int(row["tool_call_count"] or 0),
+        "error_count": int(row["error_count"] or 0),
+        "subagent_count": int(row["subagent_count"] or 0),
+        "average_tool_duration_ms": round(float(row["average_tool_duration_ms"] or 0), 1),
+        "p95_tool_duration_ms": durations[p95_index] if durations else 0,
+        "top_tools": top_tools,
+        "duration_quality": "observed hook interval",
+    }
+
+
+def _trajectory_sessions(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+    if not (_has_table(conn, "trajectory_sessions") and _has_table(conn, "trajectory_events")):
+        return []
+    rows = conn.execute(
+        """
+        SELECT
+            sessions.id,
+            sessions.external_session_id AS session_id,
+            sessions.source,
+            sessions.model,
+            sessions.cwd,
+            sessions.started_at,
+            sessions.ended_at,
+            sessions.end_reason,
+            COUNT(events.id) AS event_count,
+            SUM(CASE WHEN events.event_name = 'PostToolUse' THEN 1 ELSE 0 END) AS tool_call_count,
+            SUM(CASE WHEN events.event_name = 'PostToolUse' AND events.status = 'error' THEN 1 ELSE 0 END) AS error_count,
+            SUM(CASE WHEN events.event_name = 'SubagentStart' THEN 1 ELSE 0 END) AS subagent_count
+        FROM trajectory_sessions AS sessions
+        LEFT JOIN trajectory_events AS events ON events.session_id = sessions.id
+        GROUP BY sessions.id
+        ORDER BY sessions.last_event_at DESC, sessions.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            **dict(row),
+            "status": "finished" if row["ended_at"] else "active",
+            "event_count": int(row["event_count"] or 0),
+            "tool_call_count": int(row["tool_call_count"] or 0),
+            "error_count": int(row["error_count"] or 0),
+            "subagent_count": int(row["subagent_count"] or 0),
+        }
+        for row in rows
+    ]
+
+
+def _trajectory_events(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+    if not (_has_table(conn, "trajectory_sessions") and _has_table(conn, "trajectory_events")):
+        return []
+    rows = conn.execute(
+        """
+        SELECT
+            events.id,
+            sessions.external_session_id AS session_id,
+            events.turn_id,
+            events.event_name,
+            events.tool_name,
+            events.agent_id,
+            events.agent_type,
+            events.status,
+            events.duration_ms,
+            events.metadata_json,
+            events.created_at
+        FROM trajectory_events AS events
+        JOIN trajectory_sessions AS sessions ON sessions.id = events.session_id
+        ORDER BY events.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    events = []
+    for row in rows:
+        item = dict(row)
+        try:
+            metadata = json.loads(str(item.pop("metadata_json") or "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        tool_input = metadata.get("tool_input") if isinstance(metadata.get("tool_input"), dict) else {}
+        item["paths"] = tool_input.get("paths") or []
+        item["command_name"] = tool_input.get("command_name") or ""
+        events.append(item)
+    return events
 
 
 def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
@@ -654,6 +810,8 @@ def _counts_block(counts: dict[str, int]) -> str:
         "agent_tasks",
         "reading_plans",
         "reading_plan_events",
+        "trajectory_sessions",
+        "trajectory_events",
     ]
     cards = "".join(
         f'<div><strong>{value}</strong><span>{_e(key.replace("_", " "))}</span></div>'
@@ -695,6 +853,35 @@ def _scorecard_block(scorecard: dict[str, Any]) -> str:
         f'<p class="muted">Evidence quality: {_e(confidence_text)}</p>'
         f'<p class="muted">Ranking signals: {_e(signal_text)}</p>'
         f'<p class="muted">Excluded from default scorecard: {_e(excluded_text)}</p>'
+        "</section>"
+    )
+
+
+def _trajectory_block(summary: dict[str, Any]) -> str:
+    if not summary:
+        return (
+            '<section class="panel compact-panel"><h2>Observable Trajectory</h2>'
+            '<p class="empty">No trajectory data. Optional Codex hooks can record redacted local events.</p></section>'
+        )
+    metrics = [
+        ("Sessions", summary.get("session_count", 0)),
+        ("Events", summary.get("event_count", 0)),
+        ("Tool calls", summary.get("tool_call_count", 0)),
+        ("Errors", summary.get("error_count", 0)),
+        ("Subagents", summary.get("subagent_count", 0)),
+        ("Avg tool", f"{summary.get('average_tool_duration_ms', 0)} ms"),
+        ("P95 tool", f"{summary.get('p95_tool_duration_ms', 0)} ms"),
+    ]
+    cards = "".join(f"<div><strong>{_e(value)}</strong><span>{_e(label)}</span></div>" for label, value in metrics)
+    top_tools = ", ".join(
+        f"{item.get('tool', 'unknown')}: {item.get('count', 0)}" for item in summary.get("top_tools") or []
+    ) or "none"
+    return (
+        '<section class="panel trajectory-panel">'
+        "<h2>Observable Trajectory</h2>"
+        f'<div class="metrics mini-metrics">{cards}</div>'
+        f'<p class="muted">Top tools: {_e(top_tools)}</p>'
+        f'<p class="muted">Timing: {_e(summary.get("duration_quality", "unknown"))}. Payloads remain redacted metadata.</p>'
         "</section>"
     )
 

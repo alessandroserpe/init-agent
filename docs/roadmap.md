@@ -46,6 +46,10 @@ Keep the dashboard read-only, but improve how it explains local agent behavior:
 - recurring topics, tags and flow groups;
 - optional lightweight graph views.
 
+The dashboard now also supports an optional redacted trajectory timeline for
+observable Codex lifecycle events. Future work should validate whether those
+events improve human understanding before expanding capture depth.
+
 The dashboard should help humans understand what the agent did without turning
 into a project management system.
 

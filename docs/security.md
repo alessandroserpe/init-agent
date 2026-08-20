@@ -18,8 +18,31 @@ The SQLite database stores metadata such as:
 - lightweight relations
 - recent Git commit metadata
 - local orientation feedback
+- optional redacted trajectory sessions and events
 
 It intentionally does not store full file contents.
+
+## Optional Trajectory Hooks
+
+`init-agent trajectory install-codex` installs local Codex lifecycle hooks.
+They are disabled by default and separate from MCP. Review and trust the hook
+configuration with `/hooks` in Codex before use.
+
+The trajectory collector uses a strict allowlist. It may store event names,
+session/turn/tool identifiers, model name, repository-relative paths, tool
+executable names, input/output sizes, exit status, duration and subagent
+lifecycle metadata. Paths outside the repository are replaced with
+`<outside-repository>`.
+
+It does not store prompts, full shell commands, patches, tool output,
+subagent messages, chat transcripts, secrets or model reasoning. The collector
+is fail-open and silently skips repositories without an existing init-agent
+index. Retention is bounded to the latest 5,000 events per repository database.
+
+Hook timestamps measure observable hook intervals and can include harness
+overhead. Codex hooks do not expose authoritative model-token accounting or
+every internal/hosted operation, so the dashboard must not be interpreted as a
+complete model trace.
 
 ## Graph Export
 

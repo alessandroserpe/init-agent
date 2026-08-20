@@ -158,6 +158,18 @@ not create commits or modify source files.
 
 Do not run it for a tiny one-shot answer.
 
+## Optional Trajectory
+
+Trajectory hooks, when configured by the user, record redacted lifecycle
+metadata automatically. Do not add telemetry calls to the normal repository
+workflow and do not install hooks implicitly. If the user explicitly asks for
+local trajectory observability, inspect it with `init-agent trajectory status`
+and explain that installation requires `init-agent trajectory install-codex`,
+review through Codex `/hooks`, and a restart.
+
+The trajectory is not chat history or model reasoning. It must not contain
+prompts, full commands, patches, tool output, source snippets or secrets.
+
 ## Safety
 
 - Verify live files before editing or relying on memory.

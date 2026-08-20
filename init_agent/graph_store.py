@@ -221,6 +221,37 @@ CREATE TABLE IF NOT EXISTS reading_plan_workstreams (
     UNIQUE(plan_id, workstream_key)
 );
 
+CREATE TABLE IF NOT EXISTS trajectory_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    external_session_id TEXT NOT NULL,
+    cwd TEXT,
+    model TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    end_reason TEXT,
+    first_event_at TEXT NOT NULL,
+    last_event_at TEXT NOT NULL,
+    UNIQUE(source, external_session_id)
+);
+
+CREATE TABLE IF NOT EXISTS trajectory_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    turn_id TEXT,
+    event_name TEXT NOT NULL,
+    event_key TEXT NOT NULL,
+    tool_name TEXT,
+    tool_use_id TEXT,
+    agent_id TEXT,
+    agent_type TEXT,
+    status TEXT,
+    duration_ms INTEGER,
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES trajectory_sessions(id) ON DELETE CASCADE
+);
+
 """
 
 
@@ -228,9 +259,10 @@ class GraphStore:
     def __init__(self, root: Path):
         self.root = root
         self.path = db_path(root)
-        self.connection = sqlite3.connect(self.path)
+        self.connection = sqlite3.connect(self.path, timeout=10)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute("PRAGMA busy_timeout = 10000")
 
     def close(self) -> None:
         self.connection.close()
@@ -261,6 +293,7 @@ class GraphStore:
         self._ensure_column("symbols", "container_name", "TEXT")
         self._ensure_column("symbols", "end_line", "INTEGER")
         self._ensure_column("relations", "context_symbol_id", "INTEGER")
+        self._ensure_column("trajectory_events", "event_key", "TEXT")
         self.connection.executescript(
             """
             CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
@@ -271,6 +304,15 @@ class GraphStore:
                 ON relations(target_type, target_id, relation);
             CREATE INDEX IF NOT EXISTS idx_relations_context_symbol
                 ON relations(context_symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_trajectory_events_session
+                ON trajectory_events(session_id, id);
+            CREATE INDEX IF NOT EXISTS idx_trajectory_events_tool_use
+                ON trajectory_events(session_id, tool_use_id, event_name);
+            CREATE INDEX IF NOT EXISTS idx_trajectory_events_created
+                ON trajectory_events(created_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_trajectory_events_identity
+                ON trajectory_events(session_id, event_key)
+                WHERE event_key IS NOT NULL AND event_key != '';
             """
         )
 

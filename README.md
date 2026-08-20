@@ -28,6 +28,7 @@ it is "where does this behavior live?"
 - feedback for verified useful, noisy or missing files;
 - short local memory notes with stale checks;
 - local task/session handoff metadata;
+- optional privacy-preserving Codex trajectory events;
 - a read-only dashboard for humans.
 
 The output is orientation material, not source of truth. Agents should still
@@ -51,7 +52,8 @@ init-agent sync
 
 `sync` updates the bundled Codex skill, stores locally modified skill backups
 under `~/.codex/init-agent-backups/skills/`, and reports whether the init-agent
-MCP server is registered. It does not edit Codex MCP configuration.
+MCP server and optional trajectory hooks are configured. It does not edit those
+configurations.
 
 If you do not have `pipx`:
 
@@ -95,7 +97,20 @@ init-agent web
 ```
 
 The dashboard is read-only and shows local memory, feedback, open tasks,
-reading plans, orientation scorecard metrics and recurring files.
+reading plans, orientation scorecard metrics, recurring files and optional
+observable trajectory events.
+
+To record a bounded technical timeline from Codex lifecycle hooks:
+
+```bash
+init-agent trajectory install-codex
+```
+
+Review the installed hooks with `/hooks` inside Codex, trust them, and restart
+Codex. The feature is optional and separate from MCP. It records redacted event
+metadata such as tool names, repository-relative paths, durations, outcomes and
+subagent lifecycle events. It does not store prompts, full commands, patches,
+tool output or model reasoning. See [docs/trajectory.md](docs/trajectory.md).
 
 For larger plans, `init-agent plan "<task>" --delegate` can return conservative
 delegation advice. Delegation is disabled by default.
@@ -271,6 +286,8 @@ See [docs/security.md](docs/security.md).
 - Entrypoint discovery may miss custom boot files.
 - Refresh is incremental by file hash, but not dependency-aware.
 - No built-in LLM execution.
+- Optional trajectory hooks retain redacted observable metadata, not chat or
+  chain-of-thought.
 - The web dashboard does not yet render an interactive symbol/relation graph.
 
 ## Development
@@ -299,6 +316,7 @@ More documentation:
 - [Scoring](docs/scoring.md)
 - [Feedback](docs/feedback.md)
 - [Memory workflows](docs/memory-workflows.md)
+- [Observable trajectory](docs/trajectory.md)
 - [Validation experiments](docs/experiments.md)
 - [Roadmap](docs/roadmap.md)
 - [Security and privacy](docs/security.md)

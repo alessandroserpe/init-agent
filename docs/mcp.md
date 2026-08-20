@@ -14,6 +14,11 @@ The default `core` profile exposes the small daily agent loop:
 - `repo_memory_search`
 - `repo_session_close`
 
+Optional Codex trajectory capture is deliberately not an MCP tool. It is an
+automatic, local lifecycle-hook integration configured separately with
+`init-agent trajectory install-codex`; this keeps the core MCP surface compact
+and avoids spending model context on telemetry bookkeeping.
+
 Start `init-agent-mcp --profile full` when an existing integration needs all
 legacy, maintenance, scorecard, task and delegated-workstream contracts. These
 tools also remain available through `init-agent tool ...`; reducing the MCP

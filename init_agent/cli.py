@@ -96,6 +96,8 @@ from .refresh import refresh_index
 from .run import render_run_markdown, render_run_text, run_query
 from .scanner import INDEX_VERSION, scan_project
 from .skill_installer import install_codex_skill, sync_codex_skill
+from .cli_trajectory_commands import register_trajectory_subcommands
+from .trajectory_hooks import codex_trajectory_hook_status
 from .utils import config_path, ensure_agent_dir, has_project_marker, normalize_repo_path, project_root, utc_now, write_json
 from .web_ui import build_web_snapshot, serve_web_ui
 
@@ -213,6 +215,8 @@ def build_parser() -> argparse.ArgumentParser:
     web_parser.add_argument("--snapshot-json", action="store_true", help="Print the dashboard data as JSON and exit.")
     web_parser.set_defaults(handler=cmd_web)
 
+    register_trajectory_subcommands(subparsers)
+
     mcp_parser = subparsers.add_parser("mcp", help="Run or install the MCP stdio server for agent integrations.")
     mcp_parser.add_argument("--root", default=".", help="Repository root to serve. Defaults to the current directory.")
     mcp_parser.add_argument("--profile", choices=("core", "full"), default="core", help="MCP tool surface. Defaults to core.")
@@ -327,6 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser = subparsers.add_parser("sync", help="Synchronize installed Codex assets with this init-agent version.")
     sync_parser.add_argument("--target-dir", help="Override the Codex skills directory, mainly for testing.")
     sync_parser.add_argument("--config-path", help="Override Codex config.toml when checking MCP registration.")
+    sync_parser.add_argument("--hooks-path", help="Override Codex hooks.json when checking trajectory hooks.")
     sync_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     sync_parser.set_defaults(handler=cmd_sync)
 
@@ -1264,6 +1269,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         config_path = Path(args.config_path).expanduser() if args.config_path else None
         skill = sync_codex_skill(target_dir)
         mcp = codex_mcp_status(config_path)
+        trajectory = codex_trajectory_hook_status(Path(args.hooks_path).expanduser() if args.hooks_path else None)
     except (OSError, ValueError) as exc:
         if args.json:
             print(json.dumps({"status": "error", "error": str(exc)}, indent=2, sort_keys=True))
@@ -1276,6 +1282,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         "version": __version__,
         "skill": skill,
         "mcp": mcp,
+        "trajectory": trajectory,
     }
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -1291,6 +1298,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
             print(f"Migrated backup: {migrated}")
         print(f"Codex MCP: {mcp['status']}")
         print(mcp["message"])
+        print(f"Codex trajectory hooks: {trajectory['status']}")
+        if trajectory["installed"]:
+            print("Review hook trust in Codex with /hooks.")
         print()
         print("Open a new Codex session when the skill or MCP installation changed.")
     return 0

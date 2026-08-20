@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "init-agent"
-version = "0.52.0"
+version = "0.53.0"
 description = "A local Project Orientation Layer for future AI CLI agents."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,7 @@ treesitter = [
 [project.scripts]
 init-agent = "init_agent.cli:main"
 init-agent-mcp = "init_agent.mcp_server:main"
+init-agent-hook = "init_agent.trajectory_hook_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["init_agent*"]
