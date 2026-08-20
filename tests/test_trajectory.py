@@ -258,3 +258,40 @@ class TrajectoryTests(InitAgentTestCase):
                 store.initialize()
                 self.assertEqual(store._count("trajectory_sessions"), 1)
                 self.assertEqual(store._count("trajectory_events"), 12)
+
+    def test_resumed_codex_session_reopens_and_keeps_lifecycle_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            payload = {"session_id": "resumed-session", "cwd": str(root)}
+
+            ingest_codex_hook(
+                root,
+                {**payload, "hook_event_name": "SessionStart", "source": "startup"},
+                recorded_at="2026-08-20T10:00:00.000+00:00",
+            )
+            ingest_codex_hook(
+                root,
+                {**payload, "hook_event_name": "SessionEnd", "reason": "other"},
+                recorded_at="2026-08-20T10:01:00.000+00:00",
+            )
+            ingest_codex_hook(
+                root,
+                {**payload, "hook_event_name": "SessionStart", "source": "resume"},
+                recorded_at="2026-08-20T10:02:00.000+00:00",
+            )
+
+            with sqlite3.connect(root / ".agent" / "graph.sqlite") as conn:
+                session = conn.execute(
+                    "SELECT started_at, ended_at, end_reason FROM trajectory_sessions"
+                ).fetchone()
+                events = conn.execute(
+                    "SELECT event_name FROM trajectory_events ORDER BY id"
+                ).fetchall()
+
+            self.assertEqual(session[0], "2026-08-20T10:00:00.000+00:00")
+            self.assertIsNone(session[1])
+            self.assertIsNone(session[2])
+            self.assertEqual([row[0] for row in events], ["SessionStart", "SessionEnd", "SessionStart"])
+            snapshot = build_web_snapshot(root)
+            self.assertEqual(snapshot["trajectory_sessions"][0]["status"], "active")

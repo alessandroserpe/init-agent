@@ -56,8 +56,9 @@ other collection failures so observability cannot block coding work.
 The allowlist includes event/session identifiers, model name, event status,
 tool name, repository-relative paths, executable name, payload sizes, exit
 status, paired-tool duration and subagent lifecycle identifiers. Duplicate
-events are ignored and retention is bounded to the latest 5,000 events per
-repository.
+correlated tool, turn and subagent events are ignored; lifecycle events remain
+in order so resumed Codex sessions can be reconstructed. Retention is bounded
+to the latest 5,000 events per repository.
 
 The collector does not store:
 

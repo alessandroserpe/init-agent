@@ -81,10 +81,14 @@ def ingest_codex_hook(
             now=now,
         )
         duration_ms = _paired_duration_ms(store, session_id, event_name, tool_use_id, now)
-        existing = store.connection.execute(
-            "SELECT id, duration_ms FROM trajectory_events WHERE session_id = ? AND event_key = ?",
-            (session_id, event_key),
-        ).fetchone()
+        existing = (
+            store.connection.execute(
+                "SELECT id, duration_ms FROM trajectory_events WHERE session_id = ? AND event_key = ?",
+                (session_id, event_key),
+            ).fetchone()
+            if event_key
+            else None
+        )
         if existing is not None:
             return {
                 "recorded": False,
@@ -193,12 +197,31 @@ def _upsert_session(
         UPDATE trajectory_sessions
         SET cwd = COALESCE(NULLIF(?, ''), cwd),
             model = COALESCE(NULLIF(?, ''), model),
-            ended_at = CASE WHEN ? = 'SessionEnd' THEN ? ELSE ended_at END,
-            end_reason = CASE WHEN ? = 'SessionEnd' THEN ? ELSE end_reason END,
+            ended_at = CASE
+                WHEN ? = 'SessionStart' THEN NULL
+                WHEN ? = 'SessionEnd' THEN ?
+                ELSE ended_at
+            END,
+            end_reason = CASE
+                WHEN ? = 'SessionStart' THEN NULL
+                WHEN ? = 'SessionEnd' THEN ?
+                ELSE end_reason
+            END,
             last_event_at = ?
         WHERE id = ?
         """,
-        (cwd, model, event_name, now, event_name, end_reason or None, now, session_id),
+        (
+            cwd,
+            model,
+            event_name,
+            event_name,
+            now,
+            event_name,
+            event_name,
+            end_reason or None,
+            now,
+            session_id,
+        ),
     )
     return session_id
 
@@ -365,7 +388,7 @@ def _event_key(event_name: str, turn_id: str, tool_use_id: str, agent_id: str) -
         return f"{event_name}:agent:{agent_id}"
     if turn_id:
         return f"{event_name}:turn:{turn_id}"
-    return event_name
+    return ""
 
 
 def _prune_events(store: GraphStore) -> None:
