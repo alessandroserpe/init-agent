@@ -146,7 +146,7 @@ fresh repository map. If a note is stale, re-read the file before using it. Then
 delete it:
 
 ```bash
-init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Updated verified fact." --json
+init-agent tool repo_memory_update --id 12 --revalidate --evidence read_full_file --note "Updated verified fact." --json
 init-agent tool repo_memory_delete --id 13 --json
 ```
 

@@ -1,9 +1,63 @@
 from tests.support import *
 
 from init_agent.web_ui import build_web_snapshot, render_dashboard_html
+from init_agent.web_ui import serve_web_ui
+from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 
 
 class WebUiTests(InitAgentTestCase):
+    def test_server_rejects_non_loopback_bindings(self) -> None:
+        for host in ("0.0.0.0", "::", "192.168.1.10", "public.example"):
+            with self.subTest(host=host), patch.object(ThreadingHTTPServer, "__init__") as initialize:
+                with self.assertRaisesRegex(ValueError, "loopback"):
+                    serve_web_ui(Path("."), host=host)
+                initialize.assert_not_called()
+
+    def test_server_checks_host_and_origin_before_loading_metadata(self) -> None:
+        class RequestSocket:
+            def __init__(self, request):
+                self.input = BytesIO(request)
+                self.output = BytesIO()
+
+            def makefile(self, *args):
+                return self.input
+
+            def sendall(self, value):
+                self.output.write(value)
+
+        for bind_host, authority in (("127.0.0.1", "127.0.0.1:8765"), ("localhost", "localhost:8765"), ("::1", "[::1]:8765")):
+            requests = [
+                (f"Host: {authority}\r\n", 200),
+                (f"Host: {authority}\r\nOrigin: http://{authority}\r\n", 200),
+                ("Host: untrusted.example\r\n", 403),
+                ("", 403),
+                (f"Host: {authority}\r\nHost: evil.example\r\n", 403),
+                (f"Host: {authority}\r\nOrigin: https://evil.example\r\n", 403),
+                (f"Host: {authority}\r\nOrigin: null\r\n", 403),
+                (f"Host: {authority}\r\nSec-Fetch-Site: cross-site\r\n", 403),
+                ("Host: localhost:9999\r\n", 403),
+            ]
+            responses = []
+
+            def initialize(server, address, handler):
+                server.server_port = 8765
+                server.RequestHandlerClass = handler
+
+            def run(server):
+                for headers, expected in requests:
+                    request = RequestSocket(f"GET /api/snapshot HTTP/1.1\r\n{headers}\r\n".encode())
+                    server.RequestHandlerClass(request, ("127.0.0.1", 1000), server)
+                    responses.append((request.output.getvalue(), expected))
+
+            with self.subTest(host=bind_host), patch.object(ThreadingHTTPServer, "__init__", initialize), patch.object(ThreadingHTTPServer, "serve_forever", run), patch.object(ThreadingHTTPServer, "server_close"), patch("init_agent.web_ui.build_web_snapshot", return_value={}) as snapshot, redirect_stdout(StringIO()):
+                serve_web_ui(Path("."), host=bind_host)
+                self.assertEqual(snapshot.call_count, 2)
+            for response, expected in responses:
+                self.assertIn(f" {expected} ".encode(), response.split(b"\r\n")[0])
+                self.assertIn(b"Cache-Control: no-store", response)
+                self.assertIn(b"X-Content-Type-Options: nosniff", response)
+
     def test_web_snapshot_json_reports_local_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))

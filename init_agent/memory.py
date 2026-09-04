@@ -122,12 +122,7 @@ def list_notes(
             params,
         ).fetchall()
     parsed_notes = [_row_to_note(row) for row in rows]
-    current_hashes = {
-        str(note["path"]): _current_file_sha256(root, str(note["path"]))
-        for note in parsed_notes
-        if note.get("scope") != "repo"
-    }
-    notes = [_with_staleness(note, current_hashes) for note in parsed_notes]
+    notes = with_live_staleness(root, parsed_notes)
     if stale_only:
         notes = [
             note for note in notes
@@ -171,7 +166,10 @@ def update_note(
     source: str | None = None,
     evidence: str | None = None,
     tags: list[str] | None = None,
+    revalidate: bool = False,
 ) -> dict[str, Any]:
+    if not isinstance(revalidate, bool):
+        raise ValueError("revalidate must be a boolean")
     if note_id <= 0:
         raise ValueError("note id must be positive")
     ensure_agent_dir(root)
@@ -205,7 +203,11 @@ def update_note(
         clean_tags = _normalize_tags(tags, path, clean_topic, clean_query, clean_note) if tags is not None else list(existing.get("tags") or [])
         token_text = " ".join([scope, path, clean_topic, clean_query, normalized_evidence, clean_note, *clean_tags])
         tokens = tokenize_query(token_text)
-        file_sha256 = _current_file_sha256(root, path) if scope == "file" else None
+        file_sha256 = existing.get("file_sha256") or None
+        if revalidate and scope == "file":
+            file_sha256 = _current_file_sha256(root, path)
+            if not file_sha256:
+                raise ValueError("cannot revalidate a missing, unreadable or outside-repository file")
         record = {
             "id": note_id,
             "path": path,
@@ -218,7 +220,7 @@ def update_note(
             "file_sha256": file_sha256,
             "evidence": normalized_evidence,
             "source": normalized_source,
-            "created_at": utc_now(),
+            "created_at": utc_now() if revalidate else existing["created_at"],
         }
         store.connection.execute(
             """
@@ -237,7 +239,8 @@ def update_note(
             record,
         )
         store.connection.commit()
-    return {"updated": True, "id": note_id, "memory": _record_to_note(record)}
+    memory = with_live_staleness(root, [_record_to_note(record)])[0]
+    return {"updated": True, "id": note_id, "memory": memory}
 
 
 def search_notes(root: Path, query: str, path: str | None = None, limit: int = 10) -> dict[str, Any]:
@@ -430,7 +433,14 @@ def _current_file_sha256(root: Path, path: str) -> str | None:
     return None
 
 
-def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str]) -> dict[str, Any]:
+def with_live_staleness(root: Path, notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Shape notes using current files, hashing each path once without writing metadata."""
+    paths = {str(note["path"]) for note in notes if note.get("scope") != "repo"}
+    hashes = {path: _current_file_sha256(root, path) for path in paths}
+    return [_with_staleness(note, hashes) for note in notes]
+
+
+def _with_staleness(note: dict[str, Any], current_hashes: dict[str, str | None]) -> dict[str, Any]:
     if note.get("scope") == "repo":
         return {
             **note,

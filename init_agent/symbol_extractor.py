@@ -6,6 +6,7 @@ import json
 import re
 import tomllib
 import ast
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,7 +34,7 @@ class ExtractedRelation:
     provenance: str = "extracted"
 
 
-PY_DEF_RE = re.compile(r"^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 PY_CLASS_RE = re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b([^:]*)")
 PY_CONSTANT_RE = re.compile(r"^([A-Z_][A-Z0-9_]*)\s*=")
 PY_IMPORT_RE = re.compile(r"^\s*import\s+(.+)$")
@@ -430,7 +431,7 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                     node.name,
                     "class",
                     node.lineno,
-                    _python_line(lines, node.lineno),
+                    f"class {node.name}:",
                     qualified_name,
                     self._container(),
                     getattr(node, "end_lineno", None),
@@ -470,7 +471,7 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                     node.name,
                     kind,
                     node.lineno,
-                    _python_line(lines, node.lineno),
+                    _python_function_signature(node),
                     qualified_name,
                     self._container(),
                     getattr(node, "end_lineno", None),
@@ -496,7 +497,7 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
         def _record_constant_targets(self, targets: list[ast.expr], line_no: int) -> None:
             for target in targets:
                 if isinstance(target, ast.Name) and PY_CONSTANT_RE.match(f"{target.id} ="):
-                    symbols.append(ExtractedSymbol(target.id, "constant", line_no, _python_line(lines, line_no)))
+                    symbols.append(ExtractedSymbol(target.id, "constant", line_no, f"{target.id} = ..."))
 
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
@@ -585,19 +586,19 @@ def _extract_python_regex(content: str, path: str | None = None) -> tuple[list[E
             class_indent = None
         if match := FLASK_ROUTE_RE.match(line):
             route = _normalize_route_path(match.group("path"))
-            pending_flask_routes.append((route, line_no, stripped))
+            pending_flask_routes.append((route, line_no, f"route {route}"))
         if match := PY_DEF_RE.match(line):
             kind = "method" if class_indent is not None and indent > class_indent else "function"
-            symbols.append(ExtractedSymbol(match.group(1), kind, line_no, stripped))
+            symbols.append(ExtractedSymbol(match.group(1), kind, line_no, f"def {match.group(1)}(...):"))
             for route, route_line, route_signature in pending_flask_routes:
                 symbols.append(ExtractedSymbol(route, "route", route_line, route_signature))
                 relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group(1), route_line, 0.8))
             pending_flask_routes = []
         if match := PY_CLASS_RE.match(line):
             class_indent = indent
-            symbols.append(ExtractedSymbol(match.group(1), "class", line_no, stripped))
+            symbols.append(ExtractedSymbol(match.group(1), "class", line_no, f"class {match.group(1)}:"))
         if match := PY_CONSTANT_RE.match(line):
-            symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, stripped))
+            symbols.append(ExtractedSymbol(match.group(1), "constant", line_no, f"{match.group(1)} = ..."))
         if match := PY_IMPORT_RE.match(line):
             for module in _split_imports(match.group(1)):
                 clean_module, local_name = _python_regex_import_binding(module)
@@ -620,15 +621,18 @@ def _extract_python_regex(content: str, path: str | None = None) -> tuple[list[E
                 )
         if match := DJANGO_PATH_RE.match(line):
             route = _normalize_route_path("/" + match.group("path").strip("/"))
-            symbols.append(ExtractedSymbol(route, "route", line_no, stripped))
+            symbols.append(ExtractedSymbol(route, "route", line_no, f"route {route}"))
             relations.append(ExtractedRelation("route_to_handler", "symbol_name", match.group("handler").split(".")[-1], line_no, 0.65))
     return symbols, relations
 
 
-def _python_line(lines: list[str], line_no: int) -> str:
-    if 1 <= line_no <= len(lines):
-        return lines[line_no - 1].strip()
-    return ""
+def _python_function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    # Keep parameter structure without persisting default expressions or inline bodies.
+    args = copy.deepcopy(node.args)
+    args.defaults = [ast.Constant(value=Ellipsis) for _ in args.defaults]
+    args.kw_defaults = [ast.Constant(value=Ellipsis) if value is not None else None for value in args.kw_defaults]
+    prefix = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
+    return f"{prefix}def {node.name}({ast.unparse(args)}):"[:200]
 
 
 def _python_call_name(node: ast.expr) -> str:
@@ -651,7 +655,7 @@ def _python_flask_routes_from_decorators(decorators: list[ast.expr], lines: list
             continue
         route = _first_string_arg(decorator)
         if route and route.startswith("/"):
-            routes.append((_normalize_route_path(route), decorator.lineno, _python_line(lines, decorator.lineno)))
+            routes.append((_normalize_route_path(route), decorator.lineno, f"route {_normalize_route_path(route)}"))
     return routes
 
 
@@ -665,7 +669,8 @@ def _python_django_route_from_call(node: ast.Call, lines: list[str]) -> tuple[st
     handler = ""
     if len(node.args) >= 2:
         handler = _python_call_handler_name(node.args[1])
-    return _normalize_route_path("/" + route.strip("/")), handler, node.lineno, _python_line(lines, node.lineno)
+    route = _normalize_route_path("/" + route.strip("/"))
+    return route, handler, node.lineno, f"route {route} -> {handler}"
 
 
 def _first_string_arg(node: ast.Call) -> str | None:

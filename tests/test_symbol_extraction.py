@@ -2,6 +2,21 @@ from tests.support import *
 
 
 class SymbolExtractionTests(InitAgentTestCase):
+    def test_python_signatures_omit_default_values_and_inline_bodies(self) -> None:
+        content = (
+            'TOKEN = "SYNTHETIC_SECRET"\n'
+            'class Client: secret = "SYNTHETIC_SECRET"\n'
+            'async def connect(user: str, /, password="SYNTHETIC_SECRET", *, token=build("SYNTHETIC_SECRET")): return "SYNTHETIC_SECRET"\n'
+        )
+        symbols, relations = extract_symbols_and_relations(content, "python")
+        self.assertNotIn("SYNTHETIC_SECRET", " ".join(symbol.signature for symbol in symbols))
+        function = next(symbol for symbol in symbols if symbol.name == "connect")
+        self.assertEqual(function.signature, "async def connect(user: str, /, password=..., *, token=...):")
+        self.assertIn("build", [relation.target for relation in relations])
+        fallback, _ = extract_symbols_and_relations(content + "invalid syntax !\n", "python")
+        self.assertNotIn("SYNTHETIC_SECRET", " ".join(symbol.signature for symbol in fallback))
+        self.assertIn("connect", [symbol.name for symbol in fallback])
+
     def test_python_symbol_extraction(self) -> None:
         content = "import os\nfrom pathlib import Path\nclass Runner:\n    pass\ndef run(value):\n    return value\n"
         symbols, relations = extract_symbols_and_relations(content, "python")

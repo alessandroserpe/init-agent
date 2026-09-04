@@ -140,6 +140,13 @@ Memory maintenance such as list, audit, update, delete, topic aggregation and
 flow aggregation belongs to CLI/dashboard workflows, not the default coding
 loop.
 
+File-scoped freshness checks live file bytes, independently of the map; fresh
+means unchanged, not necessarily correct. Editing a note or its tags preserves
+the recorded hash and evidence timestamp. After checking the note against the
+current file, use `repo_memory_update` with `revalidate=true` (full MCP) or
+`init-agent tool repo_memory_update --id <id> --revalidate` (CLI) to renew them.
+Do not revalidate merely to clear a stale warning.
+
 ## Delegation
 
 Delegation advice is disabled by default. Request it explicitly with
@@ -169,6 +176,9 @@ review through Codex `/hooks`, and a restart.
 
 The trajectory is not chat history or model reasoning. It must not contain
 prompts, full commands, patches, tool output, source snippets or secrets.
+An `unknown` tool outcome means evidence is missing, not success or failure.
+Use structured outcomes and coverage when interpreting totals; do not infer
+success from a zero error count.
 
 ## Safety
 

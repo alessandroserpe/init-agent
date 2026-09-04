@@ -12,7 +12,7 @@ from .text_tokens import is_query_noise_token, tokenize_query
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "9"
+INDEX_VERSION = "10"
 
 
 def scan_project(root: Path, store: Any) -> dict[str, int]:

@@ -67,8 +67,14 @@ The collector does not store:
 - patches or source snippets;
 - tool output;
 - subagent responses;
-- secrets or paths outside the repository;
+- paths outside the repository;
 - hidden model reasoning.
+
+Allowed metadata such as names and paths may still be sensitive. Missing or
+unstructured tool results produce `unknown`, not `success`. The dashboard shows
+the percentage of completed calls with structured outcome evidence. Older
+events are reassessed from retained evidence; the collector cannot reconstruct
+missing exit codes from redacted output.
 
 Inspect the timeline with:
 

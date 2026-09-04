@@ -2,7 +2,7 @@ from tests.support import *
 
 from concurrent.futures import ThreadPoolExecutor
 
-from init_agent.trajectory import CODEX_HOOK_EVENTS, ingest_codex_hook
+from init_agent.trajectory import CODEX_HOOK_EVENTS, ingest_codex_hook, tool_response_status
 from init_agent.trajectory_hook_cli import main as hook_main
 from init_agent.trajectory_hooks import (
     codex_trajectory_hook_status,
@@ -13,6 +13,39 @@ from init_agent.web_ui import build_web_snapshot, render_dashboard_html
 
 
 class TrajectoryTests(InitAgentTestCase):
+    def test_tool_outcome_requires_structured_evidence(self) -> None:
+        cases = [
+            (None, "unknown"), ("Process exited with code 1", "unknown"),
+            ({}, "unknown"), ({"output": "success"}, "unknown"),
+            ({"exit_code": 0}, "success"), ({"exit_code": 1}, "error"),
+            ({"exit_code": -9}, "error"), ({"isError": True}, "error"),
+            ({"isError": False}, "success"), ({"exit_code": 0, "isError": True}, "error"),
+            ({"exit_code": True}, "unknown"), ({"exit_code": "0"}, "unknown"),
+            ({"exit_code": "bad", "isError": False}, "unknown"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _create_context_fixture(Path(tmp))
+            _prepare_index(root)
+            for index, (response, status) in enumerate(cases):
+                with self.subTest(response=response):
+                    self.assertEqual(tool_response_status(response), status)
+                    ingest_codex_hook(root, {
+                        "session_id": "outcomes", "hook_event_name": "PostToolUse",
+                        "tool_use_id": str(index), "tool_name": "Bash", "tool_response": response,
+                    })
+            # Older collectors defaulted unstructured responses to success.
+            with GraphStore(root) as store:
+                store.connection.execute("UPDATE trajectory_events SET status = 'success' WHERE status = 'unknown'")
+                store.connection.commit()
+            snapshot = build_web_snapshot(root)
+            summary = snapshot["trajectory_summary"]
+            self.assertEqual(summary["tool_call_count"], len(cases))
+            unknown = sum(status == "unknown" for _, status in cases)
+            self.assertEqual(summary["unknown_outcome_count"], unknown)
+            self.assertEqual(summary["error_count"], sum(status == "error" for _, status in cases))
+            self.assertEqual(summary["outcome_coverage_percent"], round(100 * (len(cases) - unknown) / len(cases), 1))
+            self.assertEqual(sum(event["status"] == "unknown" for event in snapshot["trajectory_events"]), unknown)
+
     def test_codex_hook_ingestion_redacts_payloads_and_pairs_tool_duration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _create_context_fixture(Path(tmp))

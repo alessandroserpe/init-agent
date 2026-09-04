@@ -303,8 +303,8 @@ def _summarize_tool_response(value: Any) -> dict[str, Any]:
     }
     if isinstance(value, dict):
         summary["keys"] = sorted(str(key)[:80] for key in value)[:24]
-        if isinstance(value.get("exit_code"), int):
-            summary["exit_code"] = int(value["exit_code"])
+        if "exit_code" in value:
+            summary["exit_code"] = value["exit_code"] if type(value["exit_code"]) is int else None
         if isinstance(value.get("isError"), bool):
             summary["is_error"] = bool(value["isError"])
     return summary
@@ -371,14 +371,39 @@ def _event_status(event_name: str, payload: dict[str, Any]) -> str:
         return "started"
     if event_name != "PostToolUse":
         return "observed"
-    response = payload.get("tool_response")
+    return tool_response_status(payload.get("tool_response"))
+
+
+def tool_response_status(response: Any) -> str:
+    """Require structured evidence; free-form output is not an exit status."""
     if isinstance(response, dict):
         if response.get("isError") is True:
             return "error"
         exit_code = response.get("exit_code")
-        if isinstance(exit_code, int) and exit_code != 0:
+        if type(exit_code) is int and exit_code != 0:
             return "error"
-    return "success"
+        if type(exit_code) is int and exit_code == 0:
+            return "success"
+        if "exit_code" not in response and response.get("isError") is False:
+            return "success"
+    return "unknown"
+
+
+def stored_tool_status(metadata_json: str) -> str:
+    """Reassess legacy events from retained outcome evidence, not old defaults."""
+    try:
+        metadata = json.loads(metadata_json)
+    except (ValueError, TypeError):
+        return "unknown"
+    summary = metadata.get("tool_response") if isinstance(metadata, dict) else None
+    if not isinstance(summary, dict):
+        return "unknown"
+    response = {}
+    if "exit_code" in summary:
+        response["exit_code"] = summary["exit_code"]
+    if "is_error" in summary:
+        response["isError"] = summary["is_error"]
+    return tool_response_status(response)
 
 
 def _event_key(event_name: str, turn_id: str, tool_use_id: str, agent_id: str) -> str:

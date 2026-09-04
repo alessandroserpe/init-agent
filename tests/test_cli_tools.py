@@ -1001,6 +1001,7 @@ class CliToolsTests(InitAgentTestCase):
                                 "repo_memory_update",
                                 "--id",
                                 str(added["memory"]["id"]),
+                                "--revalidate",
                                 "--evidence",
                                 "read_full_file",
                                 "--note",

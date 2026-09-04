@@ -263,12 +263,14 @@ performance claims. See [docs/experiments.md](docs/experiments.md).
 
 - Local only.
 - No LLM calls.
-- No external services contacted by the CLI.
+- Mapping, memory and MCP work locally; explicit update checks may contact the release service.
 - No full source code stored in SQLite.
 - Generated indexes live under `.agent/` and should usually stay ignored.
 
-File contents may be read locally during mapping, refresh and token estimation
-to extract lightweight metadata, symbols, hashes and character counts.
+File contents may be read locally during mapping, refresh, token estimation
+and live memory freshness checks. Metadata is not guaranteed secret-free:
+review signatures, notes and exports before sharing them. The dashboard accepts
+only loopback bindings and validates request Host/Origin headers.
 
 See [docs/security.md](docs/security.md).
 

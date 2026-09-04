@@ -271,7 +271,7 @@ def _memory_readiness(root: Path) -> dict[str, Any]:
     if not index_existed:
         warnings.append("init-agent index not found; created local memory store without file index")
     if files <= 0:
-        warnings.append("init-agent index has no files; file-scoped memories may be stale until map runs")
+        warnings.append("init-agent index has no files; file-scoped memory freshness is checked against live files independently of the map")
     return {"ready": True, "warnings": warnings}
 
 
@@ -414,8 +414,8 @@ def _session_suggestions(
             memory.append(
                 {
                     "kind": "refresh_stale_memory",
-                    "command": f"init-agent tool repo_memory_update --id {note['id']} --evidence read_excerpt --note <updated-note> --json",
-                    "reason": "recent memory is stale relative to the indexed file hash",
+                    "command": f"init-agent tool repo_memory_update --id {note['id']} --revalidate --evidence read_excerpt --note <updated-note> --json",
+                    "reason": "recent memory is stale relative to the current file; re-read and verify the note before revalidating",
                 }
             )
     return feedback[:8], memory[:8]

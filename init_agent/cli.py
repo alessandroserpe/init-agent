@@ -687,7 +687,11 @@ def cmd_web(args: argparse.Namespace) -> int:
     if args.snapshot_json:
         print(json.dumps(build_web_snapshot(root, limit=args.limit), indent=2, sort_keys=True))
         return 0
-    serve_web_ui(root, host=args.host, port=args.port, limit=args.limit)
+    try:
+        serve_web_ui(root, host=args.host, port=args.port, limit=args.limit)
+    except (ValueError, OSError) as exc:
+        print(f"Web UI failed: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 

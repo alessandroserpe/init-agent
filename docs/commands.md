@@ -628,6 +628,11 @@ It is intended as a lightweight observability layer for developers who want to
 see what an agent has recorded while using init-agent. It does not modify the
 repository or write metadata.
 
+Only loopback bindings are allowed (`127.0.0.1`, `::1`, `localhost`). Requests
+with foreign Host/Origin headers are rejected and responses are not cached.
+This is not an authenticated remote service. Memory freshness is checked
+against live files even when the map has not been refreshed.
+
 Use `--snapshot-json` to inspect the same data without starting the local HTTP
 server.
 
@@ -649,16 +654,19 @@ init-agent tool repo_memory_delete --id 12 --json
 
 ## `init-agent tool repo_memory_update`
 
-Updates one local memory note by id and refreshes its stored file hash when
-the note is file-scoped:
+Updates one local memory note by id. By default, the recorded hash and evidence
+timestamp are preserved, including when changing tags or rewriting the note.
+After checking the note against the current file, explicitly renew its evidence:
 
 ```bash
-init-agent tool repo_memory_update --id 12 --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
+init-agent tool repo_memory_update --id 12 --revalidate --evidence read_full_file --note "Session validation lives here; refreshed after re-reading the file." --json
 init-agent tool repo_memory_update --id 13 --topic "runtime entrypoints" --tag startup --tag cli --json
 ```
 
 The command does not change the memory scope or path. Use it after re-reading a
 file, correcting a stale note or tightening a repo-wide project decision.
+`--revalidate` rejects missing, unreadable or outside-repository files. It is an
+explicit agent/user assertion, not proof that the file was actually read.
 
 ## Local Task/Session Memory
 

@@ -34,8 +34,10 @@ on running `map` or `refresh` first; repo-scoped notes are useful for project-wi
 and report stale status as not applicable. Use `repo_memory_audit` to find
 stale, vague or duplicate notes. Use `repo_memory_topics` and
 `repo_flow_topics` to get compact area-level memory and tag maps before
-opening files. Use `repo_memory_update` after re-reading a stale note to
-refresh it without creating duplicates. Reading-plan tools let agents create a
+opening files. Use `repo_memory_update` with `revalidate=true` after checking a
+stale note against the current file to renew its hash without creating duplicates.
+Without revalidation, edits preserve the previous hash and evidence timestamp.
+Reading-plan tools let agents create a
 bounded `read_now` list, record files actually opened, inspect the diff between
 planned and actual reads, and later classify central, supporting, created,
 verification, noisy or missing files. `useful` remains available for backward

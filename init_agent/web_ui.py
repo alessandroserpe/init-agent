@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
+import socket
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +13,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .plan_feedback import scorecard_evidence_confidence
+from .memory import with_live_staleness
+from .trajectory import stored_tool_status
 from .utils import db_path
 
 
@@ -39,7 +43,7 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
     with sqlite3.connect(uri, uri=True) as conn:
         conn.row_factory = sqlite3.Row
         counts = _counts(conn)
-        recent_memory = _recent_memory(conn, bounded_limit)
+        recent_memory = _recent_memory(conn, bounded_limit, root)
         recent_feedback = _recent_feedback(conn, bounded_limit)
         open_tasks = _open_tasks(conn, bounded_limit)
         recent_plans = _recent_plans(conn, bounded_limit)
@@ -198,8 +202,31 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
 
 def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: int = 25) -> None:
     """Serve the local read-only dashboard until interrupted."""
+    bind_host = "127.0.0.1" if host.lower() == "localhost" else host
+    try:
+        address = ipaddress.ip_address(bind_host)
+    except ValueError:
+        raise ValueError("web host must be localhost or a loopback IP address") from None
+    if not address.is_loopback:
+        raise ValueError("web dashboard is local-only; use a loopback IP address")
+    bind_host = str(address)
+    authority_host = f"[{bind_host}]" if address.version == 6 else bind_host
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - http.server API
+            authorities = {f"{authority_host}:{server.server_port}", f"localhost:{server.server_port}"}
+            if server.server_port == 80:
+                authorities.update({authority_host, "localhost"})
+            hosts = self.headers.get_all("Host", [])
+            origins = self.headers.get_all("Origin", [])
+            if (
+                len(hosts) != 1 or hosts[0].lower() not in authorities
+                or len(origins) > 1
+                or (origins and origins[0].lower() != f"http://{hosts[0].lower()}")
+                or self.headers.get("Sec-Fetch-Site") == "cross-site"
+            ):
+                self._send(403, "text/plain; charset=utf-8", b"local requests only\n")
+                return
             parsed = urlparse(self.path)
             if parsed.path == "/api/snapshot":
                 payload = json.dumps(build_web_snapshot(root, limit=limit), indent=2, sort_keys=True).encode("utf-8")
@@ -218,11 +245,17 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
             self.end_headers()
             self.wfile.write(payload)
 
-    server = ThreadingHTTPServer((host, int(port)), Handler)
-    print(f"Init Agent web UI: http://{host}:{port}/")
+    class LocalServer(ThreadingHTTPServer):
+        address_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+
+    server = LocalServer((bind_host, int(port)), Handler)
+    print(f"Init Agent web UI: http://{authority_host}:{server.server_port}/")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
@@ -248,7 +281,7 @@ def _counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {table: _table_count(conn, table) for table in tables}
 
 
-def _recent_memory(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
+def _recent_memory(conn: sqlite3.Connection, limit: int, root: Path) -> list[dict[str, Any]]:
     if not _has_table(conn, "agent_notes"):
         return []
     rows = conn.execute(
@@ -260,7 +293,7 @@ def _recent_memory(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]
         """,
         (limit,),
     ).fetchall()
-    return [
+    notes = [
         {
             "id": row["id"],
             "path": row["path"],
@@ -270,11 +303,12 @@ def _recent_memory(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]
             "note": row["note"],
             "evidence": row["evidence"] or "",
             "source": row["source"],
-            "stale": _memory_stale(conn, row["path"], row["file_sha256"]),
+            "file_sha256": row["file_sha256"] or "",
             "created_at": row["created_at"],
         }
         for row in rows
     ]
+    return with_live_staleness(root, notes)
 
 
 def _recent_feedback(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
@@ -411,11 +445,17 @@ def _trajectory_summary(conn: sqlite3.Connection) -> dict[str, Any]:
             """
         )
     ]
+    outcomes = {"success": 0, "error": 0, "unknown": 0}
+    for event in conn.execute("SELECT metadata_json FROM trajectory_events WHERE event_name = 'PostToolUse'"):
+        outcomes[stored_tool_status(event["metadata_json"])] += 1
+    completed = sum(outcomes.values())
     return {
         "session_count": int(row["session_count"] or 0),
         "event_count": int(row["event_count"] or 0),
         "tool_call_count": int(row["tool_call_count"] or 0),
-        "error_count": int(row["error_count"] or 0),
+        "error_count": outcomes["error"],
+        "unknown_outcome_count": outcomes["unknown"],
+        "outcome_coverage_percent": round(100 * (completed - outcomes["unknown"]) / completed, 1) if completed else None,
         "subagent_count": int(row["subagent_count"] or 0),
         "average_tool_duration_ms": round(float(row["average_tool_duration_ms"] or 0), 1),
         "p95_tool_duration_ms": durations[p95_index] if durations else 0,
@@ -490,6 +530,8 @@ def _trajectory_events(conn: sqlite3.Connection, limit: int) -> list[dict[str, A
     events = []
     for row in rows:
         item = dict(row)
+        if item["event_name"] == "PostToolUse":
+            item["status"] = stored_tool_status(item["metadata_json"])
         try:
             metadata = json.loads(str(item.pop("metadata_json") or "{}"))
         except json.JSONDecodeError:
@@ -697,15 +739,6 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
     }
 
 
-def _memory_stale(conn: sqlite3.Connection, path: str, file_sha256: str | None) -> bool | None:
-    if not path or not file_sha256:
-        return None
-    row = conn.execute("SELECT sha256 FROM files WHERE path = ?", (path,)).fetchone()
-    if row is None:
-        return True
-    return str(row["sha256"] or "") != str(file_sha256 or "")
-
-
 def _effective_plan_kind(plan: dict[str, Any]) -> str:
     explicit = str(plan.get("kind") or "").strip()
     if explicit:
@@ -876,11 +909,14 @@ def _trajectory_block(summary: dict[str, Any]) -> str:
     top_tools = ", ".join(
         f"{item.get('tool', 'unknown')}: {item.get('count', 0)}" for item in summary.get("top_tools") or []
     ) or "none"
+    coverage = summary.get("outcome_coverage_percent")
+    coverage_label = f"{coverage}%" if coverage is not None else "n/a"
     return (
         '<section class="panel trajectory-panel">'
         "<h2>Observable Trajectory</h2>"
         f'<div class="metrics mini-metrics">{cards}</div>'
         f'<p class="muted">Top tools: {_e(top_tools)}</p>'
+        f'<p class="muted">Unknown outcomes: {_e(summary.get("unknown_outcome_count", 0))}. Outcome coverage: {_e(coverage_label)}.</p>'
         f'<p class="muted">Timing: {_e(summary.get("duration_quality", "unknown"))}. Payloads remain redacted metadata.</p>'
         "</section>"
     )

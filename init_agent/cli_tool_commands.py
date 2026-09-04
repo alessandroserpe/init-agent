@@ -274,7 +274,8 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_memory_delete_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_memory_delete_parser.set_defaults(handler=cmd_tool_repo_memory_delete)
 
-    repo_memory_update_parser = tool_subparsers.add_parser("repo_memory_update", help="Update one local agent note by id and refresh its hash.")
+    repo_memory_update_parser = tool_subparsers.add_parser("repo_memory_update", help="Update one local note; preserve its file evidence unless explicitly revalidated.")
+    repo_memory_update_parser.add_argument("--revalidate", action="store_true", help="Renew the file hash after re-reading and verifying the note against the current file.")
     repo_memory_update_parser.add_argument("--id", type=int, required=True, help="Memory note id to update.")
     repo_memory_update_parser.add_argument("--note", help="Replacement short factual note. Do not include source snippets.")
     repo_memory_update_parser.add_argument("--topic", help="Replacement topic.")
@@ -676,6 +677,7 @@ def cmd_tool_repo_memory_update(args: argparse.Namespace) -> int:
             source=args.source,
             evidence=args.evidence,
             tags=args.tag,
+            revalidate=args.revalidate,
         )
     except ValueError as exc:
         print(f"Memory update failed: {exc}", file=sys.stderr)

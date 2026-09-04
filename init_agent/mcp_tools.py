@@ -304,7 +304,7 @@ def _handle_repo_memory_update(root: Path, arguments: dict[str, Any]) -> dict[st
     source = str(arguments.get("source")).strip() if "source" in arguments else None
     evidence = str(arguments.get("evidence")).strip() if "evidence" in arguments else None
     tags = _string_list(arguments.get("tags")) if "tags" in arguments else None
-    return repo_memory_update(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags)
+    return repo_memory_update(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags, revalidate=arguments.get("revalidate", False))
 
 
 def _handle_repo_memory_search(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -892,11 +892,12 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
         },
         {
             "name": "repo_memory_update",
-            "description": "Update one local agent file note by id and refresh its file hash when applicable.",
+            "description": "Update a local note. Preserve the file hash unless revalidate=true after checking the current file.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer", "minimum": 1, "description": "Memory note id to update."},
+                    "revalidate": {"type": "boolean", "default": False, "description": "Renew file evidence only after re-reading and verifying the note against the current file."},
                     "note": {"type": "string", "description": "Replacement short factual note; do not include source code snippets."},
                     "tags": {"type": "array", "items": {"type": "string"}, "description": "Replacement structured tags."},
                     "topic": {"type": "string", "description": "Replacement topic."},

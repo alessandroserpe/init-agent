@@ -823,13 +823,14 @@ def repo_memory_update(
     source: str | None = None,
     evidence: str | None = None,
     tags: list[str] | None = None,
+    revalidate: bool = False,
 ) -> dict[str, Any]:
-    """Update one local memory note and refresh its file hash when applicable."""
+    """Update a note, renewing its file evidence only with explicit revalidation."""
 
     readiness = _memory_readiness(root)
     warnings = list(readiness["warnings"])
     updated = (
-        update_note(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags)
+        update_note(root, note_id, note=note, topic=topic, query=query, source=source, evidence=evidence, tags=tags, revalidate=revalidate)
         if readiness["ready"]
         else {"updated": False, "id": note_id, "memory": None}
     )
@@ -1043,7 +1044,7 @@ def _memory_readiness(root: Path) -> dict[str, Any]:
     if not index_existed:
         warnings.append("init-agent index not found; created local memory store without file index")
     if files <= 0:
-        warnings.append("init-agent index has no files; file-scoped memories may be stale until map runs")
+        warnings.append("init-agent index has no files; file-scoped memory freshness is checked against live files independently of the map")
     return {"ready": True, "warnings": warnings}
 
 
