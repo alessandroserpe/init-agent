@@ -65,7 +65,62 @@ def validated_git_dir(root: Path) -> Path:
                 elif item.name in {'commondir', 'alternates', 'http-alternates'}:
                     if _small_file(root, Path(item.path).relative_to(root)).strip():
                         raise OSError('Git common directories and object alternates are not supported')
+    validate_git_config(root, admin)
     if budget:
         cache[str(root)] = admin
         budget._validated_git_dirs = cache
     return admin
+
+
+# Deliberately small non-executing configuration surface. Unknown syntax/keys
+# are refused, rather than trying to enumerate every current/future helper.
+_SAFE_CONFIG = {
+    'core': {'repositoryformatversion', 'filemode', 'bare', 'logallrefupdates',
+             'ignorecase', 'precomposeunicode', 'symlinks', 'autocrlf', 'safecrlf',
+             'eol', 'ignorestat', 'trustctime', 'checkstat', 'protectntfs', 'protecthfs'},
+    'user': {'name', 'email'},
+    'remote': {'url', 'fetch', 'pushurl'},
+    'branch': {'remote', 'merge', 'rebase'},
+    'init': {'defaultbranch'},
+    'extensions': {'objectformat'},
+}
+
+
+def validate_git_config(root: Path, admin: Path) -> None:
+    import re
+    from .private_files import require_private_sqlite_path, _macos_acl_allows_write
+    require_private_sqlite_path(admin)
+    relative = admin.relative_to(root) / 'config'
+    try:
+        with open_repo_file(root, relative) as handle:
+            info = os.fstat(handle.fileno())
+            if info.st_uid not in {0, os.getuid()} or info.st_mode & 0o022 or _macos_acl_allows_write(handle.fileno()):
+                raise OSError('Git config must not be writable by other users')
+            raw = handle.read(65537)
+    except FileNotFoundError:
+        return
+    if len(raw) > 65536:
+        raise OSError('Git config exceeds validation limit')
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        raise OSError('unsupported Git config encoding') from exc
+    if '\\' in text or any(ord(c) < 32 and c not in '\r\n\t' for c in text):
+        raise OSError('unsupported Git config escapes/continuations/control characters')
+    section = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith(('#', ';')):
+            continue
+        if line.startswith('['):
+            match = re.fullmatch(r'\[([A-Za-z][A-Za-z0-9-]*)(?:\s+"[^"\r\n]*")?\]\s*(?:[#;].*)?', line)
+            if not match or match[1].lower() not in _SAFE_CONFIG:
+                raise OSError('Git config section is outside the non-executing allowlist')
+            section = match[1].lower()
+        else:
+            match = re.fullmatch(r'([A-Za-z][A-Za-z0-9-]*)\s*(?:=.*)?', line)
+            if section is None or not match or match[1].lower() not in _SAFE_CONFIG[section]:
+                raise OSError('Git config key is outside the non-executing allowlist')
+    # Additional worktree configuration is never part of this policy.
+    if (admin / 'config.worktree').exists():
+        raise OSError('Git worktree configuration is not supported')

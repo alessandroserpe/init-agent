@@ -40,3 +40,10 @@ jobs:
 
       - name: Run graph quality guard
         run: python experiments/flow-graph/evaluate.py --strict --min-resolution-rate 1.0
+
+      - name: Verify optional native parser isolation
+        env:
+          INIT_AGENT_REQUIRE_NATIVE_TEST: "1"
+        run: |
+          python -m pip install -e '.[treesitter]'
+          python -m unittest tests.test_native_isolation -v

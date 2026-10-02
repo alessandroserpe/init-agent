@@ -102,6 +102,7 @@ def _delimited_preflight(content: str) -> None:
                 quote = ""
                 continue
         elif char in "\"'`":
+            tokens += 1
             quote = char * 3 if content.startswith(char * 3, index) else char
             index += len(quote)
             continue
@@ -119,7 +120,12 @@ def _delimited_preflight(content: str) -> None:
         elif char in ")]}":
             depth = max(0, depth - 1)
             tokens += 1
-        elif char in ",;:=":
+        elif char.isalnum() or char == "_":
+            tokens += 1
+            while index + 1 < len(content) and (content[index + 1].isalnum() or content[index + 1] == "_"):
+                index += 1
+        elif not char.isspace():
+            # Include operators and invalid/error characters, not just delimiters.
             tokens += 1
         if depth > MAX_PARSE_DEPTH or tokens > MAX_PARSE_TOKENS:
             raise ParseFailure("parser nesting/token limit exceeded")

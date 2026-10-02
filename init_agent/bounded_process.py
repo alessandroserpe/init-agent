@@ -14,12 +14,14 @@ OUTPUT_BYTES = 1_048_576
 
 
 def run_bounded(command: list[str], *, cwd: str | Path, env=None, check: bool = True,
-                timeout: float = PHASE_SECONDS, max_bytes: int = OUTPUT_BYTES) -> subprocess.CompletedProcess:
+                timeout: float = PHASE_SECONDS, max_bytes: int = OUTPUT_BYTES, input_bytes: bytes | None = None) -> subprocess.CompletedProcess:
     """Capture at most max_bytes across both streams and kill the process tree."""
     if timeout <= 0 or max_bytes < 1:
         raise ValueError("process budgets must be positive")
+    if input_bytes is not None and len(input_bytes) > 2_000_000:
+        raise ValueError("subprocess input exceeds 2 MB")
     options = {"start_new_session": True} if os.name == "posix" else {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    proc = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+    proc = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0, **options)
     chunks: queue.Queue = queue.Queue(maxsize=8)
     stop = threading.Event()
@@ -41,6 +43,19 @@ def run_bounded(command: list[str], *, cwd: str | Path, env=None, check: bool = 
 
     readers = [threading.Thread(target=read_stream, args=(stream, label), daemon=True)
                for stream, label in ((proc.stdout, "stdout"), (proc.stderr, "stderr"))]
+    def write_input():
+        try:
+            data = memoryview(input_bytes)
+            while data and not stop.is_set():
+                count = proc.stdin.write(data[:65536])
+                if not count:
+                    break
+                data = data[count:]
+        except (OSError, ValueError):
+            pass
+        finally:
+            proc.stdin.close()
+    writer = threading.Thread(target=write_input, daemon=True) if input_bytes is not None else None
     captured = {"stdout": bytearray(), "stderr": bytearray()}
     deadline = time.monotonic() + timeout
     failure = None
@@ -48,6 +63,8 @@ def run_bounded(command: list[str], *, cwd: str | Path, env=None, check: bool = 
     try:
         for reader in readers:
             reader.start()
+        if writer is not None:
+            writer.start()
         while closed < 2 or proc.poll() is None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -85,6 +102,8 @@ def run_bounded(command: list[str], *, cwd: str | Path, env=None, check: bool = 
                 if proc.poll() is None:
                     proc.kill()
         proc.wait(timeout=2)
+        if writer is not None:
+            writer.join(timeout=0.2)
         for reader in readers:
             reader.join(timeout=0.2)
         proc.stdout.close()

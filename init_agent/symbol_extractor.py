@@ -764,7 +764,8 @@ def _python_dotted_name(node: ast.expr) -> str:
 
 def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     try:
-        ts_symbols, ts_relations = _extract_php_tree_sitter(content)
+        from .native_parser import extract_php_isolated
+        ts_symbols, ts_relations = extract_php_isolated(content)
     except (ParseFailure, RecursionError, MemoryError):
         raise
     except Exception:
@@ -882,6 +883,7 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
 
 
 def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    """Worker-only native extraction; production callers must use isolation."""
     parser, language = _php_tree_sitter_parser()
     parser.language = language
     source = content.encode("utf-8", "ignore")

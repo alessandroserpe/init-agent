@@ -94,7 +94,7 @@ class FollowupSecurityTests(unittest.TestCase):
             subprocess.run(['git', '-C', str(root), 'config', 'core.fsmonitor', str(monitor)], check=True)
             (root / 'file.py').write_text('def main(): pass\n')
             collect_git(root)
-            self.assertIsNotNone(_git_indexable_paths(root))
+            self.assertIsNone(_git_indexable_paths(root))
             self.assertFalse(marker.exists())
 
     def test_dense_trace_has_shared_state_and_byte_limits(self):

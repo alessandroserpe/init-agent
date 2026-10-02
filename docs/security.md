@@ -377,3 +377,34 @@ use an isolated browser profile. Existing capability and routing checks remain.
 CI actions are pinned to full upstream commit SHAs, with their release versions
 in comments. The workflow declares `contents: read` and checkout does not retain
 Git credentials. Updating action versions requires a reviewed SHA change.
+
+### Native PHP parser isolation and Git configuration policy
+
+Optional PHP tree-sitter never parses source in the mapper process. A disposable
+Python worker starts with isolated startup (`-I -S`) and explicit trusted package
+paths. Before reading input or loading tree-sitter, it installs a 512 MiB hard
+address-space ceiling, a two-second CPU limit and disables core dumps. The parent
+independently limits wall time to two seconds, input to 2 MB and output to 4 MiB,
+and kills the worker process group on exhaustion. Native tree construction is
+bounded by OS memory/CPU limits; the tree walk still enforces node/record limits.
+The lexical preflight now counts identifier/number runs, string literals,
+operators and invalid characters rather than delimiters alone. It is a
+conservative preflight, not a replacement for native process isolation.
+
+If optional packages or enforceable OS limits are unavailable, extraction uses
+the bounded regex fallback. In particular, platforms rejecting `RLIMIT_AS` do
+not run the native parser. A worker timeout, crash or resource exhaustion is a
+per-file parse failure; it does not retry native parsing or stop other files
+from being mapped. Linux CI additionally installs the optional packages and
+checks real native extraction, address-space enforcement and timeout cleanup.
+
+Git's repository-local config is now parsed without invoking Git and accepted
+only through a small allowlist of non-executing keys in core, user, remote,
+branch, init and extensions sections. Filter/diff/merge drivers, aliases,
+credential helpers, pagers, hooks, fsmonitor, includes, worktree configs and
+unknown keys/sections are rejected. Escapes, continuations and control-character
+syntax are also rejected to avoid parser differences. The validated namespace
+and config must not be writable by other OS users. Existing command-line
+suppression remains defense in depth. Unsupported configurations disable Git
+metadata collection and use ordinary source-file enumeration; configuration
+files are never rewritten by this policy.
