@@ -68,6 +68,20 @@ Treat the launch link and terminal output as private; do not expose the service
 through a public proxy or tunnel. Processes able to read the owner's terminal,
 browser storage or process memory remain outside this protection.
 
+The HTTP service admits at most four active connections and twenty new
+connections per second, with a five-second connection deadline and socket
+timeout. Request lines are limited to 4 KiB and headers to 16 KiB. Authenticated
+requests share one snapshot build and a two-second cache, including failed
+builds. SQLite work has a 500,000 VM-step/two-second cooperative budget and a
+64 KiB row/string limit. Table counts stop at 10,000 and are labeled as lower
+bounds when they reach that cap. Activity and trajectory aggregates use windows of
+1,000 records; scorecard details are restricted to selected plans and 1,000
+records. These windows are reported in the dashboard. Live freshness hashes
+read at most 256 KiB per file and 8 MiB per snapshot; skipped checks report
+unknown freshness. JSON and HTML responses are limited to 2 MiB. Exhausted
+snapshot budgets return a bounded 503 response. Slow filesystem operations
+are not forcibly interrupted; this service is not a process-level sandbox.
+
 Dashboard memory freshness is checked against current files, not indexed
 hashes. Editing a note or its tags does not renew its file evidence: use
 `repo_memory_update --revalidate` only after checking the current file.
@@ -124,6 +138,21 @@ File contents may be read locally during:
 - memory queries and dashboard snapshots, to check live file hashes
 
 ## Untrusted Repository Metadata
+
+Ignore configuration is read only from a regular file, with a 64 KiB byte
+ceiling and a nesting preflight before JSON decoding. It must be an object;
+collections contain at most 256 entries and strings at most 1,024 characters.
+Ignore fields must be lists of strings. Invalid configuration falls back
+atomically to default ignore rules without retaining partially validated rules.
+
+The explicit evaluator in `experiments/evaluate.py` gives each init/map/git
+or case subprocess a 120-second deadline and a combined stdout/stderr limit
+of 1 MiB. Capture is incremental through a bounded queue. On POSIX the parent
+terminates the process group, including descendants retaining output pipes;
+Windows uses tree termination with a direct-child kill fallback. Failures,
+including rebuild failures, become case results with at most 2,048 characters
+of diagnostics. This is a work budget, not containment of malicious code that
+deliberately escapes its process group.
 
 `trace` and `estimate` validate indexed paths before reading files. Absolute
 paths, parent traversal, missing files and symlinks that resolve outside the

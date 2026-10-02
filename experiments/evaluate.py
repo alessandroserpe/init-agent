@@ -15,6 +15,12 @@ from pathlib import Path
 from typing import Any
 
 
+if __package__:
+    from .bounded_process import run_bounded
+else:
+    from bounded_process import run_bounded
+
+
 ROOT = Path(__file__).resolve().parents[1]
 CASES_PATH = ROOT / "experiments" / "cases.json"
 
@@ -32,18 +38,18 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if repo != Path(case["repo"]):
             case = {**case, "repo": str(repo)}
-        if args.rebuild_index and repo not in rebuilt_repos:
-            _rebuild_index(repo)
-            rebuilt_repos.add(repo)
         try:
+            if args.rebuild_index and repo not in rebuilt_repos:
+                _rebuild_index(repo)
+                rebuilt_repos.add(repo)
             results.append(evaluate_case(case, measure_manual_scan=args.measure_manual_scan))
-        except subprocess.CalledProcessError as exc:
+        except (subprocess.SubprocessError, OSError) as exc:
             results.append(
                 {
                     "name": case["name"],
                     "status": "error",
                     "elapsed_seconds": None,
-                    "error": exc.stderr.strip() or str(exc),
+                    "error": (getattr(exc, "stderr", None) or "benchmark child failed").strip()[:2048],
                 }
             )
 
@@ -111,13 +117,10 @@ def resolve_case_repo(case: dict[str, Any]) -> Path | None:
 def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> dict[str, Any]:
     started = time.perf_counter()
     command = list(case_command(case))
-    proc = subprocess.run(
+    proc = run_bounded(
         command,
         cwd=case["repo"],
         env=os.environ.copy(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
         check=True,
     )
     elapsed = time.perf_counter() - started
@@ -233,31 +236,22 @@ def measure_indexed_file_read(repo: Path) -> dict[str, int | float] | None:
 
 def _rebuild_index(repo: Path) -> None:
     env = os.environ.copy()
-    subprocess.run(
+    run_bounded(
         [*isolated_cli_command(), "init"],
         cwd=repo,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
         check=True,
     )
-    subprocess.run(
+    run_bounded(
         [*isolated_cli_command(), "map"],
         cwd=repo,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
         check=True,
     )
-    subprocess.run(
+    run_bounded(
         [*isolated_cli_command(), "git"],
         cwd=repo,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
         check=False,
     )
 

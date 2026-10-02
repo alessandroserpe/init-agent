@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import subprocess
+import stat
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -236,6 +237,56 @@ def safe_print(*values: object, **kwargs: Any) -> None:
     builtins.print(*(terminal_safe(str(value)) for value in values), **kwargs)
 
 
+MAX_CONFIG_BYTES = 65_536
+MAX_CONFIG_DEPTH = 4
+MAX_CONFIG_ITEMS = 256
+MAX_CONFIG_STRING = 1024
+
+
+def _bounded_config(path: Path) -> dict[str, Any]:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CONFIG_BYTES:
+            raise ValueError("invalid configuration file size/type")
+        raw = handle.read(MAX_CONFIG_BYTES + 1)
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise ValueError("configuration byte limit exceeded")
+    text = raw.decode("utf-8")
+    depth = 0
+    quoted = escaped = False
+    for char in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_CONFIG_DEPTH:
+                raise ValueError("configuration nesting limit exceeded")
+        elif char in "]}":
+            depth -= 1
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("configuration must be an object")
+    pending = [data]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, (dict, list)):
+            if len(value) > MAX_CONFIG_ITEMS:
+                raise ValueError("configuration collection limit exceeded")
+            pending.extend(value.keys() if isinstance(value, dict) else [])
+            pending.extend(value.values() if isinstance(value, dict) else value)
+        elif isinstance(value, str) and len(value) > MAX_CONFIG_STRING:
+            raise ValueError("configuration string limit exceeded")
+    return data
+
+
 def load_ignore_rules(root: Path) -> dict[str, set[str]]:
     rules = {
         "exclude_dirs": set(DEFAULT_EXCLUDED_DIRS),
@@ -243,17 +294,16 @@ def load_ignore_rules(root: Path) -> dict[str, set[str]]:
         "exclude_extensions": set(DEFAULT_EXCLUDED_EXTENSIONS),
         "include_hidden_dirs": set(),
     }
-    path = config_path(root)
-    if not path.exists():
-        return rules
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = _bounded_config(config_path(root))
+        for key in rules:
+            values = data.get(key, [])
+            if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+                raise ValueError("ignore rules must be lists of strings")
+    except (OSError, ValueError, RecursionError):
         return rules
     for key in rules:
-        values = data.get(key, [])
-        if isinstance(values, list):
-            rules[key].update(str(value) for value in values if str(value))
+        rules[key].update(value for value in data.get(key, []) if value)
     rules["exclude_extensions"] = {
         value if value.startswith(".") else f".{value}"
         for value in rules["exclude_extensions"]

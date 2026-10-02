@@ -40,6 +40,7 @@ class WebUiTests(InitAgentTestCase):
                 (f"Host: {authority}\r\nOrigin: null\r\n", 403),
                 (f"Host: {authority}\r\nSec-Fetch-Site: cross-site\r\n", 403),
                 ("Host: localhost:9999\r\n", 403),
+                (f"Host: {authority}\r\nX-Large: " + "x" * 20000 + "\r\n", 431),
             ]
             responses = []
 
@@ -55,7 +56,7 @@ class WebUiTests(InitAgentTestCase):
                         server.RequestHandlerClass(request, ("127.0.0.1", 1000), server)
                         status = 200 if path == "/" and headers == f"Host: {authority}\r\n" else expected
                         responses.append((request.output.getvalue(), status))
-                        self.assertEqual(snapshot.call_count - before, int(expected == 200))
+                        self.assertEqual(snapshot.call_count - before, int(expected == 200 and before == 0))
                         self.assertNotIn(b"test-launch-token", request.output.getvalue())
                 # Capabilities in URLs or cookies do not authenticate API calls.
                 for path, extra in (("/api/snapshot?token=test-launch-token", ""),
@@ -68,7 +69,7 @@ class WebUiTests(InitAgentTestCase):
 
             with self.subTest(host=bind_host), patch.object(ThreadingHTTPServer, "__init__", initialize), patch.object(ThreadingHTTPServer, "serve_forever", run), patch.object(ThreadingHTTPServer, "server_close"), patch("init_agent.web_ui.build_web_snapshot", return_value={}) as snapshot, patch("init_agent.web_ui.render_dashboard_html", return_value="<html>private</html>"), patch("init_agent.web_ui.secrets.token_urlsafe", return_value="test-launch-token") as generate, redirect_stdout(StringIO()):
                 serve_web_ui(Path("."), host=bind_host)
-                self.assertEqual(snapshot.call_count, 4)
+                self.assertEqual(snapshot.call_count, 1)
                 generate.assert_called_once_with(32)
             for response, expected in responses:
                 self.assertIn(f" {expected} ".encode(), response.split(b"\r\n")[0])

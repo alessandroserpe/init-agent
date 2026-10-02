@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import html
+import hashlib
+import os
+import stat
+import time
 import ipaddress
 import json
 import secrets
 import socket
 import sqlite3
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import closing
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .web_budget import (BoundedHTTPServer, LimitedHeaders, SnapshotCache,
+                         MAX_RESPONSE_BYTES, SNAPSHOT_ROWS, SNAPSHOT_SECONDS, SNAPSHOT_STEPS)
 from .plan_feedback import scorecard_evidence_confidence
-from .memory import with_live_staleness
+from .memory import _with_staleness
 from .trajectory import stored_tool_status
 from .utils import db_path, safe_print as print
 
@@ -41,8 +48,16 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         }
 
     uri = f"file:{database}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as conn:
+    with closing(sqlite3.connect(uri, uri=True, timeout=0.2)) as conn:
         conn.row_factory = sqlite3.Row
+        conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 65_536)
+        started = time.monotonic()
+        steps = 0
+        def exhausted():
+            nonlocal steps
+            steps += 1000
+            return int(steps > SNAPSHOT_STEPS or time.monotonic() - started > SNAPSHOT_SECONDS)
+        conn.set_progress_handler(exhausted, 1000)
         counts = _counts(conn)
         recent_memory = _recent_memory(conn, bounded_limit, root)
         recent_feedback = _recent_feedback(conn, bounded_limit)
@@ -50,6 +65,9 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         recent_plans = _recent_plans(conn, bounded_limit)
         file_activity = _file_activity(conn, bounded_limit)
         scorecard = _scorecard(conn, bounded_limit)
+        for table in ("trajectory_events", "trajectory_sessions"):
+            if _has_table(conn, table):
+                conn.execute(f"CREATE TEMP VIEW {table} AS SELECT * FROM main.{table} ORDER BY id DESC LIMIT {SNAPSHOT_ROWS}")
         trajectory_summary = _trajectory_summary(conn)
         trajectory_sessions = _trajectory_sessions(conn, bounded_limit)
         trajectory_events = _trajectory_events(conn, bounded_limit)
@@ -66,7 +84,7 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         "trajectory_summary": trajectory_summary,
         "trajectory_sessions": trajectory_sessions,
         "trajectory_events": trajectory_events,
-        "warnings": [],
+        "warnings": ["Table counts are capped at 10,000; a count at the cap is a lower bound.", f"Activity and trajectory use the latest {SNAPSHOT_ROWS} records; scorecard detail is capped at {SNAPSHOT_ROWS} selected records; live hash reads are capped at 8 MiB."],
     }
 
 
@@ -201,6 +219,20 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
     )
 
 
+def _snapshot_payloads(root: Path, limit: int):
+    snapshot = build_web_snapshot(root, limit=limit)
+    payload = bytearray()
+    for chunk in json.JSONEncoder(indent=2, sort_keys=True).iterencode(snapshot):
+        block = chunk.encode("utf-8")
+        if len(payload) + len(block) > MAX_RESPONSE_BYTES:
+            raise ValueError("snapshot response budget exceeded")
+        payload.extend(block)
+    html_payload = render_dashboard_html(snapshot).encode("utf-8")
+    if len(html_payload) > MAX_RESPONSE_BYTES:
+        raise ValueError("dashboard response budget exceeded")
+    return bytes(payload), html_payload
+
+
 def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: int = 25) -> None:
     """Serve the local read-only dashboard until interrupted."""
     bind_host = "127.0.0.1" if host.lower() == "localhost" else host
@@ -214,8 +246,19 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
     authority_host = f"[{bind_host}]" if address.version == 6 else bind_host
 
     capability = secrets.token_urlsafe(32)
+    cache = SnapshotCache(lambda: _snapshot_payloads(root, limit))
 
     class Handler(BaseHTTPRequestHandler):
+        def parse_request(self):
+            if len(self.raw_requestline) > 4096:
+                self.requestline = ""
+                self.request_version = "HTTP/1.0"
+                self.command = ""
+                self.send_error(414)
+                return False
+            self.rfile = LimitedHeaders(self.rfile)
+            return super().parse_request()
+
         def do_GET(self) -> None:  # noqa: N802 - http.server API
             authorities = {f"{authority_host}:{server.server_port}", f"localhost:{server.server_port}"}
             if server.server_port == 80:
@@ -241,31 +284,42 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
             )):
                 self._send(401, "text/plain; charset=utf-8", b"launch capability required\n")
                 return
-            if parsed.path == "/api/snapshot":
-                payload = json.dumps(build_web_snapshot(root, limit=limit), indent=2, sort_keys=True).encode("utf-8")
-                self._send(200, "application/json; charset=utf-8", payload)
-                return
-            if parsed.path not in {"", "/"}:
+            if parsed.path not in {"", "/", "/api/snapshot"}:
                 self._send(404, "text/plain; charset=utf-8", b"not found\n")
                 return
-            payload = render_dashboard_html(build_web_snapshot(root, limit=limit)).encode("utf-8")
+            try:
+                json_payload, html_payload = cache.get()
+            except (sqlite3.Error, OSError, ValueError, RecursionError):
+                self._send(503, "text/plain; charset=utf-8", b"snapshot unavailable or work budget exceeded\n")
+                return
+            if parsed.path == "/api/snapshot":
+                payload = json_payload
+                self._send(200, "application/json; charset=utf-8", payload)
+                return
+            payload = html_payload
             self._send(200, "text/html; charset=utf-8", payload)
 
         def log_message(self, format: str, *args: object) -> None:
             return
 
         def _send(self, status: int, content_type: str, payload: bytes) -> None:
+            if len(payload) > MAX_RESPONSE_BYTES:
+                status, content_type, payload = 503, "text/plain; charset=utf-8", b"snapshot response budget exceeded\n"
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def end_headers(self):
+            # Apply response protections to parser errors as well as normal routes.
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.end_headers()
-            self.wfile.write(payload)
+            super().end_headers()
 
-    class LocalServer(ThreadingHTTPServer):
+    class LocalServer(BoundedHTTPServer):
         address_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
 
     server = LocalServer((bind_host, int(port)), Handler)
@@ -296,6 +350,48 @@ def _counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {table: _table_count(conn, table) for table in tables}
 
 
+def _bounded_staleness(root: Path, notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    hashes = {}
+    limited = set()
+    remaining = 8 * 1024 * 1024
+    deadline = time.monotonic() + SNAPSHOT_SECONDS
+    for note in notes:
+        path = str(note["path"])
+        if note.get("scope") == "repo" or path in hashes:
+            continue
+        hashes[path] = None
+        try:
+            target = (root / path).resolve()
+            target.relative_to(root.resolve())
+            if time.monotonic() >= deadline or remaining <= 0:
+                limited.add(path)
+                continue
+            fd = os.open(target, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(fd, "rb") as handle:
+                info = os.fstat(handle.fileno())
+                allowance = min(remaining, 256 * 1024)
+                if not stat.S_ISREG(info.st_mode):
+                    continue
+                if info.st_size > allowance:
+                    limited.add(path)
+                    continue
+                data = handle.read(allowance + 1)
+                remaining -= len(data)
+                if len(data) > allowance or time.monotonic() >= deadline:
+                    limited.add(path)
+                    continue
+                hashes[path] = hashlib.sha256(data).hexdigest()
+        except (OSError, ValueError, RuntimeError):
+            continue
+    result = []
+    for note in notes:
+        item = _with_staleness(note, hashes)
+        if str(note["path"]) in limited and note.get("scope") != "repo":
+            item.update(stale=None, stale_reason="live hash work budget exceeded")
+        result.append(item)
+    return result
+
+
 def _recent_memory(conn: sqlite3.Connection, limit: int, root: Path) -> list[dict[str, Any]]:
     if not _has_table(conn, "agent_notes"):
         return []
@@ -323,7 +419,7 @@ def _recent_memory(conn: sqlite3.Connection, limit: int, root: Path) -> list[dic
         }
         for row in rows
     ]
-    return with_live_staleness(root, notes)
+    return _bounded_staleness(root, notes)
 
 
 def _recent_feedback(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
@@ -407,7 +503,7 @@ def _file_activity(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]
     ]:
         if not _has_table(conn, table):
             continue
-        for row in conn.execute(f"SELECT {column} AS path, COUNT(*) AS count FROM {table} WHERE {column} != '' GROUP BY {column}"):
+        for row in conn.execute(f"SELECT {column} AS path, COUNT(*) AS count FROM (SELECT {column} FROM {table} ORDER BY id DESC LIMIT {SNAPSHOT_ROWS}) WHERE {column} != '' GROUP BY {column}"):
             path = str(row["path"])
             item = counts.setdefault(path, {"memory": 0, "feedback": 0, "plan_events": 0})
             item[key] = int(row["count"])
@@ -597,13 +693,16 @@ def _scorecard(conn: sqlite3.Connection, limit: int) -> dict[str, Any]:
         if has_ranking_diagnostics
         else "0 AS base_rank, '{}' AS signal_contributions_json"
     )
+    plan_ids = sorted(included_ids)
+    placeholders = ",".join("?" for _ in plan_ids) or "NULL"
     item_rows = [
         dict(row)
         for row in conn.execute(
-            f"SELECT plan_id, path, rank, {diagnostic_select} FROM reading_plan_items"
+            f"SELECT plan_id, path, rank, {diagnostic_select} FROM reading_plan_items WHERE plan_id IN ({placeholders}) LIMIT {SNAPSHOT_ROWS}", plan_ids
         ).fetchall()
     ]
-    event_rows = [dict(row) for row in conn.execute("SELECT plan_id, event, path FROM reading_plan_events ORDER BY id").fetchall()]
+    event_rows = [dict(row) for row in conn.execute(f"SELECT plan_id, event, path FROM reading_plan_events WHERE plan_id IN ({placeholders}) ORDER BY id DESC LIMIT {SNAPSHOT_ROWS}", plan_ids).fetchall()]
+    event_rows.reverse()
     rank_by_plan_path = {(int(row["plan_id"]), str(row["path"])): int(row["rank"] or 0) for row in item_rows}
     item_by_plan_path = {(int(row["plan_id"]), str(row["path"])): row for row in item_rows}
     planned = {}
@@ -805,7 +904,7 @@ def _avg(values: list[float] | list[int]) -> float:
 def _table_count(conn: sqlite3.Connection, table: str) -> int:
     if not _has_table(conn, table):
         return 0
-    return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    return int(conn.execute(f"SELECT COUNT(*) FROM (SELECT 1 FROM {table} LIMIT 10000)").fetchone()[0])
 
 
 def _has_table(conn: sqlite3.Connection, table: str) -> bool:
