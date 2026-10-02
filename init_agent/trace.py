@@ -403,13 +403,12 @@ def _trace_from(
     budget = budget or ReadBudget()
     queue = deque([(start, [start], [])])
     results: list[dict[str, Any]] = []
-    seen: set[tuple[int, ...]] = set()
+    # Breadth-first traversal already finds the shortest route from this start.
+    # Scoring depends on target and distance, not on alternate route history;
+    # expanding the same target again only spends the shared request budget.
+    seen: set[int] = {start}
     while queue and budget.visit():
         current, path, edges = queue.popleft()
-        state = tuple(path)
-        if state in seen:
-            continue
-        seen.add(state)
         score, reasons = _file_score(root, str(files[current]["path"]), tokens, len(path) - 1, budget)
         if score > 0:
             results.append(
@@ -429,11 +428,12 @@ def _trace_from(
             continue
         for edge in _bounded_neighbors(graph.get(current, [])):
             target = int(edge["target"])
-            if target in path:
+            if target in seen:
                 continue
             if len(queue) >= budget.max_states:
                 budget.truncated = True
                 break
+            seen.add(target)
             queue.append((target, [*path, target], [*edges, _edge_details(files[current], files[target], edge)]))
     return results
 
