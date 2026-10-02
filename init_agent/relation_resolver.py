@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import warnings
+from .persisted_json import decode_persisted_object, CorruptMetadata, CORRUPT_METADATA_WARNING
 import posixpath
 from collections import defaultdict
 from pathlib import PurePosixPath
@@ -676,10 +678,10 @@ def _normalize_path(path: PurePosixPath | str) -> str:
 
 def _metadata(row: dict[str, Any]) -> dict[str, Any]:
     try:
-        value = json.loads(str(row.get("metadata_json") or "{}"))
-    except json.JSONDecodeError:
+        return decode_persisted_object(row.get("metadata_json"), relation=True)
+    except CorruptMetadata:
+        warnings.warn(CORRUPT_METADATA_WARNING, RuntimeWarning)
         return {}
-    return dict(value) if isinstance(value, dict) else {}
 
 
 def _include_components(

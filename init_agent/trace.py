@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import json
 import sqlite3
 from .metadata_db import connect_metadata
 from collections import defaultdict, deque
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .read_budget import ReadBudget
+from .persisted_json import decode_persisted_object, CorruptMetadata, CORRUPT_METADATA_WARNING
 from .overview import _entry_points
 from .utils import db_path, normalize_repo_path, is_live_repo_file
 
@@ -106,6 +106,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
     """
 
     budget = ReadBudget()
+    metadata_warnings = []
     bounded_limit = max(1, min(limit, 30))
     bounded_depth = max(1, min(max_depth, 6))
     database = db_path(root)
@@ -142,7 +143,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
         entries = _entry_points(list(files.values()), {
             str(files[file_id]["path"]): items for file_id, items in file_symbols.items() if file_id in files
         })
-        graph = _build_graph(conn, files, path_to_id, symbols, budget)
+        graph = _build_graph(conn, files, path_to_id, symbols, budget, metadata_warnings)
 
     tokens = _query_tokens(query)
     starts = _start_files(root, files, tokens, budget, entries)
@@ -157,7 +158,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
         "starts": [_compact_file(files[file_id]) for file_id in starts],
         "paths": deduped,
         "suggested_first_reads": [item["target"] for item in deduped[:5]],
-        "warnings": ["Trace work budget reached; results are partial."] if budget.truncated else [],
+        "warnings": metadata_warnings + (["Trace work budget reached; results are partial."] if budget.truncated else []),
         "work_budget": {"states": budget.states, "bytes_read": budget.bytes_read, "truncated": budget.truncated},
     }
 
@@ -180,6 +181,7 @@ def _build_graph(
     path_to_id: dict[str, int],
     symbols: dict[str, set[int]],
     budget: ReadBudget | None = None,
+    metadata_warnings: list[str] | None = None,
 ) -> dict[int, list[dict[str, Any]]]:
     budget = budget or ReadBudget()
     edge_count = 0
@@ -190,12 +192,20 @@ def _build_graph(
     ))
     if len(rows) >= 50000:
         budget.truncated = True
-    resolved_raw_ids = {
-        int(metadata["raw_relation_id"])
-        for row in rows
-        if str(row["target_type"]) == "resolved_file"
-        if (metadata := _relation_metadata(row)).get("raw_relation_id") is not None
-    }
+    resolved_raw_ids = set()
+    valid_rows = []
+    for row in rows:
+        if budget.expired():
+            break
+        metadata = _relation_metadata(row)
+        if metadata is None:
+            if metadata_warnings is not None and not metadata_warnings:
+                metadata_warnings.append(CORRUPT_METADATA_WARNING)
+            continue
+        valid_rows.append(row)
+        if row["target_type"] == "resolved_file" and metadata.get("raw_relation_id") is not None:
+            resolved_raw_ids.add(metadata["raw_relation_id"])
+    rows = valid_rows
     strict_resolution = any(str(row["target_type"]) == "resolved_file" for row in rows)
     for row in rows:
         if budget.expired() or edge_count >= 50000:
@@ -252,12 +262,11 @@ def _build_graph(
     return {source: list(items.values()) for source, items in graph_items.items()}
 
 
-def _relation_metadata(row: sqlite3.Row) -> dict[str, Any]:
+def _relation_metadata(row: sqlite3.Row) -> dict[str, Any] | None:
     try:
-        value = json.loads(str(row["metadata_json"] or "{}"))
-    except json.JSONDecodeError:
-        return {}
-    return dict(value) if isinstance(value, dict) else {}
+        return decode_persisted_object(row["metadata_json"], relation=True)
+    except CorruptMetadata:
+        return None
 
 
 def _resolve_path(source_path: str, target: str, path_to_id: dict[str, int]) -> int | None:

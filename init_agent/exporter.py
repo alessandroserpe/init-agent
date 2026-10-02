@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .persisted_json import decode_persisted_object, CorruptMetadata, CORRUPT_METADATA_WARNING
 from .signatures import minimize_signature
 from .utils import utc_now
 
@@ -69,6 +69,7 @@ def export_graph(root: Path) -> dict[str, Any]:
         meta = {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM project_meta ORDER BY key").fetchall()}
         return {
             "format": EXPORT_FORMAT,
+            "warnings": [CORRUPT_METADATA_WARNING] if any(item.get("metadata_warning") for item in [*relations, *runs]) else [],
             "exported_at": utc_now(),
             "project": {
                 "name": meta.get("project", root.name),
@@ -114,7 +115,11 @@ def _relation_dict(
     file_by_id: dict[int, dict[str, Any]],
     symbol_by_id: dict[int, dict[str, Any]],
 ) -> dict[str, Any]:
-    metadata = _json_object(row.get("metadata_json"))
+    metadata_warning = False
+    try:
+        metadata = decode_persisted_object(row.get("metadata_json"), relation=True)
+    except CorruptMetadata:
+        metadata, metadata_warning = {}, True
     item = {
         "id": row["id"],
         "source_type": row["source_type"],
@@ -128,6 +133,7 @@ def _relation_dict(
         "context_symbol": None,
         "confidence": row["confidence"],
         "metadata": metadata,
+        "metadata_warning": CORRUPT_METADATA_WARNING if metadata_warning else "",
     }
     if row["source_type"] == "file":
         source = file_by_id.get(int(row["source_id"]))
@@ -211,21 +217,13 @@ def _feedback_dict(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_dict(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "command": row["command"],
-        "started_at": row["started_at"],
-        "finished_at": row["finished_at"],
-        "status": row["status"],
-        "summary": _json_object(row.get("summary_json")),
-    }
-
-
-def _json_object(value: str | None) -> dict[str, Any]:
-    if not value:
-        return {}
     try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+        summary = decode_persisted_object(row.get("summary_json"))
+        warning = ""
+    except CorruptMetadata:
+        summary, warning = {}, CORRUPT_METADATA_WARNING
+    return {
+        "id": row["id"], "command": row["command"],
+        "started_at": row["started_at"], "finished_at": row["finished_at"],
+        "status": row["status"], "summary": summary, "metadata_warning": warning,
+    }

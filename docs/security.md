@@ -430,3 +430,14 @@ Oversized hook events are discarded without interrupting the host workflow.
 Plain-text reports encode CR, LF, tab and Unicode line separators inside every
 data field before interpolation. Only renderer-owned separators form report
 lines; structured JSON retains the original data values.
+
+### Persisted relation JSON
+
+Trace, graph export and relation resolution treat pre-existing relation JSON as
+untrusted. A shared decoder limits UTF-8 input to 16 KiB, relation structure to
+512 structural tokens and a shallow object of at most 64 scalar fields. Strings,
+integers and the positive integer `raw_relation_id` are validated before use.
+Syntax, conversion, recursion and allocation errors produce a fixed diagnostic;
+trace omits corrupt relations and export omits their metadata, marking partial
+results and advising an index rebuild. Exported run summaries use the same byte
+and pre-decode structural boundary with the general JSON depth limit.

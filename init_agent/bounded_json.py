@@ -24,7 +24,7 @@ def read_bounded(stream, limit):
     return value
 
 
-def decode_bounded(body, limit):
+def decode_bounded(body, limit, *, max_depth=MAX_DEPTH, max_tokens=MAX_TOKENS):
     if len(body) > limit:
         raise ValueError('JSON byte limit exceeded')
     depth = tokens = 0
@@ -47,7 +47,7 @@ def decode_bounded(body, limit):
             depth -= 1
         elif char in (44, 58):
             tokens += 1
-        if depth > MAX_DEPTH or tokens > MAX_TOKENS:
+        if depth > max_depth or tokens > max_tokens:
             raise ValueError('JSON structure limit exceeded')
     try:
         return json.loads(body.decode('utf-8'))
