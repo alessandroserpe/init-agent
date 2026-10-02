@@ -6,6 +6,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from .plain_text import plain_fields
+
 from .repo_budget import bounded_operation, budgeted, checkpoint
 from .git_reader import current_branch, git_available, has_git
 from .graph_store import GraphStore
@@ -118,6 +120,7 @@ def build_overview_pack(root: Path) -> dict[str, Any]:
 
 
 def render_overview_text(pack: dict[str, Any]) -> str:
+    pack = plain_fields(pack)
     project = pack["project"]
     lines = [
         "Init Agent Repository Overview",

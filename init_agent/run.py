@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .plain_text import plain_fields
+
 from .markdown_text import inline_code
 from .repo_budget import WorkBudgetExceeded, bounded_operation
 from .context_builder import build_context_pack
@@ -106,6 +108,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
 
 
 def render_run_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     prep = result["preparation"]
     if result.get("overview_mode"):
         return _render_run_overview_text(result)

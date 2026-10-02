@@ -408,3 +408,25 @@ and config must not be writable by other OS users. Existing command-line
 suppression remains defense in depth. Unsupported configurations disable Git
 metadata collection and use ordinary source-file enumeration; configuration
 files are never rewritten by this policy.
+
+### Dashboard admission and external JSON
+
+Incomplete dashboard headers are polled without allocating threads, in a
+32-connection queue with a five-second absolute deadline and a 16 KiB header
+ceiling. When full, the oldest incomplete connection is evicted to admit a new
+client. Host/origin and bearer checks select four authenticated worker slots;
+public/bootstrap traffic uses a separate two-worker pool and a separate rate
+limit. Slow unauthenticated connections cannot reserve authenticated workers.
+This bounds and mitigates local connection denial; it does not guarantee service
+against an unlimited same-host network flood.
+
+Explicit release checks consume at most 256 KiB plus one sentinel byte, and
+lifecycle hooks at most 1 MiB plus one. Both enforce depth (32) and structural
+token (16,384) ceilings before decoding. Release tags and URLs are typed and
+length-bounded. Hook input is also checked at direct ingestion; tool-value size
+is a bounded iterative estimate (`size_is_estimate`), without reserialization.
+Oversized hook events are discarded without interrupting the host workflow.
+
+Plain-text reports encode CR, LF, tab and Unicode line separators inside every
+data field before interpolation. Only renderer-owned separators form report
+lines; structured JSON retains the original data values.

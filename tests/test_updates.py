@@ -1,4 +1,5 @@
 import json
+import io
 
 from unittest.mock import patch
 
@@ -8,7 +9,8 @@ from tests.support import InitAgentTestCase
 
 class _Response:
     def __init__(self, payload: dict[str, object]) -> None:
-        self.payload = payload
+        self.stream = io.BytesIO(json.dumps(payload).encode("utf-8"))
+        self.headers = {}
 
     def __enter__(self) -> "_Response":
         return self
@@ -16,8 +18,8 @@ class _Response:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def read(self) -> bytes:
-        return json.dumps(self.payload).encode("utf-8")
+    def read(self, size=-1) -> bytes:
+        return self.stream.read(size)
 
 
 class UpdateTests(InitAgentTestCase):

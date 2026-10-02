@@ -324,11 +324,25 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 0, limit: int 
         address_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
 
     server = LocalServer((bind_host, int(port)), Handler)
+    def authorize_headers(headers):
+        hosts = headers.get_all("Host", [])
+        origins = headers.get_all("Origin", [])
+        credentials = headers.get_all("Authorization", [])
+        authorities = {f"{authority_host}:{server.server_port}", f"localhost:{server.server_port}"}
+        if server.server_port == 80:
+            authorities.update({authority_host, "localhost"})
+        return (len(hosts) == 1 and hosts[0].lower() in authorities
+                and len(origins) <= 1
+                and (not origins or origins[0].lower() == f"http://{hosts[0].lower()}")
+                and headers.get("Sec-Fetch-Site") != "cross-site"
+                and len(credentials) == 1
+                and secrets.compare_digest(credentials[0].encode("utf-8"), f"Bearer {capability}".encode("ascii")))
+    server.authorize_headers = authorize_headers
     print(f"Init Agent web UI: http://{authority_host}:{server.server_port}/#token={capability}")
     print("This private link grants dashboard access for this launch. Do not share it.")
     print("Press Ctrl+C to stop.")
     try:
-        server.serve_forever()
+        server.serve_forever(poll_interval=0.05)
     except KeyboardInterrupt:
         print()
     finally:

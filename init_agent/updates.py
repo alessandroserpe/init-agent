@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+
+from .bounded_json import read_bounded, decode_bounded
+
+MAX_RELEASE_BYTES = 256 * 1024
 
 LATEST_RELEASE_URL = "https://api.github.com/repos/alessandroserpe/init-agent/releases/latest"
 
@@ -22,7 +25,16 @@ def check_latest_release(current_version: str, timeout: float = 3.0) -> dict[str
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            length = response.headers.get("Content-Length")
+            if length is not None and (not length.isdecimal() or len(length) > 10 or int(length) > MAX_RELEASE_BYTES):
+                raise ValueError("release response exceeds byte limit")
+            payload = decode_bounded(read_bounded(response, MAX_RELEASE_BYTES), MAX_RELEASE_BYTES)
+        if not isinstance(payload, dict):
+            raise ValueError("release response must be an object")
+        for key, maximum in (("tag_name", 128), ("html_url", 2048)):
+            value = payload.get(key, "")
+            if not isinstance(value, str) or len(value) > maximum or any(ord(c) < 32 for c in value):
+                raise ValueError("invalid release field")
         latest = str(payload.get("tag_name", "")).lstrip("v")
         if not latest:
             raise ValueError("latest release response has no tag_name")
@@ -46,7 +58,7 @@ def check_latest_release(current_version: str, timeout: float = 3.0) -> dict[str
             "url": str(payload.get("html_url", "")),
             "message": message,
         }
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
         return {
             "status": "unavailable",
             "current_version": current_version,

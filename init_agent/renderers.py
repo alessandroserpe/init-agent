@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from .plain_text import plain_fields
+
 from .utils import terminal_safe
 
 
 def render_repo_graph_search_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_graph_search",
         "",
@@ -50,6 +53,7 @@ def render_repo_graph_search_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_trace_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_trace",
         "",
@@ -100,6 +104,7 @@ def render_repo_trace_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_reading_plan",
         "",
@@ -175,6 +180,7 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_reading_plan_finish",
         "",
@@ -201,6 +207,7 @@ def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_reading_plan_read_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_reading_plan_read",
         "",
@@ -218,6 +225,7 @@ def render_repo_reading_plan_read_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     diff = result.get("diff") or {}
     lines = [
         "Init Agent Tool: repo_reading_plan_diff",
@@ -252,6 +260,7 @@ def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_workstream_report_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     workstream = result.get("workstream") or {}
     lines = [
         "Init Agent Tool: repo_workstream_report",
@@ -269,6 +278,7 @@ def render_repo_workstream_report_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_workstream_review_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     workstream = result.get("workstream") or {}
     lines = [
         "Init Agent Tool: repo_workstream_review",
@@ -285,6 +295,7 @@ def render_repo_workstream_review_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     stats = result.get("stats") or {}
     lines = [
         "Init Agent Orientation Scorecard",
@@ -353,6 +364,7 @@ def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_related_file_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_related_file",
         "",
@@ -385,6 +397,7 @@ def render_repo_related_file_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_symbol_callers_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_symbol_callers",
         "",
@@ -409,6 +422,7 @@ def render_repo_symbol_callers_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_overview_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     project = result["project"]
     lines = [
         "Init Agent Tool: repo_overview",
@@ -439,6 +453,7 @@ def render_repo_overview_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     project = result["project"]
     lines = [
         "Init Agent Tool: repo_entrypoints",
@@ -472,6 +487,7 @@ def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_feedback_add_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_feedback_add",
         "",
@@ -488,6 +504,7 @@ def render_repo_feedback_add_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     feedback = result["feedback"]
     lines = [
         "Init Agent Tool: repo_feedback_explain",
@@ -514,6 +531,7 @@ def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_add_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_memory_add",
         "",
@@ -533,6 +551,7 @@ def render_repo_memory_add_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_search_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     memory = result["memory"]
     lines = [
         "Init Agent Tool: repo_memory_search",
@@ -563,6 +582,7 @@ def render_repo_memory_search_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_file_notes_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_file_notes",
         "",
@@ -589,6 +609,7 @@ def render_repo_file_notes_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_list_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_memory_list",
         "",
@@ -619,6 +640,7 @@ def render_repo_memory_list_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     memory = result["memory"]
     lines = [
         "Init Agent Tool: repo_memory_topics",
@@ -645,6 +667,7 @@ def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_flow_topics_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     flows = result["flows"]
     lines = [
         "Init Agent Tool: repo_flow_topics",
@@ -667,6 +690,7 @@ def render_repo_flow_topics_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     audit = result["audit"]
     lines = [
         "Init Agent Tool: repo_memory_audit",
@@ -699,6 +723,7 @@ def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_memory_delete",
         "",
@@ -713,6 +738,7 @@ def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_memory_update_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_memory_update",
         "",
@@ -736,6 +762,7 @@ def render_repo_memory_update_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_task_add_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_task_add",
         "",
@@ -751,6 +778,7 @@ def render_repo_task_add_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_task_list_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_task_list",
         "",
@@ -774,6 +802,7 @@ def render_repo_task_list_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_task_update_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         f"Init Agent Tool: {result['tool']}",
         "",
@@ -795,6 +824,7 @@ def render_repo_task_update_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_task_note_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     lines = [
         "Init Agent Tool: repo_task_note",
         "",
@@ -810,6 +840,7 @@ def render_repo_task_note_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_session_summary_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     project = result.get("project") or {}
     git = result.get("git") or {}
     lines = [
@@ -874,6 +905,7 @@ def render_repo_session_summary_text(result: dict[str, Any]) -> str:
 
 
 def render_repo_session_close_text(result: dict[str, Any]) -> str:
+    result = plain_fields(result)
     project = result.get("project") or {}
     git = result.get("git") or {}
     lines = [

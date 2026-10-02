@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .bounded_json import measure_bounded
 from .graph_store import GraphStore
 from .utils import db_path, normalize_repo_path
 
@@ -38,6 +39,7 @@ def ingest_codex_hook(
 ) -> dict[str, Any]:
     """Normalize and store one Codex hook event without raw conversational data."""
 
+    measure_bounded(payload)
     if not db_path(root).is_file():
         return {"recorded": False, "status": "not_initialized", "source": source}
     if not isinstance(payload, dict):
@@ -280,6 +282,7 @@ def _summarize_tool_input(root: Path, tool_name: Any, value: Any) -> dict[str, A
     summary: dict[str, Any] = {
         "type": type(value).__name__,
         "size_chars": _json_size(value),
+        "size_is_estimate": True,
     }
     if not isinstance(value, dict):
         return summary
@@ -300,6 +303,7 @@ def _summarize_tool_response(value: Any) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "type": type(value).__name__,
         "size_chars": _json_size(value),
+        "size_is_estimate": True,
     }
     if isinstance(value, dict):
         summary["keys"] = sorted(str(key)[:80] for key in value)[:24]
@@ -442,10 +446,7 @@ def _text_size(value: Any) -> int:
 
 
 def _json_size(value: Any) -> int:
-    try:
-        return len(json.dumps(value, sort_keys=True, default=str))
-    except (TypeError, ValueError):
-        return len(str(value))
+    return measure_bounded(value)
 
 
 def _utc_now_ms() -> str:

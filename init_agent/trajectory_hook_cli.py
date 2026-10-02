@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from .bounded_json import read_bounded, decode_bounded
 import sys
 from pathlib import Path
 
@@ -11,7 +11,7 @@ from .trajectory import find_initialized_trajectory_root, ingest_codex_hook
 
 def main() -> int:
     try:
-        payload = json.load(sys.stdin)
+        payload = decode_bounded(read_bounded(getattr(sys.stdin, "buffer", sys.stdin), 1048576), 1048576)
         if not isinstance(payload, dict):
             return 0
         root = find_initialized_trajectory_root(payload.get("cwd")) or find_initialized_trajectory_root(Path.cwd())

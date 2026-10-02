@@ -48,7 +48,7 @@ class WebUiTests(InitAgentTestCase):
                 server.server_port = 8765
                 server.RequestHandlerClass = handler
 
-            def run(server):
+            def run(server, **kwargs):
                 for headers, expected in requests:
                     for path in ("/api/snapshot", "/"):
                         before = snapshot.call_count

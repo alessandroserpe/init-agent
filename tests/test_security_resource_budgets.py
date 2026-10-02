@@ -5,6 +5,7 @@ from contextlib import closing
 import json
 import os
 import sqlite3
+import socket
 import subprocess
 import sys
 import tempfile
@@ -18,7 +19,7 @@ from http.server import ThreadingHTTPServer
 from experiments.bounded_process import run_bounded
 from experiments import evaluate
 from init_agent.utils import load_ignore_rules, ensure_agent_dir, MAX_CONFIG_BYTES, MAX_CONFIG_ITEMS, MAX_CONFIG_STRING
-from init_agent.web_budget import BoundedHTTPServer, LimitedHeaders, SnapshotCache, MAX_CONNECTIONS
+from init_agent.web_budget import BoundedHTTPServer, LimitedHeaders, SnapshotCache, MAX_CONNECTIONS, MAX_PREAUTH
 from init_agent.web_ui import _table_count, _file_activity, _bounded_staleness, _snapshot_payloads, build_web_snapshot
 from init_agent.graph_store import GraphStore
 
@@ -86,25 +87,41 @@ class ResourceBudgetTests(unittest.TestCase):
         self.assertEqual(result['status'], 'error')
         self.assertLessEqual(len(result['error']), 2048)
 
-    def test_connection_admission_precedes_thread_creation_and_times_out(self):
+    def test_slow_preauth_connections_cannot_take_authenticated_slots(self):
+        peers = []
         with patch.object(ThreadingHTTPServer, '__init__'), \
-             patch.object(ThreadingHTTPServer, 'process_request') as spawn, \
-             patch.object(ThreadingHTTPServer, 'shutdown_request') as reject:
+             patch.object(ThreadingHTTPServer, 'process_request') as spawn:
             server = BoundedHTTPServer(None, None)
-            request = Mock()
-            for _ in range(MAX_CONNECTIONS + 5):
-                server.process_request(request, ('127.0.0.1', 1))
-            self.assertEqual(spawn.call_count, MAX_CONNECTIONS)
-            self.assertEqual(reject.call_count, 5)
-            # A watchdog closes a connection even if bytes arrive before idle timeout.
-            ended = threading.Event()
-            request.shutdown.side_effect = lambda *_: ended.set()
-            with patch('init_agent.web_budget.REQUEST_SECONDS', 0.05), \
-                 patch.object(ThreadingHTTPServer, 'process_request_thread', side_effect=lambda *_: ended.wait(1)):
-                server.process_request_thread(request, ('127.0.0.1', 1))
-            self.assertTrue(ended.is_set())
-            server.process_request(request, ('127.0.0.1', 1))
-            self.assertEqual(spawn.call_count, MAX_CONNECTIONS + 1)
+            server.authorize_headers = lambda h: h.get('Authorization') == 'Bearer secret'
+            try:
+                for _ in range(MAX_PREAUTH):
+                    client, request = socket.socketpair()
+                    peers.extend([client, request])
+                    client.sendall(b'GET / HTTP/1.1\r\nHost:')
+                    server.process_request(request, ('127.0.0.1', 1))
+                self.assertEqual(len(server.pending), MAX_PREAUTH)
+                spawn.assert_not_called()
+                for _ in range(MAX_CONNECTIONS):
+                    client, request = socket.socketpair()
+                    peers.extend([client, request])
+                    client.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n')
+                    server.process_request(request, ('127.0.0.1', 1))
+                self.assertEqual(spawn.call_count, MAX_CONNECTIONS)
+                self.assertEqual(len(server.workers), MAX_CONNECTIONS)
+                self.assertLessEqual(len(server.pending), MAX_PREAUTH)
+                # A full authenticated worker still has a hard lifetime.
+                ended = threading.Event()
+                request = next(iter(server.workers))
+                with patch('init_agent.web_budget.REQUEST_SECONDS', 0.05), \
+                     patch.object(ThreadingHTTPServer, 'process_request_thread', side_effect=lambda *_: ended.wait(0.1)):
+                    server.process_request_thread(request, ('127.0.0.1', 1))
+                self.assertEqual(len(server.workers), MAX_CONNECTIONS - 1)
+                with patch('init_agent.web_budget.time.monotonic', return_value=time.monotonic() + 10):
+                    server.service_actions()
+                self.assertFalse(server.pending)
+            finally:
+                for peer in peers:
+                    peer.close()
 
     def test_headers_cache_and_serialization_are_bounded(self):
         reader = LimitedHeaders(io.BytesIO(b'x' * 20000))
@@ -131,18 +148,19 @@ class ResourceBudgetTests(unittest.TestCase):
                 _snapshot_payloads(Path('.'), 25)
             render.assert_not_called()
 
-    def test_connection_rate_limit_applies_after_workers_finish(self):
+    def test_public_rate_limit_does_not_spend_authenticated_capacity(self):
         with patch.object(ThreadingHTTPServer, '__init__'), \
              patch.object(ThreadingHTTPServer, 'process_request') as spawn, \
-             patch.object(ThreadingHTTPServer, 'shutdown_request') as reject, \
-             patch('init_agent.web_budget.time.monotonic', return_value=1):
+             patch.object(ThreadingHTTPServer, 'shutdown_request') as reject:
             server = BoundedHTTPServer(None, None)
-            for index in range(25):
-                server.process_request(Mock(), ('127.0.0.1', index))
-                if index < 20:
-                    server.slots.release()  # Completed request worker.
-            self.assertEqual(spawn.call_count, 20)
-            self.assertEqual(reject.call_count, 5)
+            server.authorize_headers = lambda h: h.get('Authorization') == 'Bearer secret'
+            server.accepted = 20
+            for auth in (b'', b'Authorization: Bearer secret\r\n'):
+                request = Mock()
+                request.recv.return_value = b'GET / HTTP/1.1\r\nHost: localhost\r\n' + auth + b'\r\n'
+                server.process_request(request, ('127.0.0.1', 1))
+            self.assertEqual(spawn.call_count, 1)
+            self.assertEqual(reject.call_count, 1)
 
     def test_activity_window_and_live_hash_budget(self):
         with closing(sqlite3.connect(':memory:')) as conn:
