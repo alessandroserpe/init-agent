@@ -16,6 +16,8 @@ from typing import Iterator, IO, Any
 def _check_descriptor(fd: int, path: Path, *, directory: bool = False) -> None:
     info = os.fstat(fd)
     expected = stat.S_ISDIR if directory else stat.S_ISREG
+    if not directory and stat.S_ISREG(info.st_mode) and info.st_nlink == 0:
+        raise FileNotFoundError(f'Metadata was removed after opening: {path!r}')
     if not expected(info.st_mode) or (not directory and info.st_nlink != 1):
         raise PermissionError(f"Refusing non-regular or hard-linked metadata: {path!r}")
     if os.name == "posix":
@@ -141,8 +143,14 @@ class MetadataDirectory:
             for count, entry in enumerate(entries, 1):
                 if count > 256:
                     raise OSError('too many direct .agent children (maximum 256)')
-                with self.open(entry.name, 'rb'):
-                    pass
+                try:
+                    with self.open(entry.name, 'rb'):
+                        pass
+                except FileNotFoundError:
+                    # SQLite deletes these transient files during normal commits.
+                    # No bytes or writes are performed through the removed inode.
+                    if entry.name not in {'graph.sqlite-journal', 'graph.sqlite-wal', 'graph.sqlite-shm'}:
+                        raise
 
     @contextmanager
     def open(self, name: str, mode: str = 'rb'):
@@ -154,6 +162,8 @@ class MetadataDirectory:
             flags |= os.O_APPEND
         try:
             fd = os.open(name, flags, 0o600, dir_fd=self.fd)
+        except FileNotFoundError:
+            raise
         except OSError as exc:
             raise OSError(f'Refusing unsafe metadata child {name!r}: {exc.strerror}') from exc
         try:

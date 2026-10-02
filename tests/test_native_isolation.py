@@ -16,6 +16,26 @@ from init_agent.utils import git_read_environment, _git_indexable_paths
 
 
 class NativeIsolationTests(unittest.TestCase):
+    def test_disappearing_sqlite_sidecar_is_not_an_unsafe_object(self):
+        from init_agent import private_files
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            with private_files.MetadataDirectory(root, create=True):
+                pass
+            sidecar = root / '.agent' / 'graph.sqlite-journal'
+            sidecar.write_bytes(b'')
+            check = private_files._check_descriptor
+            def remove_after_open(fd, path, **kwargs):
+                if path == sidecar:
+                    sidecar.unlink()
+                return check(fd, path, **kwargs)
+            with patch.object(private_files, '_check_descriptor', side_effect=remove_after_open):
+                with private_files.MetadataDirectory(root):
+                    pass
+            sidecar.mkdir()
+            with self.assertRaises(PermissionError):
+                private_files.MetadataDirectory(root)
+
     def test_identifier_and_error_tokens_are_counted_before_native_parse(self):
         for source in ('<?php ' + 'identifier ' * 100001, '<?php ' + '@ ' * 100001):
             with patch('init_agent.native_parser.run_bounded') as spawn:
