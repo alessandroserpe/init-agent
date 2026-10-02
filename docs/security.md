@@ -160,8 +160,12 @@ directories rather than searching the ambient `PATH`. Automatic discovery
 rejects executables in the target repository, unsafe ownership and group/world
 writable paths. An explicit `--codex-command` must be an absolute executable
 path outside the repository; supplying it selects that binary as trusted.
-If Codex is installed elsewhere, use this option. The resolved absolute server
-command is persisted and reported in installation results.
+If Codex is installed elsewhere, use this option.
+Use `--server-command /absolute/path/to/init-agent-mcp` to explicitly select
+the server executable under the same rules, including in shared runtime
+installations rejected by automatic discovery.
+The resolved absolute server command is persisted and reported in installation
+results.
 
 Reading-plan manifest decoding accepts at most 8 MiB of compressed input and
 8 MiB of decompressed JSON. Oversized, malformed or truncated manifests are

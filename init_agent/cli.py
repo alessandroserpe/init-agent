@@ -227,6 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_install_codex.add_argument("--server-name", default="init_agent", help="MCP server name to register.")
     mcp_install_codex.add_argument("--replace", action="store_true", help="Remove an existing Codex MCP server with the same name before adding it.")
     mcp_install_codex.add_argument("--codex-command", help="Override the codex executable path, mainly for testing.")
+    mcp_install_codex.add_argument("--server-command", help="Explicit absolute path to a trusted init-agent-mcp executable outside the repository.")
     mcp_install_codex.add_argument("--manual-config", action="store_true", help="Edit Codex config.toml directly instead of using `codex mcp add`.")
     mcp_install_codex.add_argument("--config-path", help="Override Codex config path. Only valid with --manual-config.")
     mcp_install_codex.add_argument("--experimental", action="store_true", help="Required only for --manual-config because direct config editing is experimental.")
@@ -739,6 +740,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
                 Path(args.root) if args.root else None,
                 config_path=Path(args.config_path) if args.config_path else None,
                 server_name=args.server_name,
+                command=args.server_command,
                 replace=args.replace,
                 profile=args.profile,
             )
@@ -747,6 +749,7 @@ def cmd_mcp_install_codex(args: argparse.Namespace) -> int:
             result = install_codex_mcp_cli(
                 Path(args.root) if args.root else None,
                 server_name=args.server_name,
+                command=args.server_command,
                 codex_command=args.codex_command,
                 replace=args.replace,
                 profile=args.profile,

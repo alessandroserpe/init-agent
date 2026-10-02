@@ -7,6 +7,14 @@ from init_agent.skill_installer import SKILL_MANIFEST, codex_skill_status, sync_
 from tests.support import *
 
 
+def _fake_mcp_server(directory: Path) -> str:
+    """Select a test-owned server explicitly, independent of host installations."""
+    executable = directory / "init-agent-mcp"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o700)
+    return str(executable.resolve())
+
+
 class DocsInstallTests(InitAgentTestCase):
     def test_agent_skill_template_documents_core_workflow(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -181,7 +189,7 @@ class DocsInstallTests(InitAgentTestCase):
             try:
                 with redirect_stdout(output):
                     self.assertEqual(
-                        main(["mcp", "install-codex", "--codex-command", str(fake_codex), "--json"]),
+                        main(["mcp", "install-codex", "--server-command", _fake_mcp_server(Path(tmp)), "--codex-command", str(fake_codex), "--json"]),
                         0,
                     )
             finally:
@@ -198,6 +206,7 @@ class DocsInstallTests(InitAgentTestCase):
             self.assertEqual(data["timeout_patch"]["status"], "updated")
             args = json.loads(log_path.read_text(encoding="utf-8"))[-1]
             self.assertEqual(args[:4], ["mcp", "add", "init_agent", "--"])
+            self.assertEqual(args[4], str((Path(tmp) / "init-agent-mcp").resolve()))
             self.assertEqual(len(args), 7)
             self.assertEqual(args[-2:], ["--profile", "core"])
             self.assertNotIn("--root", args)
@@ -220,7 +229,7 @@ class DocsInstallTests(InitAgentTestCase):
             try:
                 with redirect_stdout(output):
                     self.assertEqual(
-                        main(["mcp", "install-codex", "--root", str(root), "--codex-command", str(fake_codex), "--json"]),
+                        main(["mcp", "install-codex", "--server-command", _fake_mcp_server(Path(tmp)), "--root", str(root), "--codex-command", str(fake_codex), "--json"]),
                         0,
                     )
             finally:
@@ -249,7 +258,7 @@ class DocsInstallTests(InitAgentTestCase):
             try:
                 with redirect_stdout(StringIO()):
                     self.assertEqual(
-                        main(["mcp", "install-codex", "--profile", "full", "--codex-command", str(fake_codex), "--json"]),
+                        main(["mcp", "install-codex", "--server-command", _fake_mcp_server(Path(tmp)), "--profile", "full", "--codex-command", str(fake_codex), "--json"]),
                         0,
                     )
             finally:
@@ -294,6 +303,8 @@ class DocsInstallTests(InitAgentTestCase):
                         [
                             "mcp",
                             "install-codex",
+                            "--server-command",
+                            _fake_mcp_server(Path(tmp)),
                             "--root",
                             str(root),
                             "--manual-config",
@@ -331,6 +342,8 @@ class DocsInstallTests(InitAgentTestCase):
                         [
                             "mcp",
                             "install-codex",
+                            "--server-command",
+                            _fake_mcp_server(Path(tmp)),
                             "--root",
                             str(root),
                             "--manual-config",
@@ -372,6 +385,8 @@ class DocsInstallTests(InitAgentTestCase):
                         [
                             "mcp",
                             "install-codex",
+                            "--server-command",
+                            _fake_mcp_server(Path(tmp)),
                             "--root",
                             str(root),
                             "--manual-config",

@@ -145,3 +145,21 @@ class FollowupSecurityTests(unittest.TestCase):
             trusted.write_text('#!/bin/sh\nexit 0\n')
             trusted.chmod(0o700)
             self.assertEqual(_resolve_executable('codex', str(trusted), root), str(trusted.resolve()))
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX executable permissions')
+    def test_installer_requires_explicit_selection_in_shared_runtime_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / 'shared-runtime'
+            directory.mkdir(mode=0o777)
+            directory.chmod(0o777)
+            executable = directory / 'test-init-agent-mcp'
+            executable.write_text('#!/bin/sh\nexit 0\n')
+            executable.chmod(0o700)
+            with patch('init_agent.mcp_installer.sys.executable', str(directory / 'python')), \
+                 patch('init_agent.mcp_installer.sysconfig.get_path', return_value=str(directory)):
+                with self.assertRaisesRegex(ValueError, 'No trusted'):
+                    _resolve_executable(executable.name, required=True)
+                self.assertEqual(
+                    _resolve_executable(executable.name, str(executable), required=True),
+                    str(executable.resolve()),
+                )
