@@ -621,6 +621,11 @@ init-agent web --host 127.0.0.1 --port 8765
 init-agent web --snapshot-json
 ```
 
+Open the private launch link printed by `init-agent web`. The dashboard requires
+a fresh bearer capability for each server launch; the browser handles it from
+that link. Do not share the link or terminal output. Direct API clients must
+send `Authorization: Bearer <launch-token>` to `/api/snapshot`.
+
 The dashboard reads `.agent/graph.sqlite` and shows project counts, recent
 memory notes, recent feedback, open tasks, reading plans, file activity and
 optional observable trajectory events.

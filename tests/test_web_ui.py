@@ -28,8 +28,11 @@ class WebUiTests(InitAgentTestCase):
 
         for bind_host, authority in (("127.0.0.1", "127.0.0.1:8765"), ("localhost", "localhost:8765"), ("::1", "[::1]:8765")):
             requests = [
-                (f"Host: {authority}\r\n", 200),
-                (f"Host: {authority}\r\nOrigin: http://{authority}\r\n", 200),
+                (f"Host: {authority}\r\nAuthorization: Bearer test-launch-token\r\n", 200),
+                (f"Host: {authority}\r\n", 401),
+                (f"Host: {authority}\r\nAuthorization: Bearer wrong-token\r\n", 401),
+                (f"Host: {authority}\r\nAuthorization: Bearer test-launch-token\r\nAuthorization: Bearer test-launch-token\r\n", 401),
+                (f"Host: {authority}\r\nOrigin: http://{authority}\r\nAuthorization: Bearer test-launch-token\r\n", 200),
                 ("Host: untrusted.example\r\n", 403),
                 ("", 403),
                 (f"Host: {authority}\r\nHost: evil.example\r\n", 403),
@@ -46,13 +49,27 @@ class WebUiTests(InitAgentTestCase):
 
             def run(server):
                 for headers, expected in requests:
-                    request = RequestSocket(f"GET /api/snapshot HTTP/1.1\r\n{headers}\r\n".encode())
+                    for path in ("/api/snapshot", "/"):
+                        before = snapshot.call_count
+                        request = RequestSocket(f"GET {path} HTTP/1.1\r\n{headers}\r\n".encode())
+                        server.RequestHandlerClass(request, ("127.0.0.1", 1000), server)
+                        status = 200 if path == "/" and headers == f"Host: {authority}\r\n" else expected
+                        responses.append((request.output.getvalue(), status))
+                        self.assertEqual(snapshot.call_count - before, int(expected == 200))
+                        self.assertNotIn(b"test-launch-token", request.output.getvalue())
+                # Capabilities in URLs or cookies do not authenticate API calls.
+                for path, extra in (("/api/snapshot?token=test-launch-token", ""),
+                                    ("/api/snapshot", "Cookie: token=test-launch-token\r\n")):
+                    before = snapshot.call_count
+                    request = RequestSocket(f"GET {path} HTTP/1.1\r\nHost: {authority}\r\n{extra}\r\n".encode())
                     server.RequestHandlerClass(request, ("127.0.0.1", 1000), server)
-                    responses.append((request.output.getvalue(), expected))
+                    responses.append((request.output.getvalue(), 401))
+                    self.assertEqual(snapshot.call_count, before)
 
-            with self.subTest(host=bind_host), patch.object(ThreadingHTTPServer, "__init__", initialize), patch.object(ThreadingHTTPServer, "serve_forever", run), patch.object(ThreadingHTTPServer, "server_close"), patch("init_agent.web_ui.build_web_snapshot", return_value={}) as snapshot, redirect_stdout(StringIO()):
+            with self.subTest(host=bind_host), patch.object(ThreadingHTTPServer, "__init__", initialize), patch.object(ThreadingHTTPServer, "serve_forever", run), patch.object(ThreadingHTTPServer, "server_close"), patch("init_agent.web_ui.build_web_snapshot", return_value={}) as snapshot, patch("init_agent.web_ui.render_dashboard_html", return_value="<html>private</html>"), patch("init_agent.web_ui.secrets.token_urlsafe", return_value="test-launch-token") as generate, redirect_stdout(StringIO()):
                 serve_web_ui(Path("."), host=bind_host)
-                self.assertEqual(snapshot.call_count, 2)
+                self.assertEqual(snapshot.call_count, 4)
+                generate.assert_called_once_with(32)
             for response, expected in responses:
                 self.assertIn(f" {expected} ".encode(), response.split(b"\r\n")[0])
                 self.assertIn(b"Cache-Control: no-store", response)

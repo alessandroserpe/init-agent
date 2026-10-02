@@ -57,9 +57,16 @@ redirecting them to a file, use a private destination, for example
 
 `init-agent web` binds only to loopback addresses (`127.0.0.1`, `::1` or
 `localhost`), validates Host and Origin headers and disables response caching.
-Non-loopback bindings are rejected. It is a read-only local service, not an
-authenticated remote dashboard; do not expose it through a public proxy or
-tunnel. Other local processes can still access it.
+Non-loopback bindings are rejected. Loopback is a routing boundary, not user
+authentication: each launch generates a 256-bit random bearer capability and
+requires it before reading or returning repository metadata. Open the private
+link printed in the terminal. Its fragment is removed from the address bar and
+the browser retains the capability in tab-scoped session storage, sending it
+only in the Authorization header. The unauthenticated landing page contains no
+repository metadata or capability. Restarting the server invalidates old links.
+Treat the launch link and terminal output as private; do not expose the service
+through a public proxy or tunnel. Processes able to read the owner's terminal,
+browser storage or process memory remain outside this protection.
 
 Dashboard memory freshness is checked against current files, not indexed
 hashes. Editing a note or its tags does not renew its file evidence: use

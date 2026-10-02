@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import ipaddress
 import json
+import secrets
 import socket
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -212,6 +213,8 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
     bind_host = str(address)
     authority_host = f"[{bind_host}]" if address.version == 6 else bind_host
 
+    capability = secrets.token_urlsafe(32)
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - http.server API
             authorities = {f"{authority_host}:{server.server_port}", f"localhost:{server.server_port}"}
@@ -228,6 +231,16 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
                 self._send(403, "text/plain; charset=utf-8", b"local requests only\n")
                 return
             parsed = urlparse(self.path)
+            credentials = self.headers.get_all("Authorization", [])
+            # The public bootstrap contains no repository data or capability.
+            if parsed.path == "/" and not credentials:
+                self._send(200, "text/html; charset=utf-8", _BOOTSTRAP.encode("utf-8"))
+                return
+            if (len(credentials) != 1 or not secrets.compare_digest(
+                credentials[0].encode("utf-8"), f"Bearer {capability}".encode("ascii")
+            )):
+                self._send(401, "text/plain; charset=utf-8", b"launch capability required\n")
+                return
             if parsed.path == "/api/snapshot":
                 payload = json.dumps(build_web_snapshot(root, limit=limit), indent=2, sort_keys=True).encode("utf-8")
                 self._send(200, "application/json; charset=utf-8", payload)
@@ -248,6 +261,7 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
             self.wfile.write(payload)
 
@@ -255,7 +269,8 @@ def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: i
         address_family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
 
     server = LocalServer((bind_host, int(port)), Handler)
-    print(f"Init Agent web UI: http://{authority_host}:{server.server_port}/")
+    print(f"Init Agent web UI: http://{authority_host}:{server.server_port}/#token={capability}")
+    print("This private link grants dashboard access for this launch. Do not share it.")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
@@ -1231,7 +1246,41 @@ code {
 """
 
 
+_BOOTSTRAP = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Init Agent</title></head>
+<body><p id="status">Open the private dashboard link printed in your terminal.</p>
+<script>
+(async () => {
+  const incoming = new URLSearchParams(location.hash.slice(1)).get("token");
+  history.replaceState(null, "", location.pathname);
+  if (incoming) sessionStorage.setItem("init-agent-capability", incoming);
+  const token = sessionStorage.getItem("init-agent-capability");
+  if (!token) return;
+  try {
+    const response = await fetch("/", {headers: {Authorization: "Bearer " + token}, cache: "no-store"});
+    if (!response.ok) throw new Error("Unauthorized");
+    const page = await response.text();
+    document.open(); document.write(page); document.close();
+  } catch (_) {
+    sessionStorage.removeItem("init-agent-capability");
+    document.getElementById("status").textContent = "Access expired. Open the current private link from your terminal.";
+  }
+})();
+</script></body></html>
+"""
+
+
 _JS = """
+document.querySelector('a[href="/api/snapshot"]')?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  const token = sessionStorage.getItem("init-agent-capability") || "";
+  const response = await fetch("/api/snapshot", {headers: {Authorization: "Bearer " + token}, cache: "no-store"});
+  if (!response.ok) { alert("Access expired. Reopen the private dashboard link."); return; }
+  const pre = document.createElement("pre");
+  pre.textContent = await response.text();
+  document.body.replaceChildren(pre);
+});
+
 const tabs = Array.from(document.querySelectorAll("[data-tab-target]"));
 const panels = Array.from(document.querySelectorAll("[data-tab]"));
 const search = document.getElementById("table-search");
