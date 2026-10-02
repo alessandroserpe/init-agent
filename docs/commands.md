@@ -623,7 +623,7 @@ Serves a local read-only dashboard for human inspection:
 
 ```bash
 init-agent web
-init-agent web --host 127.0.0.1 --port 8765
+init-agent web --host 127.0.0.1 --port 0
 init-agent web --snapshot-json
 ```
 

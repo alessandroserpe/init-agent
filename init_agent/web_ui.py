@@ -234,7 +234,7 @@ def _snapshot_payloads(root: Path, limit: int):
     return bytes(payload), html_payload
 
 
-def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, limit: int = 25) -> None:
+def serve_web_ui(root: Path, host: str = "127.0.0.1", port: int = 0, limit: int = 25) -> None:
     """Serve the local read-only dashboard until interrupted."""
     bind_host = "127.0.0.1" if host.lower() == "localhost" else host
     try:

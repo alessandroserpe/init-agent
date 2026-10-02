@@ -222,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     web_parser = subparsers.add_parser("web", help="Serve a local read-only dashboard for agent memory and session metadata.")
     web_parser.add_argument("--host", default="127.0.0.1", help="Host to bind. Defaults to 127.0.0.1.")
-    web_parser.add_argument("--port", type=int, default=8765, help="Port to bind. Defaults to 8765.")
+    web_parser.add_argument("--port", type=int, default=0, help="Port to bind. Default: OS-assigned port (0); fixed ports reuse browser origin state.")
     web_parser.add_argument("--limit", type=int, default=25, help="Maximum rows per dashboard section.")
     web_parser.add_argument("--snapshot-json", action="store_true", help="Print the dashboard data as JSON and exit.")
     web_parser.set_defaults(handler=cmd_web)

@@ -16,6 +16,7 @@ from typing import Any
 from .repo_budget import CURRENT_BUDGET, WorkBudgetExceeded, bounded_operation, checkpoint
 from .bounded_process import run_bounded
 from .executables import resolve_executable
+from .git_boundary import validated_git_dir
 from .private_files import MetadataDirectory, private_open, write_private_text
 
 
@@ -416,12 +417,13 @@ def env_with_clean_locale() -> dict[str, str]:
 
 def git_read_command(root: Path | None = None) -> list[str]:
     """Disable executable Git configuration in repository metadata reads."""
-    return [resolve_executable("git", root=root, required=True), "--no-pager", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull,
+    repository = (["--git-dir=" + str(validated_git_dir(root)), "--work-tree=" + str(root.resolve())] if root is not None else [])
+    return [resolve_executable("git", root=root, required=True), *repository, "--no-pager", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull,
             "-c", "core.untrackedCache=false", "-c", "diff.external=", "-c", "submodule.recurse=false"]
 
 
 def git_read_environment() -> dict[str, str]:
-    env = env_with_clean_locale()
+    env = {key: value for key, value in env_with_clean_locale().items() if not key.startswith("GIT_")}
     env["PATH"] = os.pathsep.join(str(path) for path in (Path("/usr/bin"), Path("/bin")) if path.is_dir()) if os.name == "posix" else str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
     env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                 "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1",

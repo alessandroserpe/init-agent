@@ -6,11 +6,16 @@ import subprocess
 from pathlib import Path
 
 from .repo_budget import bounded_operation
+from .git_boundary import validated_git_dir
 from .utils import run_git_read
 
 
 def has_git(root: Path) -> bool:
-    return (root / ".git").exists()
+    try:
+        validated_git_dir(root)
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 @bounded_operation

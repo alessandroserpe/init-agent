@@ -337,3 +337,43 @@ cooperative work and 500,000 SQLite VM steps. Database paths are opened through
 the metadata connection guard in read-only mode. Results expose rejected-file
 counts and `truncated`; partial measurements must not be interpreted as complete
 repository read costs.
+
+### MCP transport limits
+
+Transport limits apply before repository/tool budgets: JSONL lines and declared
+Content-Length bodies are capped at 256 KiB. Header lines are capped at 4 KiB,
+with at most 32 headers and 16 KiB of header bytes. The first line has the frame
+ceiling before its framing type is known. More than 16 leading empty lines,
+duplicate/invalid Content-Length values, truncated bodies and non-object JSON
+are fatal framing errors. A pre-decode scan caps JSON nesting at 32 and structural
+tokens at 8,192. Method/tool names are at most 128 characters and string request
+IDs at most 256. On a framing error the process exits with status 1; it does not
+allocate/drain the advertised body or dispatch a trailing frame. Local stdio
+remains a blocking transport controlled by its connected client, not a network
+service with per-client read deadlines.
+
+### Git administrative boundary
+
+Git commands receive validated explicit `--git-dir` and `--work-tree` paths.
+A `.git` symlink or special file is rejected. A gitdir file must name a real
+relative directory inside the selected root, without parent traversal. The
+administrative tree must contain only real directories and regular files; the
+validation walk is capped at 20,000 entries per repository operation. Linked
+worktrees (`commondir`) and object alternates are unsupported, even when they
+would be internal: use a self-contained clone for indexing. Rejected Git layouts
+fall back to non-Git source enumeration and contribute no Git history. Inherited
+`GIT_*` variables are removed before installing the controlled read environment,
+so ambient gitdir/object-store/config overrides cannot bypass this boundary.
+
+### Dashboard browser origin and CI dependencies
+
+`init-agent web` now defaults to port 0: the OS selects an available ephemeral
+port, and the launch output prints that exact origin and capability URL.
+`--port N` explicitly opts into a reusable origin and weaker browser-state
+isolation. Random port selection reduces predictable origin reuse; it does not
+guarantee a never-before-used browser origin. For stronger same-host threats,
+use an isolated browser profile. Existing capability and routing checks remain.
+
+CI actions are pinned to full upstream commit SHAs, with their release versions
+in comments. The workflow declares `contents: read` and checkout does not retain
+Git credentials. Updating action versions requires a reviewed SHA change.

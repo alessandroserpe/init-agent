@@ -21,6 +21,20 @@ SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 
 
+MAX_FRAME_BYTES = 256 * 1024
+MAX_HEADER_LINE = 4096
+MAX_HEADER_BYTES = 16 * 1024
+MAX_HEADERS = 32
+MAX_EMPTY_LINES = 16
+MAX_JSON_DEPTH = 32
+MAX_JSON_TOKENS = 8192
+MAX_METHOD_LENGTH = 128
+
+
+class FramingError(ValueError):
+    """Fatal transport error; the unread remainder must never be dispatched."""
+
+
 JsonRpcMessage = tuple[dict[str, Any], str]
 
 
@@ -52,6 +66,7 @@ class InitAgentMcpServer:
         input_stream = sys.stdin.buffer
         output_stream = sys.stdout.buffer
         while True:
+            response_format = "jsonl"
             try:
                 read_result = _read_message(input_stream)
                 if read_result is None:
@@ -60,6 +75,10 @@ class InitAgentMcpServer:
                 request, response_format = read_result
                 self._debug("request", _debug_request_payload(request))
                 response = self.handle(request)
+            except FramingError as exc:
+                self._debug("framing_error", {"message": str(exc)})
+                # Do not drain an attacker-controlled body or try to resynchronize.
+                return 1
             except Exception as exc:
                 self._debug("error", {"message": str(exc)})
                 response = _error_response(None, -32603, str(exc))
@@ -68,6 +87,7 @@ class InitAgentMcpServer:
         return 0
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        _validate_envelope(request)
         request_id = request.get("id")
         method = request.get("method")
         params = request.get("params") if isinstance(request.get("params"), dict) else {}
@@ -88,7 +108,9 @@ class InitAgentMcpServer:
         return _error_response(request_id, -32601, f"method not found: {method}")
 
     def _call_tool(self, params: dict[str, Any]) -> dict[str, Any]:
-        name = str(params.get("name") or "")
+        name = params.get("name") or ""
+        if not isinstance(name, str) or len(name) > MAX_METHOD_LENGTH:
+            return _tool_error("invalid or oversized MCP tool name")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         handler = MCP_TOOL_HANDLERS.get(name)
         if handler is None:
@@ -174,52 +196,111 @@ def _error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
+def _validate_envelope(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise FramingError("MCP request must be a JSON object")
+    method = value.get("method")
+    if method is not None and (not isinstance(method, str) or len(method) > MAX_METHOD_LENGTH):
+        raise FramingError("invalid or oversized MCP method")
+    request_id = value.get("id")
+    if request_id is not None and (isinstance(request_id, bool) or not isinstance(request_id, (str, int)) or
+                                   (isinstance(request_id, str) and len(request_id) > 256)):
+        raise FramingError("invalid or oversized MCP request id")
+    params = value.get("params")
+    if method == "tools/call" and isinstance(params, dict):
+        name = params.get("name")
+        if name is not None and (not isinstance(name, str) or len(name) > MAX_METHOD_LENGTH):
+            raise FramingError("invalid or oversized MCP tool name")
+
+
+def _decode_frame(body: bytes) -> dict[str, Any]:
+    if len(body) > MAX_FRAME_BYTES:
+        raise FramingError("MCP frame exceeds byte limit")
+    # Check structure before json.loads can allocate recursive containers.
+    depth = tokens = 0
+    quoted = escaped = False
+    for char in body:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == 92:
+                escaped = True
+            elif char == 34:
+                quoted = False
+        elif char == 34:
+            quoted = True
+            tokens += 1
+        elif char in (123, 91):
+            depth += 1
+            tokens += 1
+        elif char in (125, 93):
+            depth -= 1
+        elif char in (44, 58):
+            tokens += 1
+        if depth > MAX_JSON_DEPTH or tokens > MAX_JSON_TOKENS:
+            raise FramingError("MCP JSON exceeds structural limits")
+    try:
+        value = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, RecursionError) as exc:
+        raise FramingError("invalid MCP JSON") from exc
+    _validate_envelope(value)
+    return value
+
+
 def _read_message(stream: BufferedIOBase) -> JsonRpcMessage | None:
     first_line = _read_non_empty_line(stream)
     if first_line is None:
         return None
-    if first_line.startswith(b"{"):
-        return json.loads(first_line.decode("utf-8")), "jsonl"
-
-    headers = [first_line]
-    while True:
-        header_line = stream.readline()
-        if header_line == b"":
-            raise ValueError("unexpected EOF while reading MCP headers")
-        if header_line in {b"\r\n", b"\n"}:
-            break
-        headers.append(header_line.strip())
+    if first_line.lstrip().startswith(b"{"):
+        return _decode_frame(first_line), "jsonl"
 
     content_length = None
-    for header in headers:
-        if header.lower().startswith(b"content-length:"):
-            content_length = _parse_content_length(header)
-            break
-    if content_length is not None:
-        body = stream.read(content_length)
-        if len(body) != content_length:
-            raise ValueError("unexpected EOF while reading MCP body")
-        return json.loads(body.decode("utf-8")), "content_length"
-    raise ValueError("missing MCP Content-Length header")
+    header_bytes = count = 0
+    header_line = first_line
+    while header_line not in {b"\r\n", b"\n"}:
+        if not header_line:
+            raise FramingError("unexpected EOF while reading MCP headers")
+        count += 1
+        header_bytes += len(header_line)
+        if count > MAX_HEADERS or len(header_line) > MAX_HEADER_LINE or header_bytes > MAX_HEADER_BYTES:
+            raise FramingError("MCP headers exceed limits")
+        if b":" not in header_line:
+            raise FramingError("invalid MCP header")
+        if header_line.lower().startswith(b"content-length:"):
+            if content_length is not None:
+                raise FramingError("duplicate MCP Content-Length")
+            content_length = _parse_content_length(header_line)
+        header_line = stream.readline(MAX_HEADER_LINE + 1)
+    if content_length is None:
+        raise FramingError("missing MCP Content-Length header")
+    body = bytearray()
+    while len(body) < content_length:
+        chunk = stream.read(min(8192, content_length - len(body)))
+        if not chunk:
+            raise FramingError("unexpected EOF while reading MCP body")
+        body.extend(chunk)
+    return _decode_frame(bytes(body)), "content_length"
 
 
 def _read_non_empty_line(stream: BufferedIOBase) -> bytes | None:
-    while True:
-        line = stream.readline()
-        if line == b"":
+    for _ in range(MAX_EMPTY_LINES + 1):
+        line = stream.readline(MAX_FRAME_BYTES + 1)
+        if len(line) > MAX_FRAME_BYTES:
+            raise FramingError("MCP frame exceeds byte limit")
+        if not line:
             return None
         if line.strip():
-            return line.strip()
+            return line
+    raise FramingError("too many empty MCP framing lines")
 
 
 def _parse_content_length(line: bytes) -> int:
-    try:
-        _, raw_value = line.decode("ascii").split(":", 1)
-        length = int(raw_value.strip())
-    except (ValueError, UnicodeDecodeError) as exc:
-        raise ValueError("invalid MCP Content-Length header") from exc
-    if length < 0:
-        raise ValueError("invalid negative MCP Content-Length")
+    raw_value = line.partition(b":")[2].strip()
+    if not raw_value or len(raw_value) > 9 or not raw_value.isdigit():
+        raise FramingError("invalid MCP Content-Length header")
+    length = int(raw_value)
+    if length > MAX_FRAME_BYTES:
+        raise FramingError("MCP Content-Length exceeds byte limit")
     return length
 
 
