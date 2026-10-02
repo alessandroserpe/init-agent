@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import sqlite3
+from .metadata_db import connect_metadata
 import time
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,7 @@ def clear_index_health_cache() -> None:
 def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(database, timeout=1, factory=BudgetConnection)
+        conn = connect_metadata(root, readonly=True)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT path, size, modified_at FROM files ORDER BY path"

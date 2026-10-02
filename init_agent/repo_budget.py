@@ -111,6 +111,7 @@ class BudgetCursor(sqlite3.Cursor):
         self._budget().check(amount=0)
 
     def execute(self, sql, parameters=()):
+        self.connection.validate_metadata()
         self._budget().values(parameters.values() if isinstance(parameters, dict) else parameters, kind='records')
         try:
             return super().execute(sql, parameters)
@@ -119,6 +120,7 @@ class BudgetCursor(sqlite3.Cursor):
             raise
 
     def executemany(self, sql, parameters):
+        self.connection.validate_metadata()
         def bounded():
             for values in parameters:
                 self._budget().values(values.values() if isinstance(values, dict) else values, kind='records')
@@ -164,6 +166,7 @@ class BudgetCursor(sqlite3.Cursor):
 class BudgetConnection(sqlite3.Connection):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.validate_metadata()
         self.work_budget = CURRENT_BUDGET.get() or RepoBudget()
         self.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 8 * 1024 * 1024)
         # Large ORDER BY/GROUP BY work must spill instead of retaining a corpus.
@@ -177,6 +180,9 @@ class BudgetConnection(sqlite3.Connection):
                 return 1
         self.set_progress_handler(progress, 1000)
 
+    def validate_metadata(self):
+        pass
+
     def cursor(self, factory=BudgetCursor):
         return super().cursor(factory)
 
@@ -187,6 +193,7 @@ class BudgetConnection(sqlite3.Connection):
         return self.cursor().executemany(sql, parameters)
 
     def executescript(self, sql_script):
+        self.validate_metadata()
         budget = CURRENT_BUDGET.get() or self.work_budget
         budget.check()
         try:
@@ -196,5 +203,6 @@ class BudgetConnection(sqlite3.Connection):
             raise
 
     def commit(self):
+        self.validate_metadata()
         (CURRENT_BUDGET.get() or self.work_budget).check(amount=0)
         return super().commit()

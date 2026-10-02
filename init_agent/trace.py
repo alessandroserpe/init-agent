@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import json
 import sqlite3
+from .metadata_db import connect_metadata
 from collections import defaultdict, deque
 from contextlib import closing
 from pathlib import Path
@@ -117,7 +118,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
             "suggested_first_reads": [],
             "warnings": [f"index not found: {database}"],
         }
-    with closing(sqlite3.connect(database)) as conn:
+    with closing(connect_metadata(root, readonly=True)) as conn:
         conn.row_factory = sqlite3.Row
         files = {
             int(row["id"]): dict(row)

@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .metadata_limits import install_quotas
-from .repo_budget import BudgetConnection
-from .private_files import private_open
+from .metadata_db import connect_metadata
 from .signatures import minimize_signature
 from .utils import db_path, utc_now
 
@@ -263,10 +262,7 @@ class GraphStore:
     def __init__(self, root: Path):
         self.root = root
         self.path = db_path(root)
-        # Pre-create with 0600 so SQLite sidecars inherit a private database mode.
-        with private_open(self.path, "a"):
-            pass
-        self.connection = sqlite3.connect(self.path, timeout=1, factory=BudgetConnection)
+        self.connection = connect_metadata(root)
         try:
             self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA foreign_keys = ON")

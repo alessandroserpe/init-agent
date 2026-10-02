@@ -299,3 +299,41 @@ page, with `truncated` and `next_before_id` for legacy histories above 5,000 row
 Task details return the latest 100 notes and `notes_truncated`. Plan details cap
 items/events and expose `history_truncated`; scorecards load only the selected
 recent finished plans and bounded matching histories before calculating results.
+
+### Metadata directory lifetime and SQLite namespace
+
+Configuration, export and log files directly inside `.agent` are opened relative
+to a retained `O_DIRECTORY|O_NOFOLLOW` directory descriptor. The direct-child
+namespace allows only owner-owned, single-link regular files: SQLite's main
+file and fixed journal/WAL/SHM names, configuration, and optional regular
+backups/exports/logs. Directories, FIFOs, sockets, devices and symlinks are
+rejected before SQLite is called; validation also caps children at 256.
+
+The standard Python SQLite binding cannot accept a directory descriptor.
+Connections therefore keep both the validated directory and database handles
+alive, use `mode=rw` (no pathname-based creation) or `mode=ro`, and verify their
+identities at handoff and before statements/commits. **SQLite metadata access is
+unsupported in a namespace writable by another OS user.** Every resolved
+ancestor must be owned by the current user or root and lack group/other write
+permission; a root-owned sticky temporary ancestor is allowed when its child is
+owned by the current user/root. Write-granting macOS ACLs are rejected too.
+This prevents another local principal from replacing `.agent` or its ancestors
+while SQLite uses pathnames for the database and sidecars. No repository
+permissions are changed to bypass this requirement; use a private checkout.
+
+These controls are not a sandbox against root or malicious processes running
+under the owner's own UID, which can already access private metadata. Detected
+same-UID directory/database replacement fails closed, but identity checks alone
+are not claimed to eliminate every same-UID rename race. POSIX descriptor and
+ownership support is required; there is no insecure fallback on other platforms.
+
+### Optional manual-scan benchmark
+
+The evaluator treats indexed paths as untrusted. Manual-scan measurement uses
+the same descriptor-anchored repository reader, rejects absolute/traversal
+paths, symlinks and non-regular files, and skips targets above 256 KiB. A
+measurement is limited to 256 rows/files, 8 MiB of file bytes, five seconds of
+cooperative work and 500,000 SQLite VM steps. Database paths are opened through
+the metadata connection guard in read-only mode. Results expose rejected-file
+counts and `truncated`; partial measurements must not be interpreted as complete
+repository read costs.

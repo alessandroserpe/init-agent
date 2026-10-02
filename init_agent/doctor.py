@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from .metadata_db import connect_metadata
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +85,7 @@ def run_doctor(
 
     conn = None
     try:
-        conn = sqlite3.connect(db_path(root))
+        conn = connect_metadata(root, readonly=True)
         conn.row_factory = sqlite3.Row
         existing_tables = _table_names(conn)
         missing_tables = sorted(REQUIRED_TABLES - existing_tables)

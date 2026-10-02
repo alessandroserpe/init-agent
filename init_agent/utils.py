@@ -16,7 +16,7 @@ from typing import Any
 from .repo_budget import CURRENT_BUDGET, WorkBudgetExceeded, bounded_operation, checkpoint
 from .bounded_process import run_bounded
 from .executables import resolve_executable
-from .private_files import ensure_private_dir, harden_private_path, write_private_text
+from .private_files import MetadataDirectory, private_open, write_private_text
 
 
 DEFAULT_EXCLUDED_DIRS = {
@@ -131,16 +131,12 @@ def has_project_marker(root: Path) -> bool:
 
 def agent_dir(root: Path) -> Path:
     directory = root / ".agent"
-    # Repository metadata must never redirect writes through checked-in symlinks.
-    if directory.is_symlink():
-        raise OSError("Refusing symlinked .agent directory")
-    if directory.is_dir():
-        harden_private_path(directory, directory=True)
-        for child in directory.iterdir():
-            if child.is_symlink():
-                raise OSError(f"Refusing symlinked metadata file: {child.name!r}")
-            if child.is_file():
-                harden_private_path(child)
+    try:
+        with MetadataDirectory(root):
+            pass
+    except FileNotFoundError:
+        if directory.is_symlink():
+            raise OSError("Refusing symlinked .agent directory")
     return directory
 
 
@@ -153,7 +149,8 @@ def config_path(root: Path) -> Path:
 
 
 def ensure_agent_dir(root: Path) -> None:
-    ensure_private_dir(agent_dir(root))
+    with MetadataDirectory(root, create=True):
+        pass
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -249,8 +246,7 @@ MAX_CONFIG_STRING = 1024
 
 
 def _bounded_config(path: Path) -> dict[str, Any]:
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
-    with os.fdopen(descriptor, "rb") as handle:
+    with private_open(path, "rb") as handle:
         info = os.fstat(handle.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CONFIG_BYTES:
             raise ValueError("invalid configuration file size/type")

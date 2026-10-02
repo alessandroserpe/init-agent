@@ -71,6 +71,11 @@ def ensure_private_dir(path: Path) -> None:
 
 @contextmanager
 def private_open(path: Path, mode: str = "w") -> Iterator[IO[Any]]:
+    if path.parent.name == '.agent':
+        with MetadataDirectory(path.parent.parent) as directory:
+            with directory.open(path.name, mode) as handle:
+                yield handle
+        return
     if path.is_symlink():
         raise PermissionError(f"Refusing symlinked metadata: {path!r}")
     flags = (os.O_RDONLY if mode.startswith("r") else os.O_WRONLY | os.O_CREAT)
@@ -98,3 +103,137 @@ def write_private_text(path: Path, value: str) -> None:
 def copy_private_file(source: Path, target: Path) -> None:
     with private_open(source, "rb") as reader, private_open(target, "wb") as writer:
         shutil.copyfileobj(reader, writer)
+
+
+class MetadataDirectory:
+    """Hold the owner-only metadata directory for the full operation lifetime."""
+    def __init__(self, root: Path, *, create: bool = False):
+        self.root = root.resolve()
+        self.path = self.root / '.agent'
+        self.fd = -1
+        if os.open not in os.supports_dir_fd or not hasattr(os, 'O_NOFOLLOW'):
+            raise OSError('secure metadata access requires directory descriptors and O_NOFOLLOW')
+        parent = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            if create:
+                try:
+                    os.mkdir('.agent', 0o700, dir_fd=parent)
+                except FileExistsError:
+                    pass
+            try:
+                self.fd = os.open('.agent', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            except OSError as exc:
+                if self.path.is_symlink():
+                    raise OSError('Refusing symlinked .agent directory') from exc
+                raise
+            _check_descriptor(self.fd, self.path, directory=True)
+            self.validate_children()
+        except BaseException:
+            self.close()
+            raise
+        finally:
+            os.close(parent)
+
+    def validate_children(self):
+        # The direct-child namespace is files only: database, fixed sidecars,
+        # configuration, exports, backups and logs. No subdirectories/devices.
+        with os.scandir(self.fd) as entries:
+            for count, entry in enumerate(entries, 1):
+                if count > 256:
+                    raise OSError('too many direct .agent children (maximum 256)')
+                with self.open(entry.name, 'rb'):
+                    pass
+
+    @contextmanager
+    def open(self, name: str, mode: str = 'rb'):
+        if not name or Path(name).name != name or name in {'.', '..'}:
+            raise OSError('invalid metadata child name')
+        flags = os.O_RDONLY if mode.startswith('r') else os.O_WRONLY | os.O_CREAT
+        flags |= os.O_NOFOLLOW | os.O_NONBLOCK
+        if mode.startswith('a'):
+            flags |= os.O_APPEND
+        try:
+            fd = os.open(name, flags, 0o600, dir_fd=self.fd)
+        except OSError as exc:
+            raise OSError(f'Refusing unsafe metadata child {name!r}: {exc.strerror}') from exc
+        try:
+            _check_descriptor(fd, self.path / name)
+            if mode.startswith('w'):
+                os.ftruncate(fd, 0)
+            handle = os.fdopen(fd, mode, **({} if 'b' in mode else {'encoding': 'utf-8'}))
+        except BaseException:
+            os.close(fd)
+            raise
+        with handle:
+            yield handle
+
+    def verify_identity(self):
+        opened = os.fstat(self.fd)
+        current = os.stat(self.path, follow_symlinks=False)
+        if (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino) or not stat.S_ISDIR(current.st_mode):
+            raise OSError('.agent directory changed during metadata access')
+
+    def close(self):
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def require_private_sqlite_path(directory: Path) -> None:
+    """SQLite uses pathnames: exclude cross-user rename rights on every ancestor.
+
+    A root-owned sticky temp directory is permitted; the next component must
+    still be owned by this user/root. This does not sandbox same-UID processes.
+    """
+    if os.name != 'posix':
+        raise OSError('secure SQLite metadata access currently requires POSIX ownership checks')
+    path = directory.resolve()
+    for component in [Path(path.anchor), *reversed(path.parents[:-1]), path]:
+        fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            info = os.fstat(fd)
+            sticky_root = info.st_uid == 0 and bool(info.st_mode & stat.S_ISVTX) and component != path
+            if info.st_uid not in {0, os.getuid()} or (info.st_mode & 0o022 and not sticky_root):
+                raise PermissionError(f'SQLite metadata requires a path not writable by other users: {component!r}')
+            if _macos_acl_allows_write(fd):
+                raise PermissionError(f'SQLite metadata path has a write-granting ACL: {component!r}')
+        finally:
+            os.close(fd)
+
+
+def _macos_acl_allows_write(fd: int) -> bool:
+    if sys.platform != 'darwin':
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    pointer = ctypes.c_void_p
+    libc.acl_get_fd_np.argtypes = [ctypes.c_int, ctypes.c_int]
+    libc.acl_get_fd_np.restype = pointer
+    libc.acl_get_entry.argtypes = [pointer, ctypes.c_int, ctypes.POINTER(pointer)]
+    libc.acl_get_tag_type.argtypes = [pointer, ctypes.POINTER(ctypes.c_int)]
+    libc.acl_get_permset.argtypes = [pointer, ctypes.POINTER(pointer)]
+    libc.acl_get_perm_np.argtypes = [pointer, ctypes.c_int]
+    libc.acl_free.argtypes = [pointer]
+    acl = libc.acl_get_fd_np(fd, 0x100)
+    if not acl:
+        return False
+    try:
+        entry, perms, tag = pointer(), pointer(), ctypes.c_int()
+        selector = 0  # ACL_FIRST_ENTRY; ACL_NEXT_ENTRY is -1 on Darwin.
+        while libc.acl_get_entry(acl, selector, ctypes.byref(entry)) == 0 and entry.value:
+            selector = -1
+            if libc.acl_get_tag_type(entry, ctypes.byref(tag)) != 0:
+                return True
+            if tag.value == 1:  # ACL_EXTENDED_ALLOW
+                if libc.acl_get_permset(entry, ctypes.byref(perms)) != 0:
+                    return True
+                if any(libc.acl_get_perm_np(perms, 1 << bit) != 0 for bit in (2, 4, 5, 6, 8, 10, 12, 13)):
+                    return True
+        return False
+    finally:
+        libc.acl_free(acl)

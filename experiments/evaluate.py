@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if not __package__:
     sys.path.insert(0, str(ROOT))
 from init_agent.bounded_process import run_bounded
+from init_agent.metadata_db import connect_metadata
+from init_agent.repo_files import open_repo_file
+from init_agent.repo_budget import budget_scope, WorkBudgetExceeded
 
 
 CASES_PATH = ROOT / "experiments" / "cases.json"
@@ -193,9 +196,9 @@ def indexed_file_count(repo: Path) -> int | None:
     if not db_path.exists():
         return None
     try:
-        with closing(sqlite3.connect(db_path)) as connection:
+        with budget_scope(), closing(connect_metadata(repo, readonly=True)) as connection:
             row = connection.execute("SELECT COUNT(*) FROM files").fetchone()
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError, WorkBudgetExceeded):
         return None
     return int(row[0]) if row else None
 
@@ -207,30 +210,51 @@ def scan_reduction_percent(total_files: int | None, candidate_files: int) -> flo
     return round((reduced / total_files) * 100, 1)
 
 
-def measure_indexed_file_read(repo: Path) -> dict[str, int | float] | None:
-    db_path = repo / ".agent" / "graph.sqlite"
-    if not db_path.exists():
-        return None
+def measure_indexed_file_read(repo: Path) -> dict[str, Any] | None:
+    started = time.monotonic()
+    files_read = characters = total_bytes = rejected = 0
+    truncated = False
     try:
-        with closing(sqlite3.connect(db_path)) as connection:
-            rows = connection.execute("SELECT path FROM files ORDER BY path").fetchall()
-    except sqlite3.Error:
+        with budget_scope(), closing(connect_metadata(repo, readonly=True)) as connection:
+            connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 8192)
+            sql_steps = 0
+            def expired():
+                nonlocal sql_steps
+                sql_steps += 1000
+                return int(sql_steps > 500_000 or time.monotonic() - started >= 5)
+            connection.set_progress_handler(expired, 1000)
+            # No ordering/full-table materialization of an attacker-owned index.
+            cursor = connection.execute("SELECT path FROM files LIMIT 257")
+            for index, (relative_path,) in enumerate(cursor):
+                if index >= 256 or total_bytes >= 8 * 1024 * 1024 or time.monotonic() - started >= 5:
+                    truncated = True
+                    break
+                try:
+                    if not isinstance(relative_path, str) or len(relative_path) > 4096:
+                        raise OSError('invalid indexed path')
+                    with open_repo_file(repo, relative_path) as handle:
+                        info = os.fstat(handle.fileno())
+                        allowance = min(256 * 1024, 8 * 1024 * 1024 - total_bytes)
+                        if info.st_size > allowance:
+                            rejected += 1
+                            truncated = True
+                            continue
+                        data = handle.read(allowance + 1)
+                        total_bytes += len(data)
+                        if len(data) > allowance or time.monotonic() - started >= 5:
+                            truncated = True
+                            break
+                        characters += len(data.decode('utf-8', errors='ignore'))
+                        files_read += 1
+                except (OSError, ValueError):
+                    rejected += 1
+    except FileNotFoundError:
         return None
-    started = time.perf_counter()
-    characters = 0
-    files_read = 0
-    for (relative_path,) in rows:
-        path = repo / str(relative_path)
-        try:
-            characters += len(path.read_text(encoding="utf-8", errors="ignore"))
-        except OSError:
-            continue
-        files_read += 1
-    return {
-        "files": files_read,
-        "characters": characters,
-        "elapsed_seconds": round(time.perf_counter() - started, 3),
-    }
+    except (sqlite3.Error, OSError, ValueError, WorkBudgetExceeded):
+        truncated = True
+    return {"files": files_read, "characters": characters,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+            "bytes_read": total_bytes, "rejected_files": rejected, "truncated": truncated or bool(rejected)}
 
 
 def _rebuild_index(repo: Path) -> None:

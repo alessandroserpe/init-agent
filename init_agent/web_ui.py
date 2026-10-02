@@ -12,6 +12,7 @@ import json
 import secrets
 import socket
 import sqlite3
+from .metadata_db import connect_metadata
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -48,8 +49,7 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
             "warnings": ["init-agent index not found. Run: init-agent run --overview --markdown"],
         }
 
-    uri = f"file:{database}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True, timeout=0.2)) as conn:
+    with closing(connect_metadata(root, readonly=True, timeout=0.2)) as conn:
         conn.row_factory = sqlite3.Row
         conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 65_536)
         started = time.monotonic()
