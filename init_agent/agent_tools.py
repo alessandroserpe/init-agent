@@ -30,7 +30,6 @@ from .reading_plan import build_reading_plan
 from .run import run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .trace import trace_query
-from .utils import db_path, ensure_agent_dir, is_live_repo_file, normalize_repo_path
 from .session_tools import repo_session_close, repo_session_summary
 from .renderers import (
     render_repo_graph_search_text,
@@ -64,7 +63,7 @@ from .renderers import (
     render_repo_workstream_report_text,
     render_repo_workstream_review_text,
 )
-
+from .utils import db_path, ensure_agent_dir, is_live_repo_file, normalize_repo_path, shell_quote
 
 
 def repo_graph_search(root: Path, query: str, limit: int = 10, prepare: bool = True) -> dict[str, Any]:
@@ -1134,7 +1133,7 @@ def _flow_topics(root: Path, tag: str | None = None, limit: int = 20) -> dict[st
                 "notes": notes_for_output,
                 "suggested_flow_memory": (
                     {
-                        "command": f"init-agent tool repo_memory_add --scope repo --topic {_shell_double_quote(item['tag'])} --tag {_shell_double_quote(item['tag'])} --evidence inferred_from_graph --note <flow-summary> --json",
+                        "command": f"init-agent tool repo_memory_add --scope repo --topic {shell_quote(item['tag'])} --tag {shell_quote(item['tag'])} --evidence inferred_from_graph --note <flow-summary> --json",
                         "reason": "multiple files share this tag; add a repo-scoped flow note only after verification",
                     }
                     if needs_summary
@@ -1200,7 +1199,7 @@ def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbol
             commands.append(
                 {
                     "tool": "repo_related_file",
-                    "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": "inspect file symbols, relations, callers and recent commits",
                 }
             )
@@ -1213,7 +1212,7 @@ def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbol
             commands.append(
                 {
                     "tool": "repo_symbol_callers",
-                    "command": f"init-agent tool repo_symbol_callers --symbol {_shell_double_quote(name)} --json",
+                    "command": f"init-agent tool repo_symbol_callers --symbol {shell_quote(name)} --json",
                     "reason": "inspect definitions and caller files for a relevant symbol",
                 }
             )
@@ -1225,7 +1224,7 @@ def _followup_commands(query: str, candidate_files: list[dict[str, Any]], symbol
                     "tool": "repo_feedback_add",
                     "command": (
                         "init-agent tool repo_feedback_add "
-                        f"--query {_shell_double_quote(query)} --path {_shell_double_quote(first_path)} "
+                        f"--query {shell_quote(query)} --path {shell_quote(first_path)} "
                         '--rating useful --source agent --reason "verified relevant" --json'
                     ),
                     "reason": "record local feedback only after verifying the file",
@@ -1245,7 +1244,7 @@ def _trace_followup_commands(paths: list[dict[str, Any]]) -> list[dict[str, str]
         commands.append(
             {
                 "tool": "repo_related_file",
-                "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                 "reason": "inspect the traced target file neighborhood before editing",
             }
         )
@@ -1258,7 +1257,7 @@ def _related_followup_commands(path: str, related_data: dict[str, Any]) -> list[
     commands = [
         {
             "tool": "repo_graph_search",
-            "command": f"init-agent tool repo_graph_search --query {_shell_double_quote(path)} --json",
+            "command": f"init-agent tool repo_graph_search --query {shell_quote(path)} --json",
             "reason": "search around this file path and nearby terms",
         }
     ]
@@ -1271,7 +1270,7 @@ def _related_followup_commands(path: str, related_data: dict[str, Any]) -> list[
             commands.append(
                 {
                     "tool": "repo_symbol_callers",
-                    "command": f"init-agent tool repo_symbol_callers --symbol {_shell_double_quote(name)} --json",
+                    "command": f"init-agent tool repo_symbol_callers --symbol {shell_quote(name)} --json",
                     "reason": "inspect where a symbol from this file is called",
                 }
             )
@@ -1288,7 +1287,7 @@ def _symbol_followup_commands(data: dict[str, Any]) -> list[dict[str, str]]:
             commands.append(
                 {
                     "tool": "repo_related_file",
-                    "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": "inspect file neighborhood for this definition or caller",
                 }
             )
@@ -1305,7 +1304,7 @@ def _overview_followup_commands(overview: dict[str, Any]) -> list[dict[str, str]
             commands.append(
                 {
                     "tool": "repo_related_file",
-                    "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": "inspect a likely entry file neighborhood",
                 }
             )
@@ -1337,7 +1336,7 @@ def _entrypoint_followup_commands(entry_points: list[dict[str, Any]], supporting
             commands.append(
                 {
                     "tool": "repo_related_file",
-                    "command": f"init-agent tool repo_related_file --path {_shell_double_quote(path)} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": "inspect entry-point symbols, imports, calls and callers",
                 }
             )
@@ -1398,7 +1397,3 @@ def _warnings(run_result: dict[str, Any]) -> list[str]:
         ]
     )
     return warnings
-
-
-def _shell_double_quote(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'

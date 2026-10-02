@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 import os
 import subprocess
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -122,7 +124,15 @@ def has_project_marker(root: Path) -> bool:
 
 
 def agent_dir(root: Path) -> Path:
-    return root / ".agent"
+    directory = root / ".agent"
+    # Repository metadata must never redirect writes through checked-in symlinks.
+    if directory.is_symlink():
+        raise OSError("Refusing symlinked .agent directory")
+    if directory.is_dir():
+        for child in directory.iterdir():
+            if child.is_symlink():
+                raise OSError(f"Refusing symlinked metadata file: {child.name!r}")
+    return directory
 
 
 def db_path(root: Path) -> Path:
@@ -184,16 +194,38 @@ def normalize_repo_path(path: str | Path | None) -> str:
 def is_live_repo_file(root: Path, path: str | Path | None) -> bool:
     """Return whether a normalized path is a regular file inside the project."""
 
-    normalized = normalize_repo_path(path)
-    relative = Path(normalized)
-    if not normalized or relative.is_absolute() or ".." in relative.parts:
-        return False
-    candidate = (root / relative).resolve()
     try:
+        normalized = normalize_repo_path(path)
+        relative = Path(normalized)
+        if not normalized or relative.is_absolute() or ".." in relative.parts:
+            return False
+        candidate = (root / relative).resolve()
         candidate.relative_to(root.resolve())
-    except ValueError:
+        return candidate.is_file()
+    except (OSError, ValueError, RuntimeError):
         return False
-    return candidate.is_file()
+
+
+def shell_quote(value: str) -> str:
+    """Quote one POSIX shell argument, including expansion characters."""
+    escaped = str(value)
+    for char in ('\\', '"', '$', '`'):
+        escaped = escaped.replace(char, '\\' + char)
+    return '"' + escaped + '"'
+
+
+def terminal_safe(value: str) -> str:
+    """Make terminal controls visible while retaining layout newlines and tabs."""
+    return "".join(
+        (f"\\x{ord(char):02x}" if ord(char) <= 0xff else f"\\u{ord(char):04x}")
+        if unicodedata.category(char) in {"Cc", "Cf"} and char not in "\n\t"
+        else char
+        for char in value
+    )
+
+
+def safe_print(*values: object, **kwargs: Any) -> None:
+    builtins.print(*(terminal_safe(str(value)) for value in values), **kwargs)
 
 
 def load_ignore_rules(root: Path) -> dict[str, set[str]]:

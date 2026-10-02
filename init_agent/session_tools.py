@@ -14,7 +14,7 @@ from .index_health import index_readiness
 from .memory import audit_notes, list_notes
 from .plan_feedback import list_reading_plans
 from .tasks import list_tasks
-from .utils import db_path, ensure_agent_dir, is_live_repo_file
+from .utils import db_path, ensure_agent_dir, is_live_repo_file, shell_quote
 
 
 def repo_session_summary(root: Path, limit: int = 10) -> dict[str, Any]:
@@ -405,7 +405,7 @@ def _session_suggestions(
             memory.append(
                 {
                     "kind": "memory_for_useful_file",
-                    "command": f"init-agent tool repo_memory_add --path {_shell_double_quote(path)} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
+                    "command": f"init-agent tool repo_memory_add --path {shell_quote(path)} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
                     "reason": "file was marked central/useful in a finalized reading plan; add memory only if stable behavior was verified",
                 }
             )
@@ -419,8 +419,3 @@ def _session_suggestions(
                 }
             )
     return feedback[:8], memory[:8]
-
-
-
-def _shell_double_quote(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'

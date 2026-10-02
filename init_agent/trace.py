@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .overview import build_overview_pack
-from .utils import db_path, normalize_repo_path
+from .utils import db_path, normalize_repo_path, is_live_repo_file
 
 
 STRUCTURAL_FILE_RELATIONS = {
@@ -117,7 +117,11 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
         }
     with closing(sqlite3.connect(database)) as conn:
         conn.row_factory = sqlite3.Row
-        files = {int(row["id"]): dict(row) for row in conn.execute("SELECT * FROM files")}
+        files = {
+            int(row["id"]): dict(row)
+            for row in conn.execute("SELECT * FROM files")
+            if is_live_repo_file(root, row["path"])
+        }
         if not files:
             return {
                 "query": query,
@@ -175,6 +179,8 @@ def _build_graph(
     strict_resolution = any(str(row["target_type"]) == "resolved_file" for row in rows)
     for row in rows:
         source = int(row["source_id"])
+        if source not in files:
+            continue
         relation = str(row["relation"])
         target_type = str(row["target_type"])
         target_id = str(row["target_id"])
@@ -202,7 +208,7 @@ def _build_graph(
         elif target_type == "symbol_name" and relation in {"calls", "route_to_handler"}:
             targets.update(symbols.get(target_id.lower(), set()))
         for target in targets:
-            if target != source:
+            if target != source and target in files:
                 item = {
                     "target": target,
                     "relation": relation,
@@ -312,7 +318,7 @@ def _query_start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set
     for file_id, item in files.items():
         path = str(item["path"])
         try:
-            text = (root / path).read_text(errors="ignore").lower()
+            text = (root / path).read_text(errors="ignore").lower() if is_live_repo_file(root, path) else ""
         except OSError:
             text = ""
         score = 0.0
@@ -445,7 +451,7 @@ def _why_this_path(files: dict[int, dict[str, Any]], path: list[int], edges: lis
 
 def _file_score(root: Path, path: str, tokens: set[str], distance: int) -> tuple[float, list[str]]:
     try:
-        text = (root / path).read_text(errors="ignore").lower()
+        text = (root / path).read_text(errors="ignore").lower() if is_live_repo_file(root, path) else ""
     except OSError:
         text = ""
     score = max(0.1, 3.0 - distance * 0.35)

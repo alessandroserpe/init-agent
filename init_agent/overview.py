@@ -8,6 +8,7 @@ from typing import Any
 
 from .git_reader import current_branch, git_available, has_git
 from .graph_store import GraphStore
+from .utils import terminal_safe
 
 
 MANIFEST_NAMES = {
@@ -134,7 +135,7 @@ def render_overview_text(pack: dict[str, Any]) -> str:
     lines.extend(["", "Major subsystems:"])
     _append_subsystems(lines, pack["subsystems"])
     lines.extend(["", "Note: overview is heuristic. Verify by reading the files before changing code."])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_overview_markdown(pack: dict[str, Any]) -> str:
@@ -176,7 +177,7 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
         roles = ", ".join(item["roles"]) if item["roles"] else "-"
         lines.append(f"- `{item['path_prefix']}`: {item['files']} files; languages: {languages}; roles: {roles}")
     lines.extend(["", "_Heuristic overview. Verify by reading files before changing code._"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def _rank_first_reads(files: list[dict[str, Any]], symbol_by_file: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

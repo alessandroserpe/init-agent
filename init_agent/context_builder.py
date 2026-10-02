@@ -12,7 +12,7 @@ from typing import Any
 from .feedback import feedback_signals
 from .graph_store import GraphStore
 from .text_tokens import identifier_terms, is_query_noise_token, tokenize_query
-from .utils import normalize_repo_path
+from .utils import normalize_repo_path, shell_quote
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 TEST_AWARE_TOKENS = {"test", "tests", "unittest", "pytest", "coverage", "spec", "assertion", "fixture"}
@@ -1065,14 +1065,14 @@ def _has_generic_symptom_candidates(candidate_files: list[dict[str, Any]]) -> bo
 
 def _recovery_actions(query: str, no_candidates: bool, candidate_files: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
     reason = "context pack is empty" if no_candidates else "context pack confidence is low or noisy"
-    quoted = _shell_double_quote(query)
+    quoted = shell_quote(query)
     actions: list[dict[str, str]] = []
     test_path = _symptom_test_candidate(_tokens(query), candidate_files or [])
     if test_path:
         actions.append(
             {
                 "action": "inspect_failing_test_neighborhood",
-                "command": f"init-agent related {test_path}",
+                "command": f"init-agent related {shell_quote(test_path)}",
                 "reason": "for symptom-heavy or failing-test queries, inspect the test neighborhood to find lower-level implementation files before broad reading",
             }
         )
@@ -1107,23 +1107,19 @@ def _verification_actions(query: str, candidate_files: list[dict[str, Any]]) -> 
     first_path = str(candidate_files[0].get("path") or "")
     if not first_path:
         return []
-    quoted = _shell_double_quote(query)
+    quoted = shell_quote(query)
     return [
         {
             "action": "inspect_top_candidate",
-            "command": f"init-agent related {first_path}",
+            "command": f"init-agent related {shell_quote(first_path)}",
             "reason": "verify the top candidate before editing or trusting the ranking",
         },
         {
             "action": "record_feedback_after_verification",
-            "command": f"init-agent feedback add {quoted} {first_path} --rating useful --source agent --reason \"verified relevant\"",
+            "command": f"init-agent feedback add {quoted} {shell_quote(first_path)} --rating useful --source agent --reason \"verified relevant\"",
             "reason": "record useful feedback only after verifying the file",
         },
     ]
-
-
-def _shell_double_quote(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _add_reason(items: list[str], reason: str) -> None:

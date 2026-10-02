@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .utils import terminal_safe
+
 
 def render_repo_graph_search_text(result: dict[str, Any]) -> str:
     lines = [
@@ -44,7 +46,7 @@ def render_repo_graph_search_text(result: dict[str, Any]) -> str:
         lines.extend(["", "Warnings:"])
         for warning in result["warnings"]:
             lines.append(f"- {warning}")
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_trace_text(result: dict[str, Any]) -> str:
@@ -94,7 +96,7 @@ def render_repo_trace_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands", []))
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
@@ -169,7 +171,7 @@ def render_repo_reading_plan_text(result: dict[str, Any]) -> str:
         for note in result["repo_memory_context"][:5]:
             lines.append(f"- #{note['id']} {note.get('topic') or '-'}: {note.get('note') or '-'}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
@@ -195,7 +197,7 @@ def render_repo_reading_plan_finish_text(result: dict[str, Any]) -> str:
             lines.append(f"- {item.get('path')}: {item.get('command')}")
             lines.append(f"  reason: {item.get('reason')}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_reading_plan_read_text(result: dict[str, Any]) -> str:
@@ -212,7 +214,7 @@ def render_repo_reading_plan_read_text(result: dict[str, Any]) -> str:
     for event in result.get("events", []):
         lines.append(f"- {event.get('path')}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
@@ -246,7 +248,7 @@ def render_repo_reading_plan_diff_text(result: dict[str, Any]) -> str:
         for status in ("proposed", "pending_review", "accepted", "rework", "rejected"):
             lines.append(f"- {status}: {', '.join(delegation.get(status) or []) or '-'}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_workstream_report_text(result: dict[str, Any]) -> str:
@@ -263,7 +265,7 @@ def render_repo_workstream_report_text(result: dict[str, Any]) -> str:
         lines.append(f"Agent: {workstream.get('agent_name') or '-'}")
         lines.append(f"Summary: {(workstream.get('report') or {}).get('summary') or '-'}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_workstream_review_text(result: dict[str, Any]) -> str:
@@ -279,7 +281,7 @@ def render_repo_workstream_review_text(result: dict[str, Any]) -> str:
         lines.append(f"Decision: {workstream.get('orchestrator_decision') or '-'}")
         lines.append(f"Note: {workstream.get('orchestrator_note') or '-'}")
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
@@ -347,7 +349,7 @@ def render_repo_reading_plan_stats_text(result: dict[str, Any]) -> str:
                 f"extra={plan.get('extra_read_count')} :: {plan.get('query')}"
             )
     _append_warnings(lines, result.get("warnings", []))
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_related_file_text(result: dict[str, Any]) -> str:
@@ -379,7 +381,7 @@ def render_repo_related_file_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result["followup_commands"])
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_symbol_callers_text(result: dict[str, Any]) -> str:
@@ -403,7 +405,7 @@ def render_repo_symbol_callers_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result["followup_commands"])
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_overview_text(result: dict[str, Any]) -> str:
@@ -433,7 +435,7 @@ def render_repo_overview_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result["followup_commands"])
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
@@ -466,7 +468,7 @@ def render_repo_entrypoints_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result["followup_commands"])
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_feedback_add_text(result: dict[str, Any]) -> str:
@@ -482,7 +484,7 @@ def render_repo_feedback_add_text(result: dict[str, Any]) -> str:
     if result.get("feedback"):
         lines.append(f"Feedback id: {result['feedback']['id']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
@@ -508,7 +510,7 @@ def render_repo_feedback_explain_text(result: dict[str, Any]) -> str:
         for item in feedback["ignored"][:5]:
             lines.append(f"- #{item['id']} {item['rating']} {item['path']} ({item['ignored_reason']})")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_add_text(result: dict[str, Any]) -> str:
@@ -527,7 +529,7 @@ def render_repo_memory_add_text(result: dict[str, Any]) -> str:
     if result.get("memory"):
         lines.append(f"Memory id: {result['memory']['id']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_search_text(result: dict[str, Any]) -> str:
@@ -557,7 +559,7 @@ def render_repo_memory_search_text(result: dict[str, Any]) -> str:
             lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_file_notes_text(result: dict[str, Any]) -> str:
@@ -583,7 +585,7 @@ def render_repo_file_notes_text(result: dict[str, Any]) -> str:
             lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_list_text(result: dict[str, Any]) -> str:
@@ -613,7 +615,7 @@ def render_repo_memory_list_text(result: dict[str, Any]) -> str:
             lines.append(f"  stale: unknown ({item.get('stale_reason') or 'no file hash recorded'})")
         lines.append(f"  note: {item['note']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
@@ -639,7 +641,7 @@ def render_repo_memory_topics_text(result: dict[str, Any]) -> str:
             note_label = note.get("path") or "(repo)"
             lines.append(f"  - #{note['id']} {note_label}: {note['note']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_flow_topics_text(result: dict[str, Any]) -> str:
@@ -661,7 +663,7 @@ def render_repo_flow_topics_text(result: dict[str, Any]) -> str:
         if item.get("suggested_flow_memory"):
             lines.append(f"  suggested: {item['suggested_flow_memory']['command']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
@@ -693,7 +695,7 @@ def render_repo_memory_audit_text(result: dict[str, Any]) -> str:
             label = item.get("path") or "(repo)"
             lines.append(f"- {label} [{item.get('topic') or '-'}]: {item['note_count']} notes ids={item['ids']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
@@ -707,7 +709,7 @@ def render_repo_memory_delete_text(result: dict[str, Any]) -> str:
         lines.append(f"Scope: {result['note'].get('scope', 'file')}")
         lines.append(f"Path: {result['note']['path'] or '(repo)'}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_memory_update_text(result: dict[str, Any]) -> str:
@@ -730,7 +732,7 @@ def render_repo_memory_update_text(result: dict[str, Any]) -> str:
         elif memory.get("stale") is None:
             lines.append(f"Stale: unknown ({memory.get('stale_reason') or 'no file hash recorded'})")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_task_add_text(result: dict[str, Any]) -> str:
@@ -745,7 +747,7 @@ def render_repo_task_add_text(result: dict[str, Any]) -> str:
         lines.append(f"Title: {task['title']}")
         lines.append(f"Status: {task['status']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_task_list_text(result: dict[str, Any]) -> str:
@@ -768,7 +770,7 @@ def render_repo_task_list_text(result: dict[str, Any]) -> str:
         if task.get("remaining"):
             lines.append(f"  remaining: {'; '.join(task['remaining'][:3])}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_task_update_text(result: dict[str, Any]) -> str:
@@ -789,7 +791,7 @@ def render_repo_task_update_text(result: dict[str, Any]) -> str:
         if task.get("remaining"):
             lines.append(f"Remaining: {'; '.join(task['remaining'][:3])}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_task_note_text(result: dict[str, Any]) -> str:
@@ -804,7 +806,7 @@ def render_repo_task_note_text(result: dict[str, Any]) -> str:
     if result.get("task"):
         lines.append(f"Status: {result['task']['status']}")
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_session_summary_text(result: dict[str, Any]) -> str:
@@ -868,7 +870,7 @@ def render_repo_session_summary_text(result: dict[str, Any]) -> str:
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands") or [])
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_repo_session_close_text(result: dict[str, Any]) -> str:
@@ -951,8 +953,7 @@ def render_repo_session_close_text(result: dict[str, Any]) -> str:
         lines.append(f"  reason: {item.get('reason')}")
 
     _append_warnings(lines, result["warnings"])
-    return "\n".join(lines)
-
+    return terminal_safe("\n".join(lines))
 
 
 def _append_calls(lines: list[str], calls: list[dict[str, Any]]) -> None:

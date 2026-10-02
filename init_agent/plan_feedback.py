@@ -11,8 +11,10 @@ from typing import Any
 from .feedback import add_feedback
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, is_live_repo_file, iter_indexable_files, normalize_repo_path, relative_path, utc_now
+from .utils import ensure_agent_dir, is_live_repo_file, iter_indexable_files, normalize_repo_path, relative_path, shell_quote, utc_now
 
+
+MAX_FILE_MANIFEST_BYTES = 8 * 1024 * 1024
 
 SOURCES = {"agent", "user", "benchmark"}
 PLAN_KINDS = {"real", "smoke", "experiment", "planning", "diagnostic", "docs"}
@@ -931,7 +933,7 @@ def _suggested_memory_commands(root: Path, plan: dict[str, Any] | None) -> list[
     return [
         {
             "path": path,
-            "command": f"init-agent tool repo_memory_add --path {path!r} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
+            "command": f"init-agent tool repo_memory_add --path {shell_quote(path)} --topic <topic> --evidence read_excerpt --tag <tag> --note <note> --json",
             "reason": "file was marked useful; add memory only if stable behavior was verified",
         }
         for path in useful[:5]
@@ -993,11 +995,22 @@ def _encode_file_manifest(paths: list[str]) -> bytes:
 
 
 def _decode_file_manifest(value: Any) -> set[str] | None:
-    if value in (None, b"", ""):
+    if not isinstance(value, (bytes, bytearray, memoryview, str)):
+        return None
+    if not value or len(value) > MAX_FILE_MANIFEST_BYTES:
         return None
     try:
         raw = bytes(value) if not isinstance(value, str) else value.encode("latin-1")
-        decoded = json.loads(zlib.decompress(raw).decode("utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        if len(raw) > MAX_FILE_MANIFEST_BYTES:
+            return None
+        # Bound output before allocating/parsing data from the untrusted index.
+        decompressor = zlib.decompressobj()
+        payload = decompressor.decompress(raw, MAX_FILE_MANIFEST_BYTES + 1)
+        if len(payload) > MAX_FILE_MANIFEST_BYTES or not decompressor.eof or decompressor.unused_data:
+            return None
+        decoded = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError, zlib.error, RecursionError):
         return None
-    return {str(path) for path in decoded} if isinstance(decoded, list) else None
+    if not isinstance(decoded, list) or not all(isinstance(path, str) for path in decoded):
+        return None
+    return set(decoded)

@@ -95,7 +95,31 @@ File contents may be read locally during:
 - `map`, to extract metadata, symbols and relations
 - `refresh`, for changed or new files
 - `estimate`, to count characters for token estimates
+- `trace`, to match query terms against indexed files
 - memory queries and dashboard snapshots, to check live file hashes
+
+## Untrusted Repository Metadata
+
+`trace` and `estimate` validate indexed paths before reading files. Absolute
+paths, parent traversal, missing files and symlinks that resolve outside the
+repository are skipped. Metadata access rejects a symlinked `.agent` directory
+or symlinked files directly inside it, including SQLite sidecars. Use a real
+local `.agent` directory for each repository.
+
+Generated commands quote repository-derived arguments for POSIX shells,
+including dollar signs and backticks. Human-readable CLI output and text
+renderers escape terminal control sequences; JSON retains the original values
+through JSON escaping.
+
+Reading-plan manifest decoding accepts at most 8 MiB of compressed input and
+8 MiB of decompressed JSON. Oversized, malformed or truncated manifests are
+ignored, disabling automatic inference of newly created files for that plan.
+
+The deterministic evaluator (`experiments/evaluate.py`) starts child Python
+processes with `-I -S` and explicitly loads the evaluator's checkout. The
+measured repository, `PYTHONPATH`, startup hooks and site packages cannot
+provide Python startup code to those children. This startup isolation is not
+an operating-system sandbox for executing repository code.
 
 ## Generated Files
 

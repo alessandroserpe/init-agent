@@ -11,7 +11,7 @@ from .graph_store import GraphStore
 from .overview import build_overview_pack, render_overview_markdown, render_overview_text
 from .refresh import refresh_index
 from .scanner import INDEX_VERSION, scan_project
-from .utils import config_path, ensure_agent_dir, has_project_marker, write_json, utc_now
+from .utils import config_path, ensure_agent_dir, has_project_marker, shell_quote, terminal_safe, utc_now, write_json
 
 
 def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
@@ -140,7 +140,7 @@ def render_run_text(result: dict[str, Any]) -> str:
         if commit.get("files_truncated"):
             suffix = f" (files: {len(commit.get('files', []))} of {commit.get('total_files', 0)} shown)"
         lines.append(f"- {commit['hash'][:10]} {commit['message']}{suffix}")
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def render_run_markdown(result: dict[str, Any]) -> str:
@@ -204,7 +204,7 @@ def render_run_markdown(result: dict[str, Any]) -> str:
             "- Feedback should be recorded only after files are verified.",
         ]
     )
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def _render_handoff_commands(context: dict[str, Any]) -> list[str]:
@@ -214,28 +214,24 @@ def _render_handoff_commands(context: dict[str, Any]) -> list[str]:
         path = str(item.get("path") or "")
         if path and path not in seen:
             seen.add(path)
-            commands.append(f"- `init-agent related {path}`")
+            commands.append(f"- `init-agent related {shell_quote(path)}`")
     symbol_seen: set[str] = set()
     for symbol in context.get("related_symbols", [])[:5]:
         name = str(symbol.get("name") or "")
         kind = str(symbol.get("kind") or "")
         if name and name not in symbol_seen and kind in {"function", "method", "class"}:
             symbol_seen.add(name)
-            commands.append(f"- `init-agent callers {name}`")
+            commands.append(f"- `init-agent callers {shell_quote(name)}`")
     first_path = ""
     if context.get("candidate_files"):
         first_path = str(context["candidate_files"][0].get("path") or "")
     if first_path:
-        query = _shell_double_quote(str(context.get("query") or ""))
+        query = shell_quote(str(context.get("query") or ""))
         commands.append(
-            f"- `init-agent feedback add {query} {first_path} "
+            f"- `init-agent feedback add {query} {shell_quote(first_path)} "
             '--rating useful --source agent --reason "verified relevant"`'
         )
     return commands or ["-"]
-
-
-def _shell_double_quote(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _initialize_project(root: Path) -> None:
@@ -343,7 +339,7 @@ def _render_run_overview_text(result: dict[str, Any]) -> str:
     lines = ["Init Agent Run", ""]
     lines.extend(_render_preparation_lines(result["preparation"]))
     lines.extend(["", render_overview_text(result["overview"])])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def _render_run_overview_markdown(result: dict[str, Any]) -> str:
@@ -363,7 +359,7 @@ def _render_run_overview_markdown(result: dict[str, Any]) -> str:
     if overview_markdown and overview_markdown[0].startswith("# "):
         overview_markdown = overview_markdown[2:]
     lines.extend(["", *overview_markdown])
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def _status_label(status: str) -> str:

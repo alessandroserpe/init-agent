@@ -839,7 +839,7 @@ class IndexContextTests(InitAgentTestCase):
             )
             actions = pack["next_agent_actions"]
             self.assertEqual(actions[0]["action"], "inspect_failing_test_neighborhood")
-            self.assertEqual(actions[0]["command"], "init-agent related tests/template_tests/test_response.py")
+            self.assertEqual(actions[0]["command"], 'init-agent related "tests/template_tests/test_response.py"')
 
     def test_run_on_uninitialized_project_creates_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -947,7 +947,7 @@ class IndexContextTests(InitAgentTestCase):
                 self.assertIn("## Suggested first reads", rendered)
                 self.assertIn("## Useful follow-up commands", rendered)
                 self.assertIn("## Safety notes", rendered)
-                self.assertIn("init-agent related src/auth/login.py", rendered)
+                self.assertIn('init-agent related "src/auth/login.py"', rendered)
                 self.assertIn('init-agent feedback add "login"', rendered)
                 self.assertIn("Heuristic orientation only; verify files before editing.", rendered)
             finally:
@@ -964,8 +964,8 @@ class IndexContextTests(InitAgentTestCase):
                     self.assertEqual(main(["run", "login session", "--markdown"]), 0)
                 rendered = output.getvalue()
                 self.assertIn("## Useful follow-up commands", rendered)
-                self.assertIn("init-agent callers loginUser", rendered)
-                self.assertIn("init-agent related src/auth/login.py", rendered)
+                self.assertIn('init-agent callers "loginUser"', rendered)
+                self.assertIn('init-agent related "src/auth/login.py"', rendered)
                 self.assertIn("Feedback should be recorded only after files are verified.", rendered)
             finally:
                 os.chdir(previous)

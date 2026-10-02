@@ -14,7 +14,7 @@ from .graph_store import GraphStore
 from .memory import list_notes, search_notes
 from .text_tokens import tokenize_query
 from .trace import trace_query
-from .utils import is_live_repo_file
+from .utils import is_live_repo_file, shell_quote
 
 
 def build_reading_plan(
@@ -406,7 +406,7 @@ def _recommended_actions(query: str, plan_items: list[dict[str, Any]]) -> list[d
             actions.append(
                 {
                     "action": "read_file",
-                    "command": f"init-agent tool repo_related_file --path {path!r} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": "memory is stale; inspect the current indexed neighborhood before trusting it",
                 }
             )
@@ -414,7 +414,7 @@ def _recommended_actions(query: str, plan_items: list[dict[str, Any]]) -> list[d
             actions.append(
                 {
                     "action": "read_file",
-                    "command": f"init-agent tool repo_related_file --path {path!r} --json",
+                    "command": f"init-agent tool repo_related_file --path {shell_quote(path)} --json",
                     "reason": item["reason"],
                 }
             )
@@ -422,7 +422,7 @@ def _recommended_actions(query: str, plan_items: list[dict[str, Any]]) -> list[d
         actions.append(
             {
                 "action": "record_feedback_after_verification",
-                "command": f"init-agent feedback add {query!r} <path> --rating useful --source agent --reason \"verified relevant\"",
+                "command": f"init-agent feedback add {shell_quote(query)} <path> --rating useful --source agent --reason \"verified relevant\"",
                 "reason": "record feedback only after reading and verifying the file role",
             }
         )

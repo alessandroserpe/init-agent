@@ -98,8 +98,8 @@ from .scanner import INDEX_VERSION, scan_project
 from .skill_installer import install_codex_skill, sync_codex_skill
 from .cli_trajectory_commands import register_trajectory_subcommands
 from .trajectory_hooks import codex_trajectory_hook_status
-from .utils import config_path, ensure_agent_dir, has_project_marker, normalize_repo_path, project_root, utc_now, write_json
 from .web_ui import build_web_snapshot, serve_web_ui
+from .utils import config_path, ensure_agent_dir, has_project_marker, normalize_repo_path, project_root, safe_print as print, utc_now, write_json
 
 
 def main(argv: list[str] | None = None) -> int:

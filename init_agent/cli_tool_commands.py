@@ -70,7 +70,7 @@ from .agent_tools import (
     repo_workstream_report,
     repo_workstream_review,
 )
-from .utils import project_root
+from .utils import project_root, safe_print as print
 
 
 def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -350,8 +350,6 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_task_close_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
     repo_task_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_task_close_parser.set_defaults(handler=cmd_tool_repo_task_close)
-
-
 
 
 def cmd_tool_repo_graph_search(args: argparse.Namespace) -> int:

@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from .plan_feedback import scorecard_evidence_confidence
 from .memory import with_live_staleness
 from .trajectory import stored_tool_status
-from .utils import db_path
+from .utils import db_path, safe_print as print
 
 
 def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:

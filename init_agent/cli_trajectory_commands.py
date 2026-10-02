@@ -12,6 +12,7 @@ from .trajectory_hooks import (
     install_codex_trajectory_hooks,
     uninstall_codex_trajectory_hooks,
 )
+from .utils import safe_print as print
 
 
 def register_trajectory_subcommands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

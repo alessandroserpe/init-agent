@@ -8,6 +8,7 @@ from typing import Any
 
 from .graph_store import GraphStore
 from .run import render_run_markdown, run_query
+from .utils import is_live_repo_file, terminal_safe
 
 
 def estimate_query(root: Path, query: str) -> dict[str, Any]:
@@ -84,7 +85,7 @@ def render_estimate_text(report: dict[str, Any]) -> str:
         f"- Context pack + suggested reads vs full indexed project: {report['estimated_savings']['context_plus_reads_vs_full_percent']:.1f}%",
         f"- Context pack vs top 10 candidates: {report['estimated_savings']['context_vs_top10_percent']:.1f}%",
     ]
-    return "\n".join(lines)
+    return terminal_safe("\n".join(lines))
 
 
 def estimate_tokens(char_count: int) -> int:
@@ -105,7 +106,7 @@ def _indexed_textual_paths(root: Path) -> list[str]:
             ORDER BY path
             """
         ).fetchall()
-        return [row["path"] for row in rows]
+        return [row["path"] for row in rows if is_live_repo_file(root, row["path"])]
 
 
 def _character_count(root: Path, paths: list[str]) -> int:
@@ -115,6 +116,8 @@ def _character_count(root: Path, paths: list[str]) -> int:
         if rel_path in seen:
             continue
         seen.add(rel_path)
+        if not is_live_repo_file(root, rel_path):
+            continue
         path = root / rel_path
         try:
             data = path.read_bytes()

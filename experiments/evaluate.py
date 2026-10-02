@@ -114,7 +114,7 @@ def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> di
     proc = subprocess.run(
         command,
         cwd=case["repo"],
-        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        env=os.environ.copy(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -158,10 +158,21 @@ def evaluate_case(case: dict[str, Any], measure_manual_scan: bool = False) -> di
     return result
 
 
+def isolated_cli_command() -> list[str]:
+    # Ignore the measured repository and Python environment during startup.
+    # Load only the evaluator's trusted checkout after isolated initialization.
+    bootstrap = (
+        "import sys; "
+        f"sys.path.insert(0, {str(ROOT)!r}); "
+        "from init_agent.cli import main; raise SystemExit(main())"
+    )
+    return [sys.executable, "-I", "-S", "-c", bootstrap]
+
+
 def case_command(case: dict[str, Any]) -> list[str]:
     if case.get("command") == "overview":
-        return [sys.executable, "-m", "init_agent.cli", "run", "--overview", "--json"]
-    return [sys.executable, "-m", "init_agent.cli", "run", case["query"], "--json"]
+        return [*isolated_cli_command(), "run", "--overview", "--json"]
+    return [*isolated_cli_command(), "run", case["query"], "--json"]
 
 
 def candidate_paths_for_case(case: dict[str, Any], data: dict[str, Any]) -> list[str]:
@@ -221,9 +232,9 @@ def measure_indexed_file_read(repo: Path) -> dict[str, int | float] | None:
 
 
 def _rebuild_index(repo: Path) -> None:
-    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    env = os.environ.copy()
     subprocess.run(
-        [sys.executable, "-m", "init_agent.cli", "init"],
+        [*isolated_cli_command(), "init"],
         cwd=repo,
         env=env,
         stdout=subprocess.PIPE,
@@ -232,7 +243,7 @@ def _rebuild_index(repo: Path) -> None:
         check=True,
     )
     subprocess.run(
-        [sys.executable, "-m", "init_agent.cli", "map"],
+        [*isolated_cli_command(), "map"],
         cwd=repo,
         env=env,
         stdout=subprocess.PIPE,
@@ -241,7 +252,7 @@ def _rebuild_index(repo: Path) -> None:
         check=True,
     )
     subprocess.run(
-        [sys.executable, "-m", "init_agent.cli", "git"],
+        [*isolated_cli_command(), "git"],
         cwd=repo,
         env=env,
         stdout=subprocess.PIPE,
