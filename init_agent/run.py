@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import WorkBudgetExceeded, bounded_operation
 from .context_builder import build_context_pack
 from .git_reader import collect_git, has_git
 from .graph_store import GraphStore
@@ -14,6 +15,7 @@ from .scanner import INDEX_VERSION, scan_project
 from .utils import config_path, ensure_agent_dir, has_project_marker, shell_quote, terminal_safe, utc_now, write_json
 
 
+@bounded_operation
 def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
     preparation = {
         "init": "skipped",
@@ -27,6 +29,8 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
         try:
             _initialize_project(root)
             preparation["init"] = "done"
+        except WorkBudgetExceeded:
+            raise
         except Exception as exc:
             preparation["init"] = "failed"
             preparation["warnings"].append(f"init failed: {exc}")
@@ -34,6 +38,8 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
 
     try:
         index_state = _index_state(root)
+    except WorkBudgetExceeded:
+        raise
     except Exception as exc:
         preparation["map"] = "failed"
         preparation["warnings"].append(f"database check failed: {exc}")
@@ -50,6 +56,8 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
             preparation["map"] = "done"
             if index_state["files"] > 0 and not index_state["current"]:
                 preparation["warnings"].append("index was rebuilt because it was created with an older extractor")
+        except WorkBudgetExceeded:
+            raise
         except Exception as exc:
             preparation["map"] = "failed"
             preparation["warnings"].append(f"map failed: {exc}")
@@ -87,6 +95,8 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
             else:
                 preparation["git"] = "failed"
                 preparation["warnings"].append("git repository detected but git metadata could not be read")
+        except WorkBudgetExceeded:
+            raise
         except Exception as exc:
             preparation["git"] = "failed"
             preparation["warnings"].append(f"git failed: {exc}")

@@ -15,13 +15,12 @@ from pathlib import Path
 from typing import Any
 
 
-if __package__:
-    from .bounded_process import run_bounded
-else:
-    from bounded_process import run_bounded
-
-
 ROOT = Path(__file__).resolve().parents[1]
+if not __package__:
+    sys.path.insert(0, str(ROOT))
+from init_agent.bounded_process import run_bounded
+
+
 CASES_PATH = ROOT / "experiments" / "cases.json"
 
 

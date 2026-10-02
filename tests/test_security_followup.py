@@ -3,6 +3,8 @@
 import json
 import os
 import subprocess
+import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,8 +54,9 @@ class FollowupSecurityTests(unittest.TestCase):
                 self.assertNotIn('DISTINCTIVE_BODY_LITERAL', str(stored))
                 self.assertTrue(all(len(item.encode()) <= MAX_SIGNATURE_BYTES for item in stored))
                 # Simulate an existing database from before the index-version bump.
-                store.connection.execute('UPDATE symbols SET signature = ?', (fixtures['sample.js'][1],))
-                store.connection.commit()
+                with closing(sqlite3.connect(store.path)) as legacy:
+                    legacy.execute('UPDATE symbols SET signature = ?', (fixtures['sample.js'][1],))
+                    legacy.commit()
                 exported = export_graph(root)
                 self.assertNotIn('DISTINCTIVE_BODY_LITERAL', json.dumps(exported))
                 self.assertNotIn('DEFAULT_SECRET', json.dumps(exported))
@@ -155,8 +158,8 @@ class FollowupSecurityTests(unittest.TestCase):
             executable = directory / 'test-init-agent-mcp'
             executable.write_text('#!/bin/sh\nexit 0\n')
             executable.chmod(0o700)
-            with patch('init_agent.mcp_installer.sys.executable', str(directory / 'python')), \
-                 patch('init_agent.mcp_installer.sysconfig.get_path', return_value=str(directory)):
+            with patch('init_agent.executables.sys.executable', str(directory / 'python')), \
+                 patch('init_agent.executables.sysconfig.get_path', return_value=str(directory)):
                 with self.assertRaisesRegex(ValueError, 'No trusted'):
                     _resolve_executable(executable.name, required=True)
                 self.assertEqual(

@@ -173,6 +173,25 @@ edges before traversal. Responses flag partial results when limits are reached;
 partial estimate counts and savings do not describe the complete repository.
 Automatic preparation/mapping is separate from these analysis budgets.
 
+Repository operations additionally share one aggregate budget across nested
+preparation, Git, mapping, refresh, relation/term rebuilding, context, overview
+and index-health work. CLI commands and MCP tool calls use a 30-second
+cooperative deadline, 10,000 visited filesystem entries, 200,000 fetched rows,
+200,000 database/generated records, 128 MiB of cumulative metadata accounting
+(including a per-record allowance), 64 MiB of file reads/hashes, one million
+Python work checkpoints and ten million SQLite VM instructions. SQLite values
+are capped at 8 MiB and metadata strings at 16,384 characters. Paths are capped
+at 4,096 characters and 64 components. These are work limits, not a hard limit
+on process RSS or a forced interruption of blocking filesystem/native calls.
+
+Exhaustion stops the operation with an explicit incomplete-result diagnostic;
+CLI/MCP JSON reports `status: error` and `truncated: true`. Uncommitted rebuild
+changes are rolled back; previously completed preparation phases can remain
+committed. Narrow the repository scope before retrying an interrupted map.
+Rows are fetched incrementally, generated relation inserts stream through the
+budgeted cursor, and term statistics retain counters instead of duplicate
+document corpora. The dashboard retains its separate request budgets.
+
 Mapping applies per-file parser limits before processing recursive inputs:
 2 MB input, nesting depth 64, 100,000 tokens/delimiters, 50,000 visited nodes
 and 10,000 emitted symbol/relation records. Python logical statements are
@@ -190,6 +209,21 @@ text conversion, avoid system/global configuration and lazy object fetching,
 and time out each subprocess after ten seconds. Prepared working trees with
 local Git configuration are treated as untrusted for these execution features.
 Git itself remains a required, trusted local installation.
+
+Git is selected as an absolute executable from known installation directories,
+never from ambient PATH. Git children receive a restricted system-tool PATH.
+Output capture is incremental and limited to 2 MiB per Git subprocess and
+8 MiB across the repository operation, with process-group termination on
+POSIX if the output or deadline budget is exceeded.
+
+The same executable resolver is used for MCP installation and trajectory
+hooks. On POSIX, automatic tools and all hook overrides require a root- or
+current-user-owned path chain with no group/world-writable component, outside
+the target/current repository. Hook overrides must be absolute executable
+paths. Hook configuration persists the resolved absolute path; legacy bare
+commands are marked non-current and replaced by the next explicit install.
+Unusual installations may require moving the executable into a private,
+trusted installation directory. No hook installation is performed implicitly.
 
 MCP installation discovers executables in known runtime and installation
 directories rather than searching the ambient `PATH`. Automatic discovery

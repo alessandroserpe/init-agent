@@ -28,7 +28,7 @@ def register_trajectory_subcommands(subparsers: argparse._SubParsersAction[argpa
 
     install = commands.add_parser("install-codex", help="Install optional Codex lifecycle hooks.")
     install.add_argument("--config-path", help="Override Codex hooks.json, mainly for testing.")
-    install.add_argument("--command", default="init-agent-hook", help="Lightweight hook executable.")
+    install.add_argument("--command", help="Absolute path to a trusted hook executable outside the repository; defaults to a verified installation.")
     install.add_argument("--replace", action="store_true", help="Replace existing init-agent trajectory handlers.")
     install.add_argument("--json", action="store_true")
     install.set_defaults(handler=cmd_trajectory_install_codex)

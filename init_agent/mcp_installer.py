@@ -5,13 +5,12 @@ from __future__ import annotations
 import re
 import subprocess
 import os
-import sys
-import sysconfig
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .executables import resolve_executable as _resolve_executable
 from .private_files import copy_private_file, private_open, write_private_text
 
 
@@ -502,48 +501,3 @@ def _remove_section(original: str, section_header: str) -> str:
     if tail:
         result += "\n" + tail
     return result
-
-
-def _resolve_executable(name: str, explicit: str | None = None, root: Path | None = None,
-                        *, required: bool = False) -> str | None:
-    """Use installation directories, never ambient PATH or the repository.
-
-    An explicit absolute path is the caller's selection of a trusted binary.
-    Automatic discovery additionally checks ownership and writable permissions.
-    """
-    forbidden = [root.resolve()] if root is not None else []
-    cwd = Path.cwd().resolve()
-    if (cwd / ".git").exists() or (cwd / "pyproject.toml").exists():
-        forbidden.append(cwd)
-    if explicit:
-        candidate = Path(explicit).expanduser()
-        if not candidate.is_absolute():
-            raise ValueError(f"{name} requires an explicit absolute executable path")
-        candidates = [candidate]
-    else:
-        candidates = [directory / name for directory in dict.fromkeys([
-            Path(sys.executable).parent, Path(sysconfig.get_path("scripts")),
-            Path.home() / ".local" / "bin", Path("/opt/homebrew/bin"),
-            Path("/usr/local/bin"), Path("/usr/bin"),
-        ])]
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve(strict=True)
-            if any(resolved.is_relative_to(repo) or candidate.is_relative_to(repo) for repo in forbidden):
-                if explicit:
-                    raise ValueError(f"Refusing repository executable: {candidate}")
-                continue
-            if candidate.parent.resolve() == cwd:
-                continue
-            if not resolved.is_file() or not os.access(resolved, os.X_OK):
-                continue
-            if not explicit and os.name == "posix":
-                chain = [candidate, *candidate.parents, resolved, *resolved.parents]
-                if any(path.stat().st_uid not in {0, os.getuid()} or path.stat().st_mode & 0o022 for path in chain):
-                    continue
-            return str(resolved)
-        except (OSError, RuntimeError):
-            continue
-    if required or explicit:
-        raise ValueError(f"No trusted {name} executable found; install it outside the repository or supply an absolute trusted path")
-    return None

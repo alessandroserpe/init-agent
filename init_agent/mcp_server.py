@@ -10,6 +10,7 @@ from io import BufferedIOBase
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import WorkBudgetExceeded, budget_scope
 from . import __version__
 from .private_files import private_open
 from .utils import terminal_safe
@@ -98,7 +99,12 @@ class InitAgentMcpServer:
                 "start init-agent-mcp with --profile full for legacy and administrative tools"
             )
         try:
-            result = handler(self.root, arguments)
+            with budget_scope():
+                result = handler(self.root, arguments)
+        except WorkBudgetExceeded as exc:
+            result = _tool_error(str(exc))
+            result["structuredContent"] = {"status": "error", "truncated": True, "error": str(exc)}
+            return result
         except ValueError as exc:
             return _tool_error(str(exc))
         except Exception as exc:

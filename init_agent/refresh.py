@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import WorkBudgetExceeded, bounded_operation
 from .graph_store import GraphStore
 from .parse_budget import ParseFailure
 from .relation_resolver import rebuild_resolved_relations
@@ -12,6 +13,7 @@ from .scanner import INDEX_VERSION, index_file, iter_project_files
 from .utils import agent_dir, db_path, relative_path, sha256_file, utc_now
 
 
+@bounded_operation
 def refresh_index(root: Path) -> dict[str, Any]:
     if not agent_dir(root).is_dir() or not db_path(root).is_file():
         return {
@@ -107,6 +109,9 @@ def refresh_index(root: Path) -> dict[str, Any]:
                 },
             )
             store.connection.commit()
+        except WorkBudgetExceeded:
+            store.connection.rollback()
+            raise
         except Exception as exc:
             result["status"] = "ERROR"
             result["errors"].append(str(exc))

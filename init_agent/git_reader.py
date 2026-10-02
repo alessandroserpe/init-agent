@@ -5,13 +5,15 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .utils import git_read_command, git_read_environment
+from .repo_budget import bounded_operation
+from .utils import run_git_read
 
 
 def has_git(root: Path) -> bool:
     return (root / ".git").exists()
 
 
+@bounded_operation
 def git_available(root: Path) -> bool:
     if not has_git(root):
         return False
@@ -19,6 +21,7 @@ def git_available(root: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+@bounded_operation
 def current_branch(root: Path) -> str | None:
     result = _git(root, "branch", "--show-current")
     if result.returncode == 0 and result.stdout.strip():
@@ -27,6 +30,7 @@ def current_branch(root: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+@bounded_operation
 def status_short(root: Path) -> list[str]:
     result = _git(root, "status", "--short")
     if result.returncode != 0:
@@ -34,8 +38,9 @@ def status_short(root: Path) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+@bounded_operation
 def recent_commits(root: Path, limit: int = 50) -> list[dict[str, object]]:
-    result = _git(root, "log", f"--max-count={limit}", "--format=%H%x1f%aI%x1f%an%x1f%s")
+    result = _git(root, "log", f"--max-count={max(1, min(int(limit), 200))}", "--format=%H%x1f%aI%x1f%an%x1f%s")
     if result.returncode != 0:
         return []
 
@@ -57,6 +62,7 @@ def recent_commits(root: Path, limit: int = 50) -> list[dict[str, object]]:
     return commits
 
 
+@bounded_operation
 def commit_files(root: Path, commit_hash: str) -> list[str]:
     result = _git(root, "show", "--pretty=format:", "--name-only", "--no-ext-diff", "--no-textconv", commit_hash)
     if result.returncode != 0:
@@ -64,6 +70,7 @@ def commit_files(root: Path, commit_hash: str) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+@bounded_operation
 def collect_git(root: Path) -> dict[str, object]:
     if not git_available(root):
         return {"git": False, "branch": None, "status": [], "commits": []}
@@ -76,9 +83,7 @@ def collect_git(root: Path) -> dict[str, object]:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    command = [*git_read_command(), *args]
     try:
-        return subprocess.run(command, cwd=root, env=git_read_environment(), text=True,
-                              capture_output=True, check=False, timeout=10)
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(command, 124, "", "Git metadata read timed out")
+        return run_git_read(root, *args)
+    except (OSError, ValueError):
+        return subprocess.CompletedProcess([], 127, "", "No trusted Git executable available")

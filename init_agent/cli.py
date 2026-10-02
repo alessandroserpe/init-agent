@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import WorkBudgetExceeded, budget_scope
 from . import __version__
 from .agent_tools import (
     render_repo_entrypoints_text,
@@ -108,7 +109,18 @@ def main(argv: list[str] | None = None) -> int:
     if not hasattr(args, "handler"):
         parser.print_help()
         return 0
-    return args.handler(args)
+    try:
+        if args.command == "web" and not args.snapshot_json:
+            return args.handler(args)
+        with budget_scope():
+            return args.handler(args)
+    except WorkBudgetExceeded as exc:
+        result = {"status": "error", "truncated": True, "error": str(exc)}
+        if getattr(args, "json", False) or getattr(args, "snapshot_json", False):
+            print(json.dumps(result, sort_keys=True))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -445,6 +457,9 @@ def cmd_map(args: argparse.Namespace) -> int:
         try:
             summary = scan_project(root, store)
             store.finish_run(run_id, "warning" if summary.get("errors") else "ok", summary)
+        except WorkBudgetExceeded:
+            store.connection.rollback()
+            raise
         except Exception as exc:
             store.finish_run(run_id, "error", {"error": str(exc)})
             print(f"Map failed: {exc}", file=sys.stderr)

@@ -7,6 +7,7 @@ import posixpath
 from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import Any
+from .repo_budget import WorkBudgetExceeded, bounded_write, budgeted, checkpoint
 
 
 RESOLVED_TARGET_TYPE = "resolved_file"
@@ -24,6 +25,7 @@ RESOLVABLE_RELATIONS = {
 }
 
 
+@bounded_write
 def rebuild_resolved_relations(store: Any) -> dict[str, int]:
     """Rebuild concrete file edges from the current raw graph.
 
@@ -39,9 +41,9 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             "path": str(row["path"]),
             "language": str(row["language"] or ""),
         }
-        for row in connection.execute("SELECT id, path, language FROM files")
+        for row in budgeted(connection.execute("SELECT id, path, language FROM files"))
     }
-    path_to_id = {item["path"]: file_id for file_id, item in files.items()}
+    path_to_id = {item["path"]: file_id for file_id, item in budgeted(files.items())}
     module_index = _module_index(path_to_id)
     module_cache: dict[tuple[str, str, str], list[int]] = {}
     template_cache: dict[str, list[int]] = {}
@@ -51,6 +53,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
     for row in connection.execute(
         "SELECT id, file_id, name, kind, qualified_name, container_name FROM symbols"
     ):
+        checkpoint()
         item = {
             "id": int(row["id"]),
             "file_id": int(row["file_id"]),
@@ -64,7 +67,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
         symbol_by_id[item["id"]] = item
     raw_relations = [
         dict(row)
-        for row in connection.execute(
+        for row in budgeted(connection.execute(
             """
             SELECT id, source_id, relation, target_type, target_id, confidence, metadata_json
             FROM relations
@@ -72,7 +75,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             ORDER BY id
             """,
             (RESOLVED_TARGET_TYPE,),
-        )
+        ))
         if str(row["relation"]) in RESOLVABLE_RELATIONS
     ]
 
@@ -123,6 +126,8 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             "metadata": metadata,
         }
         existing = records.get(key)
+        if existing is None:
+            checkpoint("records")
         if existing is None or float(candidate["confidence"]) > float(existing["confidence"]):
             records[key] = candidate
         resolved_raw_ids.add(int(row["id"]))
@@ -130,6 +135,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
     # Resolve direct file/module/template edges first. Their targets provide
     # scope for the subsequent symbol-call pass.
     for row in raw_relations:
+        checkpoint()
         source_id = int(row["source_id"])
         source = files.get(source_id)
         if source is None:
@@ -159,6 +165,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
 
     # Resolve imported symbol bindings after module targets are known.
     for row in raw_relations:
+        checkpoint()
         if str(row["relation"]) != "imports_symbol" or str(row["target_type"]) != "symbol_name":
             continue
         source_id = int(row["source_id"])
@@ -174,7 +181,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             candidates = module_candidates(source["path"], source["language"], f"{module}.{imported_name}")
         candidates = [
             file_id
-            for file_id in candidates
+            for file_id in budgeted(candidates)
             if imported_name.lower() in symbols_by_file.get(file_id, set())
             or files[file_id]["path"].endswith(f"/{imported_name}.py")
         ]
@@ -189,6 +196,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
 
     include_components = _include_components(records, path_to_id)
     for row in raw_relations:
+        checkpoint()
         relation = str(row["relation"])
         if relation not in {"calls", "route_to_handler"} or str(row["target_type"]) != "symbol_name":
             continue
@@ -229,7 +237,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
                 else:
                     imported_targets = {
                         target_file_id
-                        for target_file_id in module_bindings[source_id].values()
+                        for target_file_id in budgeted(module_bindings[source_id].values())
                         if target_name in symbols_by_file.get(target_file_id, set())
                     }
                     if len(imported_targets) == 1:
@@ -240,7 +248,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             source_component = include_components.get(source_id)
             same_language = [
                 int(item["file_id"])
-                for item in symbols_by_name.get(target_name, [])
+                for item in budgeted(symbols_by_name.get(target_name, []))
                 if files.get(int(item["file_id"]), {}).get("language") == "php"
                 and source_component is not None
                 and include_components.get(int(item["file_id"])) == source_component
@@ -268,7 +276,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
         INSERT INTO relations(source_type, source_id, relation, target_type, target_id, confidence, metadata_json)
         VALUES('file', ?, ?, ?, ?, ?, ?)
         """,
-        [
+        (
             (
                 item["source_id"],
                 item["relation"],
@@ -277,8 +285,8 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
                 item["confidence"],
                 json.dumps(item["metadata"], sort_keys=True),
             )
-            for item in records.values()
-        ],
+            for item in budgeted(records.values())
+        ),
     )
     symbol_stats = _rebuild_resolved_symbol_relations(
         connection,
@@ -326,17 +334,20 @@ def _rebuild_resolved_symbol_relations(
         ORDER BY id
         """
     ):
+        checkpoint()
         item = dict(row)
         if item.get("context_symbol_id") is not None:
             raw_rows.append(item)
     class_ids_by_file_qualified: dict[tuple[int, str], list[int]] = defaultdict(list)
     for symbol in symbol_by_id.values():
+        checkpoint()
         if str(symbol["kind"]) == "class":
             class_ids_by_file_qualified[
                 (int(symbol["file_id"]), str(symbol["qualified_name"]))
             ].append(int(symbol["id"]))
     file_targets: dict[tuple[int, str, str], set[int]] = defaultdict(set)
     for item in file_records.values():
+        checkpoint()
         metadata = dict(item.get("metadata") or {})
         raw_target = str(metadata.get("raw_target_id") or "").lower()
         target_file_id = path_to_id.get(str(item["target_id"]))
@@ -348,6 +359,7 @@ def _rebuild_resolved_symbol_relations(
     ambiguous = 0
     raw_rows.sort(key=lambda item: 0 if str(item["relation"]) in {"inherits", "implements"} else 1)
     for row in raw_rows:
+        checkpoint()
         metadata = _metadata(row)
         source_file_id = int(row["source_id"])
         source_symbol = symbol_by_id.get(int(row["context_symbol_id"]))
@@ -407,7 +419,7 @@ def _rebuild_resolved_symbol_relations(
                 component = include_components.get(source_file_id)
                 target_files = {
                     int(item["file_id"])
-                    for item in symbols_by_name.get(target_name, [])
+                    for item in budgeted(symbols_by_name.get(target_name, []))
                     if component is not None and include_components.get(int(item["file_id"])) == component
                 }
                 candidate_ids = _symbol_ids_for_name(symbols_by_name, target_name, target_files, relation)
@@ -416,7 +428,7 @@ def _rebuild_resolved_symbol_relations(
             if not candidate_ids and relation in {"inherits", "implements"}:
                 same_language = {
                     int(item["file_id"])
-                    for item in symbols_by_name.get(target_name, [])
+                    for item in budgeted(symbols_by_name.get(target_name, []))
                     if files.get(int(item["file_id"]), {}).get("language") == source_file["language"]
                 }
                 candidate_ids = _symbol_ids_for_name(symbols_by_name, target_name, same_language, relation)
@@ -454,6 +466,8 @@ def _rebuild_resolved_symbol_relations(
             "metadata": resolved_metadata,
         }
         existing = resolved.get(key)
+        if existing is None:
+            checkpoint("records")
         if existing is None or float(candidate["confidence"]) > float(existing["confidence"]):
             resolved[key] = candidate
 
@@ -462,7 +476,7 @@ def _rebuild_resolved_symbol_relations(
         INSERT INTO relations(source_type, source_id, relation, target_type, target_id, confidence, metadata_json)
         VALUES('symbol', ?, ?, ?, ?, ?, ?)
         """,
-        [
+        (
             (
                 item["source_id"],
                 item["relation"],
@@ -471,11 +485,12 @@ def _rebuild_resolved_symbol_relations(
                 item["confidence"],
                 json.dumps(item["metadata"], sort_keys=True),
             )
-            for item in resolved.values()
-        ],
+            for item in budgeted(resolved.values())
+        ),
     )
     derived_file_edges: dict[tuple[int, str, str], dict[str, Any]] = {}
     for item in resolved.values():
+        checkpoint()
         if item["relation"] not in {"inherits", "implements"}:
             continue
         source_symbol = symbol_by_id[int(item["source_id"])]
@@ -501,7 +516,7 @@ def _rebuild_resolved_symbol_relations(
         INSERT INTO relations(source_type, source_id, relation, target_type, target_id, confidence, metadata_json)
         VALUES('file', ?, ?, ?, ?, ?, ?)
         """,
-        [
+        (
             (
                 item["source_id"],
                 item["relation"],
@@ -510,8 +525,8 @@ def _rebuild_resolved_symbol_relations(
                 item["confidence"],
                 json.dumps(item["metadata"], sort_keys=True),
             )
-            for item in derived_file_edges.values()
-        ],
+            for item in budgeted(derived_file_edges.values())
+        ),
     )
     return {
         "resolvable_symbol_relations": len(raw_rows),
@@ -530,7 +545,7 @@ def _symbol_ids_for_name(
     allowed_kinds = {"class", "interface", "trait", "enum"} if relation in {"inherits", "implements"} else {"function", "method"}
     return [
         int(item["id"])
-        for item in symbols_by_name.get(name.lower(), [])
+        for item in budgeted(symbols_by_name.get(name.lower(), []))
         if int(item["file_id"]) in file_ids and str(item["kind"]) in allowed_kinds
     ]
 
@@ -559,6 +574,7 @@ def _python_receiver_method_ids(
     allowed_class_ids = {current_class_id} if include_current else set()
     pending = list(parent_symbol_ids.get(current_class_id, set()))
     while pending:
+        checkpoint()
         class_id = pending.pop()
         if class_id in allowed_class_ids:
             continue
@@ -567,12 +583,12 @@ def _python_receiver_method_ids(
 
     allowed_containers = {
         str(symbol_by_id[class_id]["qualified_name"])
-        for class_id in allowed_class_ids
+        for class_id in budgeted(allowed_class_ids)
         if class_id in symbol_by_id
     }
     return [
         int(item["id"])
-        for item in symbols_by_name.get(target_name.lower(), [])
+        for item in budgeted(symbols_by_name.get(target_name.lower(), []))
         if str(item["kind"]) == "method"
         and str(item.get("container_name") or "") in allowed_containers
     ]
@@ -601,11 +617,11 @@ def _module_candidates(
         base = _normalize_path(source_dir / clean_module)
         candidates = [
             f"{base}{suffix}"
-            for suffix in (".py", ".js", ".jsx", ".ts", ".tsx", ".php")
+            for suffix in budgeted((".py", ".js", ".jsx", ".ts", ".tsx", ".php"))
         ]
         candidates.extend(
             f"{base}/index{suffix}"
-            for suffix in (".js", ".jsx", ".ts", ".tsx")
+            for suffix in budgeted((".js", ".jsx", ".ts", ".tsx"))
         )
         return _existing_candidates(candidates, path_to_id)
     if language != "python":
@@ -625,7 +641,7 @@ def _template_candidates(template: str, path_to_id: dict[str, int]) -> list[int]
         return exact
     return _unique(
         file_id
-        for path, file_id in path_to_id.items()
+        for path, file_id in budgeted(path_to_id.items())
         if path.endswith(f"/templates/{clean}")
     )
 
@@ -633,12 +649,16 @@ def _template_candidates(template: str, path_to_id: dict[str, int]) -> list[int]
 def _module_index(path_to_id: dict[str, int]) -> dict[str, list[int]]:
     index: dict[str, list[int]] = defaultdict(list)
     for path, file_id in path_to_id.items():
+        checkpoint()
+        if len(path) > 4096 or len(PurePosixPath(path).parts) > 64:
+            raise WorkBudgetExceeded("repository path complexity limit exceeded; results are incomplete")
         if not path.endswith(".py"):
             continue
         parts = list(PurePosixPath(path).with_suffix("").parts)
         if parts and parts[-1] == "__init__":
             parts.pop()
         for start in range(len(parts)):
+            checkpoint()
             key = ".".join(parts[start:])
             if key and file_id not in index[key]:
                 index[key].append(file_id)
@@ -646,7 +666,7 @@ def _module_index(path_to_id: dict[str, int]) -> dict[str, list[int]]:
 
 
 def _existing_candidates(candidates: list[str], path_to_id: dict[str, int]) -> list[int]:
-    return _unique(path_to_id[path] for path in candidates if path in path_to_id)
+    return _unique(path_to_id[path] for path in budgeted(candidates) if path in path_to_id)
 
 
 def _normalize_path(path: PurePosixPath | str) -> str:
@@ -671,6 +691,7 @@ def _include_components(
     def find(value: int) -> int:
         parent.setdefault(value, value)
         while parent[value] != value:
+            checkpoint()
             parent[value] = parent[parent[value]]
             value = parent[value]
         return value
@@ -682,13 +703,14 @@ def _include_components(
             parent[right_root] = left_root
 
     for item in records.values():
+        checkpoint()
         if item["relation"] not in {"include", "include_once", "require", "require_once"}:
             continue
         target_id = path_to_id.get(str(item["target_id"]))
         if target_id is not None:
             union(int(item["source_id"]), target_id)
-    return {file_id: find(file_id) for file_id in parent}
+    return {file_id: find(file_id) for file_id in budgeted(parent)}
 
 
 def _unique(values: Any) -> list[int]:
-    return list(dict.fromkeys(int(value) for value in values))
+    return list(dict.fromkeys(int(value) for value in budgeted(values)))

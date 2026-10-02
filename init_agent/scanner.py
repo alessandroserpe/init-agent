@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import bounded_write
 from .parse_budget import ParseFailure
 from .language_detector import detect_language, detect_role
 from .relation_resolver import rebuild_resolved_relations
@@ -16,6 +17,7 @@ from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_p
 INDEX_VERSION = "11"
 
 
+@bounded_write
 def scan_project(root: Path, store: Any) -> dict[str, Any]:
     errors: list[str] = []
     error_count = 0

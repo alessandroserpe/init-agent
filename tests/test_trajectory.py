@@ -198,15 +198,15 @@ class TrajectoryTests(InitAgentTestCase):
                 ),
                 encoding="utf-8",
             )
-            installed = install_codex_trajectory_hooks(hooks_path, command="/tmp/init-agent-hook")
+            installed = install_codex_trajectory_hooks(hooks_path, command="/usr/bin/true")
             self.assertTrue(installed["current"])
             self.assertEqual(set(installed["events"]), CODEX_HOOK_EVENTS)
             self.assertTrue(Path(installed["backup_path"]).is_file())
             first_data = json.loads(hooks_path.read_text(encoding="utf-8"))
             self.assertIn("other-tool audit", json.dumps(first_data))
-            self.assertIn("/tmp/init-agent-hook --init-agent-trajectory-hook", json.dumps(first_data))
+            self.assertIn(str(Path("/usr/bin/true").resolve()) + " --init-agent-trajectory-hook", json.dumps(first_data))
 
-            repeated = install_codex_trajectory_hooks(hooks_path, command="/tmp/init-agent-hook")
+            repeated = install_codex_trajectory_hooks(hooks_path, command="/usr/bin/true")
             self.assertFalse(repeated["updated"])
             second_data = json.loads(hooks_path.read_text(encoding="utf-8"))
             self.assertEqual(first_data, second_data)
@@ -228,7 +228,7 @@ class TrajectoryTests(InitAgentTestCase):
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(
-                    main(["trajectory", "install-codex", "--config-path", str(hooks_path), "--json"]),
+                    main(["trajectory", "install-codex", "--command", "/usr/bin/true", "--config-path", str(hooks_path), "--json"]),
                     0,
                 )
             self.assertTrue(json.loads(output.getvalue())["current"])

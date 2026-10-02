@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import BudgetConnection, bounded_operation, budgeted, checkpoint
 from .scanner import INDEX_VERSION, iter_project_files
 from .utils import db_path, mtime_iso, relative_path
 
@@ -17,6 +18,7 @@ _HEALTH_CACHE: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
 _PATH_SAMPLE_LIMIT = 5
 
 
+@bounded_operation
 def index_readiness(root: Path, *, use_cache: bool = True) -> dict[str, Any]:
     """Return index availability and lightweight filesystem drift metadata.
 
@@ -62,7 +64,7 @@ def clear_index_health_cache() -> None:
 def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(database)
+        conn = sqlite3.connect(database, timeout=1, factory=BudgetConnection)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT path, size, modified_at FROM files ORDER BY path"
@@ -87,10 +89,11 @@ def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
             "size": int(row["size"] or 0),
             "modified_at": str(row["modified_at"] or ""),
         }
-        for row in rows
+        for row in budgeted(rows)
     }
     real_files: dict[str, Path] = {}
     for path in iter_project_files(root):
+        checkpoint()
         try:
             real_files[relative_path(path, root)] = path
         except (OSError, ValueError):
@@ -102,6 +105,7 @@ def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
     unindexed = sorted(real_paths - indexed_paths)
     changed: list[str] = []
     for rel_path in sorted(indexed_paths & real_paths):
+        checkpoint()
         path = real_files[rel_path]
         try:
             stat = path.stat()

@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from .repo_budget import BudgetConnection
 from .private_files import private_open
 from .signatures import minimize_signature
 from .utils import db_path, utc_now
@@ -264,10 +265,14 @@ class GraphStore:
         # Pre-create with 0600 so SQLite sidecars inherit a private database mode.
         with private_open(self.path, "a"):
             pass
-        self.connection = sqlite3.connect(self.path, timeout=10)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys = ON")
-        self.connection.execute("PRAGMA busy_timeout = 10000")
+        self.connection = sqlite3.connect(self.path, timeout=1, factory=BudgetConnection)
+        try:
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA foreign_keys = ON")
+            self.connection.execute("PRAGMA busy_timeout = 1000")
+        except BaseException:
+            self.connection.close()
+            raise
 
     def close(self) -> None:
         self.connection.close()

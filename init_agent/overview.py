@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import bounded_operation, budgeted, checkpoint
 from .git_reader import current_branch, git_available, has_git
 from .graph_store import GraphStore
 from .utils import terminal_safe
@@ -63,32 +64,34 @@ MAX_MANIFESTS = 10
 MAX_SUBSYSTEMS = 10
 
 
+@bounded_operation
 def build_overview_pack(root: Path) -> dict[str, Any]:
     with GraphStore(root) as store:
         store.initialize()
         conn = store.connection
         files = [
             dict(row)
-            for row in conn.execute(
+            for row in budgeted(conn.execute(
                 "SELECT id, path, extension, language, role, size, modified_at FROM files ORDER BY path"
-            )
+            ))
         ]
         symbols = [
             dict(row)
-            for row in conn.execute(
+            for row in budgeted(conn.execute(
                 """
                 SELECT s.name, s.kind, s.line, s.signature, f.path AS file, f.role AS file_role
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 ORDER BY f.path, s.line, s.name
                 """
-            )
+            ))
         ]
         project = store.get_meta("project", root.name)
         last_map = store.latest_map_time()
 
     symbol_by_file: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for symbol in symbols:
+        checkpoint()
         symbol_by_file[str(symbol["file"])].append(symbol)
 
     candidates = _rank_first_reads(files, symbol_by_file)
@@ -153,26 +156,31 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
     if not pack["suggested_first_reads"]:
         lines.append("-")
     for index, item in enumerate(pack["suggested_first_reads"], start=1):
+        checkpoint()
         lines.append(f"{index}. `{item['path']}`")
         lines.append(f"   - role: {item['role'] or '-'}")
         lines.append(f"   - language: {item['language'] or '-'}")
         for reason in item["reasons"]:
+            checkpoint()
             lines.append(f"   - {reason}")
     lines.extend(["", "## Likely entry points"])
     if not pack["entry_points"]:
         lines.append("-")
     for item in pack["entry_points"]:
+        checkpoint()
         detail = f":{item['line']}" if item.get("line") else ""
         lines.append(f"- `{item['path']}{detail}` {item['kind']} `{item['name']}`")
     lines.extend(["", "## Package manifests and config"])
     if not pack["manifests"]:
         lines.append("-")
     for item in pack["manifests"]:
+        checkpoint()
         lines.append(f"- `{item['path']}`")
     lines.extend(["", "## Major subsystems"])
     if not pack["subsystems"]:
         lines.append("-")
     for item in pack["subsystems"]:
+        checkpoint()
         languages = ", ".join(item["languages"]) if item["languages"] else "-"
         roles = ", ".join(item["roles"]) if item["roles"] else "-"
         lines.append(f"- `{item['path_prefix']}`: {item['files']} files; languages: {languages}; roles: {roles}")
@@ -183,6 +191,7 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
 def _rank_first_reads(files: list[dict[str, Any]], symbol_by_file: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     ranked = []
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         score, reasons = _file_overview_score(path, str(file_item.get("role") or ""), symbol_by_file.get(path, []))
         if score <= 0:
@@ -205,7 +214,7 @@ def _file_overview_score(path: str, role: str, symbols: list[dict[str, Any]]) ->
     name = Path(normalized).name
     lower_name = name.lower()
     lower_path = normalized.lower()
-    parts = {part.lower() for part in Path(normalized).parts}
+    parts = {part.lower() for part in budgeted(Path(normalized).parts)}
     score = 0.0
     reasons: list[str] = []
 
@@ -252,6 +261,7 @@ def _file_overview_score(path: str, role: str, symbols: list[dict[str, Any]]) ->
     has_route = False
     entry_symbols: list[str] = []
     for symbol in symbols:
+        checkpoint()
         kind = str(symbol.get("kind") or "")
         name_value = str(symbol.get("name") or "")
         if kind == "project_script":
@@ -289,10 +299,12 @@ def _file_overview_score(path: str, role: str, symbols: list[dict[str, Any]]) ->
 def _entry_points(files: list[dict[str, Any]], symbol_by_file: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     entries = []
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         name = Path(path).name
         role = str(file_item.get("role") or "")
         for symbol in symbol_by_file.get(path, []):
+            checkpoint()
             kind = str(symbol.get("kind") or "")
             symbol_name = str(symbol.get("name") or "")
             if role == "test" and kind == "route":
@@ -317,6 +329,7 @@ def _entry_points(files: list[dict[str, Any]], symbol_by_file: dict[str, list[di
 def _manifest_files(files: list[dict[str, Any]], symbol_by_file: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     result = []
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         name = Path(path).name
         lower_name = name.lower()
@@ -329,7 +342,7 @@ def _manifest_files(files: list[dict[str, Any]], symbol_by_file: dict[str, list[
                     "role": file_item.get("role"),
                     "symbols": [
                         {"name": symbol["name"], "kind": symbol["kind"], "line": symbol.get("line") or 0}
-                        for symbol in symbol_by_file.get(path, [])[:5]
+                        for symbol in budgeted(symbol_by_file.get(path, [])[:5])
                     ],
                 }
             )
@@ -340,6 +353,7 @@ def _manifest_files(files: list[dict[str, Any]], symbol_by_file: dict[str, list[
 def _subsystems(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         prefix = _subsystem_prefix(path)
         if prefix in SUBSYSTEM_NOISE:
@@ -352,12 +366,13 @@ def _subsystems(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
             group["roles"][str(file_item["role"])] += 1
     result = []
     for group in groups.values():
+        checkpoint()
         result.append(
             {
                 "path_prefix": group["path_prefix"],
                 "files": group["files"],
-                "languages": [name for name, _ in group["languages"].most_common(3)],
-                "roles": [name for name, _ in group["roles"].most_common(3)],
+                "languages": [name for name, _ in budgeted(group["languages"].most_common(3))],
+                "roles": [name for name, _ in budgeted(group["roles"].most_common(3))],
             }
         )
     result.sort(key=lambda item: (-int(item["files"]), str(item["path_prefix"])))
@@ -369,12 +384,14 @@ def _append_ranked_files(lines: list[str], items: list[dict[str, Any]]) -> None:
         lines.append("-")
         return
     for index, item in enumerate(items, start=1):
+        checkpoint()
         lines.append(f"{index}. {item['path']}")
         lines.append(f"   score: {item['score']:.2f}")
         lines.append(f"   role: {item['role'] or '-'}")
         lines.append(f"   language: {item['language'] or '-'}")
         lines.append("   reasons:")
         for reason in item["reasons"]:
+            checkpoint()
             lines.append(f"   - {reason}")
 
 
@@ -383,6 +400,7 @@ def _append_entry_points(lines: list[str], items: list[dict[str, Any]]) -> None:
         lines.append("-")
         return
     for item in items:
+        checkpoint()
         detail = f":{item['line']}" if item.get("line") else ""
         lines.append(f"- {item['path']}{detail} {item['kind']} {item['name']}")
 
@@ -392,6 +410,7 @@ def _append_simple_files(lines: list[str], items: list[dict[str, Any]]) -> None:
         lines.append("-")
         return
     for item in items:
+        checkpoint()
         lines.append(f"- {item['path']} ({item['role'] or '-'}, {item['language'] or '-'})")
 
 
@@ -400,6 +419,7 @@ def _append_subsystems(lines: list[str], items: list[dict[str, Any]]) -> None:
         lines.append("-")
         return
     for item in items:
+        checkpoint()
         languages = ", ".join(item["languages"]) if item["languages"] else "-"
         roles = ", ".join(item["roles"]) if item["roles"] else "-"
         lines.append(f"- {item['path_prefix']}: {item['files']} files; languages: {languages}; roles: {roles}")
@@ -420,7 +440,7 @@ def _framework_package_entry(path: str) -> bool:
 
 def _framework_package_entry_score(path: str) -> int:
     normalized = path.replace("\\", "/")
-    parts = {part.lower() for part in Path(normalized).parts}
+    parts = {part.lower() for part in budgeted(Path(normalized).parts)}
     if Path(normalized).name != "__init__.py" or _semantic_depth(normalized) > 4:
         return 0
     if parts.intersection({"management", "command", "commands", "cli", "server", "api"}):
@@ -479,6 +499,7 @@ def _dedupe_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple[str, str, str]] = set()
     result = []
     for entry in entries:
+        checkpoint()
         key = (str(entry["path"]), str(entry["kind"]), str(entry["name"]))
         if key in seen:
             continue

@@ -9,6 +9,7 @@ from math import log
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import WorkBudgetExceeded, bounded_operation, budgeted, checkpoint
 from .feedback import feedback_signals
 from .graph_store import GraphStore
 from .text_tokens import identifier_terms, is_query_noise_token, tokenize_query
@@ -98,46 +99,47 @@ STRUCTURAL_RELATION_WEIGHTS = {
 }
 
 
+@bounded_operation
 def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     tokens = _tokens(query)
     with GraphStore(root) as store:
         conn = store.connection
-        files = [dict(row) for row in conn.execute("SELECT id, path, language, role FROM files")]
+        files = [dict(row) for row in budgeted(conn.execute("SELECT id, path, language, role FROM files"))]
         symbols = [
             dict(row)
-            for row in conn.execute(
+            for row in budgeted(conn.execute(
                 """
                 SELECT s.id, s.name, s.kind, s.line, f.id AS file_id, f.path AS file, f.role AS file_role
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 """
-            )
+            ))
         ]
         commits = [
             dict(row)
-            for row in conn.execute(
+            for row in budgeted(conn.execute(
                 """
                 SELECT c.id, c.hash, c.author, c.date, c.message, f.path
                 FROM git_commits c
                 LEFT JOIN git_commit_files f ON f.commit_id = c.id
                 ORDER BY c.date DESC
                 """
-            )
+            ))
         ]
         relations = [
             dict(row)
-            for row in conn.execute(
+            for row in budgeted(conn.execute(
                 """
                 SELECT source_id, relation, target_type, target_id, metadata_json
                 FROM relations
                 WHERE source_type = 'file'
                 ORDER BY source_id, relation, target_type, target_id
                 """
-            )
+            ))
         ]
         term_weights = _load_term_weights(conn, tokens)
 
-    file_by_id = {int(item["id"]): item for item in files}
+    file_by_id = {int(item["id"]): item for item in budgeted(files)}
     token_weights = term_weights or _token_weights(tokens, files, symbols, commits)
     file_scores: dict[str, float] = defaultdict(float)
     reasons: dict[str, list[str]] = defaultdict(list)
@@ -152,10 +154,10 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     _score_files_by_feedback(root, files, tokens, file_scores, reasons)
     structural_seed_paths = [
         path
-        for path, _ in sorted(
-            ((path, score) for path, score in file_scores.items() if score > 0),
+        for path, _ in budgeted(sorted(
+            ((path, score) for path, score in budgeted(file_scores.items()) if score > 0),
             key=lambda item: (-float(item[1]), str(item[0])),
-        )[:STRUCTURAL_PRIMARY_SEED_LIMIT]
+        )[:STRUCTURAL_PRIMARY_SEED_LIMIT])
     ]
     with GraphStore(root) as store:
         structural_relations = _load_structural_relations(
@@ -180,12 +182,12 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
             "structural_score": structural_scores.get(str(item["path"]), 0.0),
             "reasons": reasons[item["path"]][:8],
         }
-        for item in files
+        for item in budgeted(files)
         if file_scores[item["path"]] > 0
     ]
     raw_candidates.sort(key=lambda item: (-float(item["raw_score"]), str(item["path"])))
     raw_candidates = raw_candidates[:10]
-    max_score = max((float(item["raw_score"]) for item in raw_candidates), default=1.0)
+    max_score = max((float(item["raw_score"]) for item in budgeted(raw_candidates)), default=1.0)
 
     candidate_files = [
         {
@@ -196,9 +198,9 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
             "structural_score": item["structural_score"],
             "reasons": item["reasons"],
         }
-        for item in raw_candidates
+        for item in budgeted(raw_candidates)
     ]
-    candidate_paths = {item["path"] for item in candidate_files}
+    candidate_paths = {item["path"] for item in budgeted(candidate_files)}
 
     related_symbols = _related_symbols(symbols, tokens, candidate_paths)
     recent_commits = _recent_commits(query_commits, candidate_paths)
@@ -207,7 +209,7 @@ def build_context_pack(root: Path, query: str) -> dict[str, Any]:
     return {
         "query": query,
         "candidate_files": candidate_files,
-        "suggested_first_reads": [item["path"] for item in candidate_files[:5]],
+        "suggested_first_reads": [item["path"] for item in budgeted(candidate_files[:5])],
         "related_symbols": related_symbols[:10],
         "recent_commits": recent_commits[:5],
         "confidence": diagnostics["confidence"],
@@ -229,15 +231,27 @@ def _token_weights(
         return {}
     commit_messages = {}
     for row in commit_rows:
+        checkpoint()
         commit_messages[int(row["id"])] = str(row.get("message") or "").lower()
-    documents = [str(item.get("path") or "").lower() for item in files]
-    documents.extend(str(item.get("name") or "").lower() for item in symbols)
-    documents.extend(commit_messages.values())
-    total = max(len(documents), 1)
+    frequencies = dict.fromkeys(tokens, 0)
+    total = 0
+
+    def count_document(document):
+        nonlocal total
+        total += 1
+        for token in budgeted(tokens):
+            if token in document:
+                frequencies[token] += 1
+
+    for collection, key in ((files, "path"), (symbols, "name")):
+        for item in budgeted(collection):
+            count_document(str(item.get(key) or "").lower())
+    for message in budgeted(commit_messages.values()):
+        count_document(message)
+    total = max(total, 1)
     weights = {}
-    for token in tokens:
-        frequency = sum(1 for document in documents if token in document)
-        raw = 0.65 + log((total + 1) / (frequency + 1))
+    for token in budgeted(tokens):
+        raw = 0.65 + log((total + 1) / (frequencies[token] + 1))
         weights[token] = {"all": max(0.35, min(2.4, raw))}
     return weights
 
@@ -246,17 +260,20 @@ def _load_term_weights(conn: Any, tokens: list[str]) -> dict[str, dict[str, floa
     if not tokens:
         return {}
     try:
-        placeholders = ",".join("?" for _ in tokens)
+        placeholders = ",".join("?" for _ in budgeted(tokens))
         rows = conn.execute(
             f"SELECT term, source, weight FROM term_stats WHERE term IN ({placeholders})",
             tokens,
         ).fetchall()
+    except WorkBudgetExceeded:
+        raise
     except Exception:
         return {}
     weights: dict[str, dict[str, float]] = defaultdict(dict)
     for row in rows:
+        checkpoint()
         weights[str(row["term"])][str(row["source"])] = float(row["weight"])
-    return {token: weights.get(token, {"all": 0.25}) for token in tokens} if weights else {}
+    return {token: weights.get(token, {"all": 0.25}) for token in budgeted(tokens)} if weights else {}
 
 
 def _weight(token_weights: dict[str, Any], token: str, source: str = "all") -> float:
@@ -274,6 +291,7 @@ def _score_files_by_path_role_language(
     reasons: dict[str, list[str]],
 ) -> None:
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         path_parts = _path_tokens(path)
         filename = Path(path).name
@@ -282,6 +300,7 @@ def _score_files_by_path_role_language(
         language = str(file_item.get("language") or "").lower()
         role = str(file_item.get("role") or "").lower()
         for token in tokens:
+            checkpoint()
             path_weight = _weight(token_weights, token, "path")
             filename_weight = _weight(token_weights, token, "filename")
             exact_path = token in path_parts
@@ -325,14 +344,16 @@ def _score_files_by_symbols(
     reasons: dict[str, list[str]],
 ) -> None:
     matched_by_file: dict[str, set[str]] = defaultdict(set)
-    has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in tokens)
+    has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in budgeted(tokens))
     for symbol in symbols:
+        checkpoint()
         name = str(symbol["name"])
         name_lower = name.lower()
         path = str(symbol["file"])
         file_role = str(symbol.get("file_role") or "")
         kind = str(symbol.get("kind") or "")
         for token in tokens:
+            checkpoint()
             if token in name_lower and token not in matched_by_file[path]:
                 matched_by_file[path].add(token)
                 weight = _weight(token_weights, token, "symbol")
@@ -353,6 +374,7 @@ def _score_files_by_commits(
 ) -> list[dict[str, Any]]:
     commits_by_id: dict[int, dict[str, Any]] = {}
     for row in commit_rows:
+        checkpoint()
         commit_id = int(row["id"])
         commit = commits_by_id.setdefault(
             commit_id,
@@ -370,15 +392,18 @@ def _score_files_by_commits(
 
     query_commits: list[dict[str, Any]] = []
     for commit in commits_by_id.values():
+        checkpoint()
         message = str(commit.get("message") or "").lower()
-        matched_tokens = [token for token in tokens if token in message]
+        matched_tokens = [token for token in budgeted(tokens) if token in message]
         if not matched_tokens:
             continue
         commit["matched"] = True
         query_commits.append(commit)
         scored_paths: set[tuple[str, str]] = set()
         for path in commit["files"]:
+            checkpoint()
             for token in matched_tokens:
+                checkpoint()
                 if (path, token) in scored_paths:
                     continue
                 scored_paths.add((path, token))
@@ -402,6 +427,7 @@ def _score_files_by_calls(
 ) -> None:
     matched_by_file: dict[str, set[str]] = defaultdict(set)
     for relation in relations:
+        checkpoint()
         if relation.get("relation") != "calls" or relation.get("target_type") != "symbol_name":
             continue
         source = file_by_id.get(int(relation["source_id"]))
@@ -411,6 +437,7 @@ def _score_files_by_calls(
         target = str(relation["target_id"])
         target_lower = target.lower()
         for token in tokens:
+            checkpoint()
             if token in target_lower and token not in matched_by_file[path]:
                 matched_by_file[path].add(token)
                 weight = _weight(token_weights, token, "symbol")
@@ -425,16 +452,17 @@ def _score_related_files(
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
-    candidate_paths = {path for path, score in file_scores.items() if score > 0}
+    candidate_paths = {path for path, score in budgeted(file_scores.items()) if score > 0}
     if not candidate_paths:
         return
     candidate_target_index = _relation_target_index(candidate_paths)
     all_target_index = _relation_target_index(
-        {str(item["path"]) for item in file_by_id.values()}
+        {str(item["path"]) for item in budgeted(file_by_id.values())}
     )
     related_boosts: dict[str, float] = defaultdict(float)
     related_reason_counts: dict[str, int] = defaultdict(int)
     for relation in relations:
+        checkpoint()
         source = file_by_id.get(int(relation["source_id"]))
         if not source:
             continue
@@ -471,11 +499,11 @@ def _load_structural_relations(
     if not seed_paths:
         return []
     relation_names = tuple(STRUCTURAL_RELATION_WEIGHTS)
-    relation_placeholders = ",".join("?" for _ in relation_names)
-    path_placeholders = ",".join("?" for _ in seed_paths)
+    relation_placeholders = ",".join("?" for _ in budgeted(relation_names))
+    path_placeholders = ",".join("?" for _ in budgeted(seed_paths))
     query_terms = [
         token
-        for token in tokens
+        for token in budgeted(tokens)
         if len(token) >= 3 and not is_query_noise_token(token)
     ][:8]
     symbol_match_sql = ""
@@ -483,9 +511,9 @@ def _load_structural_relations(
     if query_terms:
         symbol_match_sql = " OR " + " OR ".join(
             "lower(COALESCE(source_symbol.qualified_name, source_symbol.name)) LIKE ?"
-            for _ in query_terms
+            for _ in budgeted(query_terms)
         )
-        symbol_match_params = [f"%{token}%" for token in query_terms]
+        symbol_match_params = [f"%{token}%" for token in budgeted(query_terms)]
     rows = conn.execute(
         f"""
         SELECT source_file.path AS source_path,
@@ -524,6 +552,7 @@ def _load_structural_relations(
     compact: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     symbol_pairs: set[tuple[str, str, str]] = set()
     for row in rows:
+        checkpoint()
         item = dict(row)
         pair = (str(item["source_path"]), str(item["relation"]), str(item["target_path"]))
         symbol_pairs.add(pair)
@@ -561,6 +590,7 @@ def _load_structural_relations(
         (*relation_names, *seed_paths, *seed_paths),
     ).fetchall()
     for row in file_rows:
+        checkpoint()
         item = dict(row)
         pair = (str(item["source_path"]), str(item["relation"]), str(item["target_path"]))
         if pair in symbol_pairs:
@@ -578,13 +608,14 @@ def _score_structural_files(
 ) -> dict[str, float]:
     """Promote one-hop structural neighbors of a few strong lexical seeds."""
 
-    file_roles = {str(item["path"]): str(item.get("role") or "") for item in file_by_id.values()}
+    file_roles = {str(item["path"]): str(item.get("role") or "") for item in budgeted(file_by_id.values())}
     primary_seeds = sorted(
-        ((path, score) for path, score in file_scores.items() if score > 0),
+        ((path, score) for path, score in budgeted(file_scores.items()) if score > 0),
         key=lambda item: (-float(item[1]), str(item[0])),
     )[:STRUCTURAL_PRIMARY_SEED_LIMIT]
     symbol_seed_relevance: dict[str, float] = defaultdict(float)
     for edge in structural_relations:
+        checkpoint()
         relevance = _structural_symbol_relevance(edge, tokens)
         minimum_relevance = (
             1.32
@@ -601,8 +632,8 @@ def _score_structural_files(
     extra_seeds = sorted(
         (
             (path, file_scores[path])
-            for path in symbol_seed_relevance
-            if path not in {item[0] for item in primary_seeds}
+            for path in budgeted(symbol_seed_relevance)
+            if path not in {item[0] for item in budgeted(primary_seeds)}
         ),
         key=lambda item: (
             -symbol_seed_relevance[item[0]],
@@ -614,9 +645,10 @@ def _score_structural_files(
     if not ranked_seeds or not structural_relations:
         return {}
 
-    primary_max_score = max((float(score) for _, score in primary_seeds), default=1.0)
+    primary_max_score = max((float(score) for _, score in budgeted(primary_seeds)), default=1.0)
     seed_scores = {}
     for path, score in ranked_seeds:
+        checkpoint()
         effective_score = float(score)
         if file_roles.get(path) == "test" and symbol_seed_relevance.get(path, 0.0) > 1.0:
             effective_score = min(primary_max_score, effective_score / 0.45)
@@ -626,6 +658,7 @@ def _score_structural_files(
     max_seed_score = max(seed_scores.values(), default=1.0)
     neighbors: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     for edge in structural_relations:
+        checkpoint()
         confidence = float(edge.get("confidence") or 0.0)
         if confidence < STRUCTURAL_MIN_CONFIDENCE:
             continue
@@ -637,8 +670,9 @@ def _score_structural_files(
             neighbors[(target_path, "in", str(edge.get("target_symbol") or ""))].add(source_path)
 
     structural_evidence: dict[str, tuple[float, float, float, str, float]] = {}
-    seed_rank = {path: rank for rank, (path, _) in enumerate(ranked_seeds, start=1)}
+    seed_rank = {path: rank for rank, (path, _) in budgeted(enumerate(ranked_seeds, start=1))}
     for edge in structural_relations:
+        checkpoint()
         confidence = float(edge.get("confidence") or 0.0)
         relation = str(edge.get("relation") or "")
         relation_weight = STRUCTURAL_RELATION_WEIGHTS.get(relation, 0.0)
@@ -669,6 +703,7 @@ def _score_structural_files(
                 )
             )
         for seed_path, candidate_path, direction, anchor_symbol, direction_weight in directions:
+            checkpoint()
             if candidate_path == seed_path:
                 continue
             test_to_source = (
@@ -764,6 +799,7 @@ def _score_structural_files(
 
     applied_scores: dict[str, float] = {}
     for path, (propagated_score, reinforcement, ceiling, reason, structural_strength) in structural_evidence.items():
+        checkpoint()
         target_score = min(max(file_scores[path], propagated_score) + reinforcement, ceiling)
         boost = max(0.0, target_score - file_scores[path])
         if boost <= 0:
@@ -780,7 +816,7 @@ def _structural_symbol_relevance(edge: dict[str, Any], tokens: list[str]) -> flo
         return 0.45
     query_terms = {
         token
-        for token in tokens
+        for token in budgeted(tokens)
         if len(token) >= 3 and not is_query_noise_token(token)
     }
     leaf_symbol = source_symbol.replace("::", ".").rsplit(".", 1)[-1]
@@ -798,13 +834,14 @@ def _score_files_by_feedback(
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
-    indexed_paths = {str(item["path"]) for item in files}
+    indexed_paths = {str(item["path"]) for item in budgeted(files)}
     for path, signal in feedback_signals(root, tokens, indexed_paths).items():
+        checkpoint()
         boost = float(signal.get("boost") or 0.0)
         penalty = float(signal.get("penalty") or 0.0)
         if boost > 0:
             file_scores[path] += boost
-            ratings = {str(item) for item in signal.get("positive", set())}
+            ratings = {str(item) for item in budgeted(signal.get("positive", set()))}
             if "crucial" in ratings:
                 _prepend_reason(reasons[path], "previously marked crucial for similar query")
             elif "missing" in ratings:
@@ -822,8 +859,9 @@ def _adjust_test_file_scores(
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
-    test_aware = any(token in TEST_AWARE_TOKENS for token in tokens)
+    test_aware = any(token in TEST_AWARE_TOKENS for token in budgeted(tokens))
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         if file_scores[path] <= 0 or str(file_item.get("role") or "") != "test":
             continue
@@ -840,11 +878,12 @@ def _adjust_role_type_scores(
     file_scores: dict[str, float],
     reasons: dict[str, list[str]],
 ) -> None:
-    has_ui_intent = any(token in UI_INTENT_TOKENS for token in tokens)
-    has_db_intent = any(token in DB_INTENT_TOKENS for token in tokens)
-    has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in tokens)
-    has_example_intent = any(token in EXAMPLE_INTENT_TOKENS for token in tokens)
+    has_ui_intent = any(token in UI_INTENT_TOKENS for token in budgeted(tokens))
+    has_db_intent = any(token in DB_INTENT_TOKENS for token in budgeted(tokens))
+    has_docs_intent = any(token in DOCS_INTENT_TOKENS for token in budgeted(tokens))
+    has_example_intent = any(token in EXAMPLE_INTENT_TOKENS for token in budgeted(tokens))
     for file_item in files:
+        checkpoint()
         path = str(file_item["path"])
         if file_scores[path] <= 0:
             continue
@@ -872,10 +911,11 @@ def _adjust_role_type_scores(
 
 def _is_example_path(path: str) -> bool:
     for part in Path(path).parts:
+        checkpoint()
         lowered = part.lower()
         if lowered in EXAMPLE_PATH_PARTS:
             return True
-        if any(marker in lowered for marker in ("playground", "example", "demo")):
+        if any(marker in lowered for marker in budgeted(("playground", "example", "demo"))):
             return True
     return False
 
@@ -883,9 +923,11 @@ def _is_example_path(path: str) -> bool:
 def _relation_target_index(candidate_paths: set[str]) -> dict[str, str]:
     index: dict[str, str] = {}
     for path in sorted(candidate_paths):
+        checkpoint()
         normalized = normalize_repo_path(path)
         parts = normalized.split("/")
         for offset in range(len(parts)):
+            checkpoint()
             index.setdefault("/".join(parts[offset:]), path)
         if parts:
             index.setdefault(parts[-1], path)
@@ -904,6 +946,7 @@ def _basename(path: str) -> str:
 def _path_tokens(value: str) -> list[str]:
     parts = []
     for token in identifier_terms(value):
+        checkpoint()
         if len(token) >= 3:
             parts.append(token)
     return list(dict.fromkeys(parts))
@@ -914,6 +957,7 @@ def _best_soft_match(query_token: str, candidates: list[str]) -> float:
         return 0.0
     best = 0.0
     for candidate in candidates:
+        checkpoint()
         if len(candidate) < 5 or is_query_noise_token(candidate):
             continue
         shorter, longer = sorted((query_token, candidate), key=len)
@@ -933,13 +977,14 @@ def _best_soft_match(query_token: str, candidates: list[str]) -> float:
 def _related_symbols(symbols: list[dict[str, Any]], tokens: list[str], candidate_paths: set[str]) -> list[dict[str, Any]]:
     ranked: list[tuple[int, dict[str, Any]]] = []
     for symbol in symbols:
+        checkpoint()
         name = str(symbol["name"])
         name_lower = name.lower()
         path = str(symbol["file"])
         score = 0
         if path in candidate_paths:
             score += 1
-        if any(token in name_lower for token in tokens):
+        if any(token in name_lower for token in budgeted(tokens)):
             score += 3
         if score:
             ranked.append(
@@ -954,13 +999,14 @@ def _related_symbols(symbols: list[dict[str, Any]], tokens: list[str], candidate
                 )
             )
     ranked.sort(key=lambda item: (-item[0], str(item[1]["file"]), int(item[1]["line"])))
-    return [item for _, item in ranked]
+    return [item for _, item in budgeted(ranked)]
 
 
 def _recent_commits(query_commits: list[dict[str, Any]], candidate_paths: set[str]) -> list[dict[str, Any]]:
     result = []
     for commit in query_commits:
-        files = list(dict.fromkeys(path for path in commit.get("files", []) if path))
+        checkpoint()
+        files = list(dict.fromkeys(path for path in budgeted(commit.get("files", [])) if path))
         if not files or candidate_paths.intersection(files):
             total_files = len(files)
             result.append(
@@ -986,13 +1032,13 @@ def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> d
             "next_agent_actions": _recovery_actions(query, no_candidates=True),
         }
 
-    broad_candidates = sum(1 for item in candidate_files if float(item.get("score") or 0.0) >= 0.5)
-    top_reasons = [str(reason) for reason in candidate_files[0].get("reasons", [])]
-    strong_reason = any(_is_strong_reason(reason) for reason in top_reasons)
+    broad_candidates = sum(1 for item in budgeted(candidate_files) if float(item.get("score") or 0.0) >= 0.5)
+    top_reasons = [str(reason) for reason in budgeted(candidate_files[0].get("reasons", []))]
+    strong_reason = any(_is_strong_reason(reason) for reason in budgeted(top_reasons))
     weak_soft_reasons = sum(
         1
-        for item in candidate_files[:8]
-        for reason in item.get("reasons", [])
+        for item in budgeted(candidate_files[:8])
+        for reason in budgeted(item.get("reasons", []))
         if "softly matches" in str(reason)
     )
     if broad_candidates >= 6:
@@ -1011,7 +1057,7 @@ def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> d
         level = "medium"
     else:
         level = "high"
-    if symptom_test_candidate and any("underlying cause" in reason for reason in reasons):
+    if symptom_test_candidate and any("underlying cause" in reason for reason in budgeted(reasons)):
         level = "medium" if level == "high" else level
     return {
         "confidence": {"level": level, "reasons": reasons},
@@ -1026,7 +1072,7 @@ def _context_diagnostics(query: str, candidate_files: list[dict[str, Any]]) -> d
 def _is_strong_reason(reason: str) -> bool:
     return any(
         marker in reason
-        for marker in (
+        for marker in budgeted((
             "previously marked",
             "symbol matches",
             "calls ",
@@ -1034,7 +1080,7 @@ def _is_strong_reason(reason: str) -> bool:
             "filename contains",
             "path matches",
             "modified in recent query-related commit",
-        )
+        ))
     )
 
 
@@ -1042,6 +1088,7 @@ def _symptom_test_candidate(tokens: list[str], candidate_files: list[dict[str, A
     if not _is_symptom_query(tokens):
         return ""
     for item in candidate_files[:8]:
+        checkpoint()
         path = str(item.get("path") or "")
         role = str(item.get("role") or "")
         path_parts = set(_path_tokens(path))
@@ -1057,6 +1104,7 @@ def _is_symptom_query(tokens: list[str]) -> bool:
 
 def _has_generic_symptom_candidates(candidate_files: list[dict[str, Any]]) -> bool:
     for item in candidate_files[:5]:
+        checkpoint()
         path_tokens = set(_path_tokens(str(item.get("path") or "")))
         if path_tokens.intersection(GENERIC_SYMPTOM_PATH_TOKENS):
             return True

@@ -211,6 +211,12 @@ Events are ingested by the lightweight `init-agent-hook` executable. The hook
 fails open, does not create an index, and records nothing when the current
 repository has no existing `.agent/graph.sqlite`.
 
+Installation pins a verified absolute executable path. If automatic discovery
+cannot find a trusted installation, use `--command /absolute/path/to/init-agent-hook`.
+Relative overrides and, on POSIX, group/world-writable executable path chains
+are rejected. Existing bare-name hooks are reported as non-current; explicitly
+running installation again upgrades them to the verified absolute path.
+
 This is not an MCP command and agents do not need to call it during normal
 work. Once configured, supported Codex lifecycle events are recorded
 automatically. See [trajectory.md](trajectory.md) for the event set, retention,

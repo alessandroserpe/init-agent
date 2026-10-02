@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .repo_budget import CURRENT_BUDGET, WorkBudgetExceeded, bounded_operation, checkpoint
+from .bounded_process import run_bounded
+from .executables import resolve_executable
 from .private_files import ensure_private_dir, harden_private_path, write_private_text
 
 
@@ -157,6 +160,7 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
+            checkpoint('io_bytes', len(chunk))
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -169,6 +173,7 @@ def read_text_safely(path: Path, max_bytes: int = 2_000_000) -> str | None:
             return None
         with path.open("rb") as handle:
             data = handle.read(max_bytes + 1)
+            checkpoint('io_bytes', len(data))
         if len(data) > max_bytes:
             return None
     except OSError:
@@ -330,32 +335,43 @@ def is_indexable_path(path: Path, root: Path, rules: dict[str, set[str]] | None 
     return True
 
 
+@bounded_operation
 def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -> list[Path]:
     ignore = rules or load_ignore_rules(root)
     git_paths = _git_indexable_paths(root)
     if git_paths is not None:
         files = []
         for rel_path in git_paths:
+            checkpoint('entries')
+            _check_path_complexity(Path(rel_path))
             path = root / rel_path
             if path.is_file() and is_indexable_path(path, root, ignore):
                 files.append(path)
         return sorted(files)
     files = []
-    for current_root, dirnames, filenames in os.walk(root):
-        current = Path(current_root)
-        dirnames[:] = [
-            dirname
-            for dirname in dirnames
-            if dirname not in ignore["exclude_dirs"]
-            and not _is_excluded_dir_part(dirname)
-            and not _is_hidden_dir_part(dirname, ignore)
-            and is_indexable_path(current / dirname, root, ignore)
-        ]
-        for filename in filenames:
-            path = current / filename
-            if path.is_file() and is_indexable_path(path, root, ignore):
-                files.append(path)
+    pending = [root]
+    while pending:
+        checkpoint()
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                checkpoint('entries')
+                path = Path(entry.path)
+                _check_path_complexity(path.relative_to(root))
+                if entry.is_dir(follow_symlinks=False):
+                    if (entry.name not in ignore["exclude_dirs"]
+                            and not _is_excluded_dir_part(entry.name)
+                            and not _is_hidden_dir_part(entry.name, ignore)
+                            and is_indexable_path(path, root, ignore)):
+                        pending.append(path)
+                elif entry.is_file() and is_indexable_path(path, root, ignore):
+                    files.append(path)
     return sorted(files)
+
+
+def _check_path_complexity(path: Path) -> None:
+    if len(str(path)) > 4096 or len(path.parts) > 64:
+        raise WorkBudgetExceeded("repository path complexity limit exceeded; results are incomplete")
 
 
 def is_hidden_or_excluded_dir(path: Path, root: Path, excluded: set[str]) -> bool:
@@ -380,16 +396,8 @@ def _git_indexable_paths(root: Path) -> list[str] | None:
     if not (root / ".git").exists():
         return None
     try:
-        result = subprocess.run(
-            [*git_read_command(), "ls-files", "-co", "--exclude-standard"],
-            cwd=root,
-            env=git_read_environment(),
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        result = run_git_read(root, "ls-files", "-co", "--exclude-standard")
+    except (OSError, ValueError):
         return None
     if result.returncode != 0:
         return None
@@ -410,15 +418,37 @@ def env_with_clean_locale() -> dict[str, str]:
     return env
 
 
-def git_read_command() -> list[str]:
+def git_read_command(root: Path | None = None) -> list[str]:
     """Disable executable Git configuration in repository metadata reads."""
-    return ["git", "--no-pager", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull,
+    return [resolve_executable("git", root=root, required=True), "--no-pager", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull,
             "-c", "core.untrackedCache=false", "-c", "diff.external=", "-c", "submodule.recurse=false"]
 
 
 def git_read_environment() -> dict[str, str]:
     env = env_with_clean_locale()
+    env["PATH"] = os.pathsep.join(str(path) for path in (Path("/usr/bin"), Path("/bin")) if path.is_dir()) if os.name == "posix" else str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
     env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                 "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1",
                 "GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat"})
     return env
+
+
+@bounded_operation
+def run_git_read(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    budget = CURRENT_BUDGET.get()
+    budget.check()
+    command = [*git_read_command(root), *args]
+    remaining = budget.limits['git_bytes'] - budget.used.get('git_bytes', 0)
+    if remaining <= 0:
+        budget.check('git_bytes', 1)
+    import time
+    timeout = min(10.0, budget.max_seconds - (time.monotonic() - budget.started))
+    budget.check(amount=0)
+    try:
+        result = run_bounded(command, cwd=root, env=git_read_environment(), check=False,
+                             timeout=max(0.001, timeout), max_bytes=min(2 * 1024 * 1024, remaining))
+    except subprocess.CalledProcessError as exc:
+        budget.reason = 'Git subprocess output/deadline limit'
+        raise WorkBudgetExceeded('repository Git work budget exceeded; results are incomplete') from exc
+    budget.check('git_bytes', len(result.stdout.encode('utf-8')) + len(result.stderr.encode('utf-8')))
+    return result

@@ -26,7 +26,7 @@ def export_graph(root: Path) -> dict[str, Any]:
             for row in conn.execute(
                 """
                 SELECT s.id, s.file_id, f.path AS file, s.name, s.kind, s.line,
-                       s.end_line, s.signature, s.qualified_name, s.container_name
+                       s.end_line, substr(s.signature, 1, 4096) AS signature, s.qualified_name, s.container_name
                 FROM symbols s
                 JOIN files f ON f.id = s.file_id
                 ORDER BY f.path, s.line, s.name

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .executables import resolve_executable
 from .private_files import copy_private_file, harden_private_path
 
 from .trajectory import CODEX_HOOK_EVENTS
@@ -42,7 +43,7 @@ def codex_trajectory_hook_status(config_path: Path | None = None) -> dict[str, A
             "events": [],
         }
     events = sorted(event for event in CODEX_HOOK_EVENTS if _event_has_init_agent(hooks.get(event)))
-    current = set(events) == CODEX_HOOK_EVENTS
+    current = set(events) == CODEX_HOOK_EVENTS and all(_event_has_current_hook(hooks.get(event)) for event in events)
     return {
         "installed": bool(events),
         "current": current,
@@ -56,9 +57,10 @@ def codex_trajectory_hook_status(config_path: Path | None = None) -> dict[str, A
 def install_codex_trajectory_hooks(
     config_path: Path | None = None,
     *,
-    command: str = "init-agent-hook",
+    command: str | None = None,
     replace: bool = False,
 ) -> dict[str, Any]:
+    resolved_command = resolve_executable("init-agent-hook", command, required=True, verify_explicit=True)
     target = (config_path or _codex_hooks_path()).expanduser()
     data = _read_hooks(target) if target.is_file() else {}
     hooks = data.setdefault("hooks", {})
@@ -70,7 +72,7 @@ def install_codex_trajectory_hooks(
         return {**before, "installed": True, "updated": False, "backup_path": None}
 
     _remove_init_agent_handlers(hooks)
-    hook_command = f"{shlex.quote(command)} {HOOK_COMMAND_MARKER}"
+    hook_command = f"{shlex.quote(resolved_command)} {HOOK_COMMAND_MARKER}"
     for event in sorted(CODEX_HOOK_EVENTS):
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
@@ -161,6 +163,23 @@ def _event_has_init_agent(groups: Any) -> bool:
         if isinstance(group, dict)
         for handler in (group.get("hooks") or [])
     )
+
+
+def _event_has_current_hook(groups: Any) -> bool:
+    found = False
+    for group in groups or []:
+        if not isinstance(group, dict):
+            continue
+        for handler in group.get("hooks") or []:
+            if not _is_init_agent_handler(handler):
+                continue
+            try:
+                command = shlex.split(handler["command"])[0]
+                resolve_executable("init-agent-hook", command, required=True, verify_explicit=True)
+                found = True
+            except (ValueError, OSError):
+                return False
+    return found
 
 
 def _is_init_agent_handler(handler: Any) -> bool:
