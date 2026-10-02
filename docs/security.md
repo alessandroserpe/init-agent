@@ -25,15 +25,33 @@ It intentionally does not store full file contents.
 
 Metadata is not guaranteed secret-free. Signatures, route names, command
 examples, Git messages and user/agent notes can contain sensitive information.
-Python signatures omit default expressions, constant values and inline bodies;
-this is data minimization, not a general secret detector. Other extractors and
-annotations can still retain literals. Rebuild older indexes with `init-agent
-map` to replace existing signatures. Old exports, backups and SQLite free pages
+Code signatures are reconstructed from declaration names and conservative
+parameter/type shapes, omitting literal defaults and bodies. All signatures
+are capped at 256 UTF-8 bytes at extraction, persistence and graph export,
+including export from older databases. This is data minimization, not a general
+secret detector: names, routes, documentation commands and package scripts can
+still contain sensitive information. Index version 11 requires `init-agent map`
+to replace previously stored signatures. Old exports, backups and SQLite free pages
 are not securely erased by remapping.
 
 Keep `.agent/`, backups and exports private. Do not put credentials or source
 snippets in memory notes, feedback or task summaries. Review exports before
 sharing them.
+
+On Unix, init-agent creates and reopens `.agent` with mode 0700 and its regular
+metadata files with mode 0600, independently of the process umask. SQLite is
+pre-created at 0600 so journals/WAL sidecars inherit that mode. Configuration
+writes, configuration backups and MCP debug logs also use owner-only files.
+Unsafe symlinks, hard-linked files, unexpected file types and ownership are
+rejected before changing or truncating a file; permission-setting failures are
+reported rather than silently ignored. Existing permissive Unix modes are
+hardened on access. This does not revoke copies already obtained by other users.
+
+macOS extended ACLs can grant access beyond Unix mode bits; init-agent warns
+when one is present so the operator can review it. On Windows, native ACLs
+remain the operator's responsibility. Exports are written to stdout: when
+redirecting them to a file, use a private destination, for example
+`(umask 077; init-agent export --json > graph-export.json)` for a new file.
 
 ## Local Dashboard
 
@@ -110,6 +128,40 @@ Generated commands quote repository-derived arguments for POSIX shells,
 including dollar signs and backticks. Human-readable CLI output and text
 renderers escape terminal control sequences; JSON retains the original values
 through JSON escaping.
+
+Trace traversal shares a budget of 1,000 states across all starts and caps its
+queue at 1,000 paths. Trace and estimate share bounded, cached reads within each
+request: at most 256 files, 256 KiB per file and 8 MiB total, with a five-second
+elapsed-time check between operations. Trace also bounds index rows and graph
+edges before traversal. Responses flag partial results when limits are reached;
+partial estimate counts and savings do not describe the complete repository.
+Automatic preparation/mapping is separate from these analysis budgets.
+
+Mapping applies per-file parser limits before processing recursive inputs:
+2 MB input, nesting depth 64, 100,000 tokens/delimiters, 50,000 visited nodes
+and 10,000 emitted symbol/relation records. Python logical statements are
+also limited to 512 tokens. Cooperative elapsed-time checks use a two-second
+budget. These checks do not forcibly interrupt native parser calls; process
+isolation is needed for a hard CPU/memory sandbox.
+
+Parser resource failures skip the affected file, remove any stale symbols
+for it, record a bounded diagnostic and continue mapping other files. Map
+summaries retain the failure count and up to 50 diagnostics. PHP tree-sitter
+extraction splits source lines once per file and checks its node traversal.
+
+Git metadata reads disable filesystem monitors, hooks, external diffs and
+text conversion, avoid system/global configuration and lazy object fetching,
+and time out each subprocess after ten seconds. Prepared working trees with
+local Git configuration are treated as untrusted for these execution features.
+Git itself remains a required, trusted local installation.
+
+MCP installation discovers executables in known runtime and installation
+directories rather than searching the ambient `PATH`. Automatic discovery
+rejects executables in the target repository, unsafe ownership and group/world
+writable paths. An explicit `--codex-command` must be an absolute executable
+path outside the repository; supplying it selects that binary as trusted.
+If Codex is installed elsewhere, use this option. The resolved absolute server
+command is persisted and reported in installation results.
 
 Reading-plan manifest decoding accepts at most 8 MiB of compressed input and
 8 MiB of decompressed JSON. Oversized, malformed or truncated manifests are

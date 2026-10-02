@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .signatures import minimize_signature
 from .utils import utc_now
 
 
@@ -102,7 +103,7 @@ def _symbol_dict(row: dict[str, Any]) -> dict[str, Any]:
         "kind": row["kind"],
         "line": row["line"],
         "end_line": row["end_line"],
-        "signature": row["signature"],
+        "signature": minimize_signature(row["name"], row["kind"], row["signature"]),
         "qualified_name": row["qualified_name"],
         "container_name": row["container_name"],
     }

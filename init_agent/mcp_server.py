@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .private_files import private_open
+from .utils import terminal_safe
 from .mcp_tools import MCP_TOOL_HANDLERS, MCP_TOOL_PROFILES, mcp_tool_definitions, mcp_tool_names
 
 
@@ -107,11 +109,11 @@ class InitAgentMcpServer:
         if self.debug_log is None:
             return
         try:
-            self.debug_log.parent.mkdir(parents=True, exist_ok=True)
-            with self.debug_log.open("a", encoding="utf-8") as fh:
+            self.debug_log.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with private_open(self.debug_log, "a") as fh:
                 fh.write(json.dumps({"event": event, **payload}, sort_keys=True) + "\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            print(terminal_safe(f"Could not write private debug log: {exc}"), file=sys.stderr)
 
 
 def _debug_request_payload(request: dict[str, Any]) -> dict[str, Any]:

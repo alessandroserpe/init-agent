@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from .private_files import copy_private_file, harden_private_path
 
 from .trajectory import CODEX_HOOK_EVENTS
 
@@ -189,6 +190,7 @@ def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            harden_private_path(temporary)
             handle.write(payload)
         temporary.replace(path)
     finally:
@@ -198,7 +200,7 @@ def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
 def _backup_file(path: Path) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     backup = path.with_name(f"{path.name}.bak-{timestamp}")
-    shutil.copy2(path, backup)
+    copy_private_file(path, backup)
     return backup
 
 

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import os
+import sys
+import sysconfig
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from .private_files import copy_private_file, private_open, write_private_text
 
 
 DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
@@ -77,8 +80,8 @@ def install_codex_mcp_cli(
     _validate_server_name(server_name)
     normalized_profile = _validate_profile(profile)
     resolved_root = root.expanduser().resolve() if root is not None else None
-    resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
-    resolved_codex = codex_command or shutil.which("codex")
+    resolved_command = _resolve_executable("init-agent-mcp", command, resolved_root, required=True)
+    resolved_codex = _resolve_executable("codex", codex_command, resolved_root)
     if not resolved_codex:
         return {
             "installed": False,
@@ -165,7 +168,7 @@ def uninstall_codex_mcp_cli(
 ) -> dict[str, Any]:
     """Remove the server through Codex's own MCP management command."""
     _validate_server_name(server_name)
-    resolved_codex = codex_command or shutil.which("codex")
+    resolved_codex = _resolve_executable("codex", codex_command)
     if not resolved_codex:
         return {
             "removed": False,
@@ -216,7 +219,7 @@ def install_codex_mcp_config(
     target_config = config_path or DEFAULT_CODEX_CONFIG
     target_config = target_config.expanduser()
     resolved_root = root.expanduser().resolve() if root is not None else None
-    resolved_command = command or shutil.which("init-agent-mcp") or "init-agent-mcp"
+    resolved_command = _resolve_executable("init-agent-mcp", command, resolved_root, required=True)
     section_header = f"[mcp_servers.{server_name}]"
     block = _config_block(section_header, resolved_command, resolved_root, normalized_profile)
 
@@ -227,7 +230,7 @@ def install_codex_mcp_config(
             if replace:
                 target_config.parent.mkdir(parents=True, exist_ok=True)
                 backup_path = _backup_config(target_config)
-                target_config.write_text(_replace_section(original, section_header, block), encoding="utf-8")
+                write_private_text(target_config, _replace_section(original, section_header, block))
                 return {
                     "installed": True,
                     "status": "replaced",
@@ -255,7 +258,7 @@ def install_codex_mcp_config(
 
     target_config.parent.mkdir(parents=True, exist_ok=True)
     backup_path = _backup_config(target_config) if target_config.exists() else None
-    with target_config.open("a", encoding="utf-8") as fh:
+    with private_open(target_config, "a") as fh:
         if original and not original.endswith("\n"):
             fh.write("\n")
         if original and not original.endswith("\n\n"):
@@ -306,7 +309,7 @@ def uninstall_codex_mcp_config(
         }
 
     backup_path = _backup_config(target_config)
-    target_config.write_text(_remove_section(original, section_header), encoding="utf-8")
+    write_private_text(target_config, _remove_section(original, section_header))
     return {
         "removed": True,
         "status": "removed",
@@ -359,7 +362,7 @@ def ensure_codex_mcp_timeouts(
         }
 
     backup_path = _backup_config(target_config)
-    target_config.write_text(updated, encoding="utf-8")
+    write_private_text(target_config, updated)
     return {
         "status": "updated",
         "config_path": str(target_config),
@@ -387,7 +390,7 @@ def _backup_config(config_path: Path) -> Path:
     while backup_path.exists():
         backup_path = config_path.with_name(f"{config_path.name}.bak-{timestamp}-{counter}")
         counter += 1
-    shutil.copy2(config_path, backup_path)
+    copy_private_file(config_path, backup_path)
     return backup_path
 
 
@@ -499,3 +502,48 @@ def _remove_section(original: str, section_header: str) -> str:
     if tail:
         result += "\n" + tail
     return result
+
+
+def _resolve_executable(name: str, explicit: str | None = None, root: Path | None = None,
+                        *, required: bool = False) -> str | None:
+    """Use installation directories, never ambient PATH or the repository.
+
+    An explicit absolute path is the caller's selection of a trusted binary.
+    Automatic discovery additionally checks ownership and writable permissions.
+    """
+    forbidden = [root.resolve()] if root is not None else []
+    cwd = Path.cwd().resolve()
+    if (cwd / ".git").exists() or (cwd / "pyproject.toml").exists():
+        forbidden.append(cwd)
+    if explicit:
+        candidate = Path(explicit).expanduser()
+        if not candidate.is_absolute():
+            raise ValueError(f"{name} requires an explicit absolute executable path")
+        candidates = [candidate]
+    else:
+        candidates = [directory / name for directory in dict.fromkeys([
+            Path(sys.executable).parent, Path(sysconfig.get_path("scripts")),
+            Path.home() / ".local" / "bin", Path("/opt/homebrew/bin"),
+            Path("/usr/local/bin"), Path("/usr/bin"),
+        ])]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+            if any(resolved.is_relative_to(repo) or candidate.is_relative_to(repo) for repo in forbidden):
+                if explicit:
+                    raise ValueError(f"Refusing repository executable: {candidate}")
+                continue
+            if candidate.parent.resolve() == cwd:
+                continue
+            if not resolved.is_file() or not os.access(resolved, os.X_OK):
+                continue
+            if not explicit and os.name == "posix":
+                chain = [candidate, *candidate.parents, resolved, *resolved.parents]
+                if any(path.stat().st_uid not in {0, os.getuid()} or path.stat().st_mode & 0o022 for path in chain):
+                    continue
+            return str(resolved)
+        except (OSError, RuntimeError):
+            continue
+    if required or explicit:
+        raise ValueError(f"No trusted {name} executable found; install it outside the repository or supply an absolute trusted path")
+    return None

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .parse_budget import ParseFailure
 from .relation_resolver import rebuild_resolved_relations
 from .scanner import INDEX_VERSION, index_file, iter_project_files
 from .utils import agent_dir, db_path, relative_path, sha256_file, utc_now
@@ -78,8 +79,12 @@ def refresh_index(root: Path) -> dict[str, Any]:
                         result["updated"].append(rel_path)
                     else:
                         result["unchanged"] += 1
-                except OSError as exc:
-                    result["errors"].append(f"{rel_path}: {exc}")
+                except (OSError, ParseFailure, RecursionError, MemoryError) as exc:
+                    store.delete_file_by_path(rel_path)
+                    result["removed"].append(rel_path)
+                    if len(result["errors"]) < 50:
+                        reason = str(exc) if isinstance(exc, ParseFailure) else type(exc).__name__
+                        result["errors"].append(f"{rel_path[:300]}: {reason}")
 
             for rel_path in sorted(path for path in existing_hashes if path not in real_paths):
                 store.delete_file_by_path(rel_path)

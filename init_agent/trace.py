@@ -10,7 +10,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from .overview import build_overview_pack
+from .read_budget import ReadBudget
+from .overview import _entry_points
 from .utils import db_path, normalize_repo_path, is_live_repo_file
 
 
@@ -103,6 +104,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
     file verification.
     """
 
+    budget = ReadBudget()
     bounded_limit = max(1, min(limit, 30))
     bounded_depth = max(1, min(max_depth, 6))
     database = db_path(root)
@@ -119,7 +121,7 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
         conn.row_factory = sqlite3.Row
         files = {
             int(row["id"]): dict(row)
-            for row in conn.execute("SELECT * FROM files")
+            for row in conn.execute("SELECT * FROM files LIMIT 10000")
             if is_live_repo_file(root, row["path"])
         }
         if not files:
@@ -132,14 +134,20 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
                 "warnings": ["index has no files"],
             }
         path_to_id = {str(row["path"]): file_id for file_id, row in files.items()}
-        symbols = _symbol_definitions(conn)
-        graph = _build_graph(conn, files, path_to_id, symbols)
+        if len(files) >= 10000:
+            budget.truncated = True
+        file_symbols: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        symbols = _symbol_definitions(conn, file_symbols, budget)
+        entries = _entry_points(list(files.values()), {
+            str(files[file_id]["path"]): items for file_id, items in file_symbols.items() if file_id in files
+        })
+        graph = _build_graph(conn, files, path_to_id, symbols, budget)
 
     tokens = _query_tokens(query)
-    starts = _start_files(root, files, tokens)
+    starts = _start_files(root, files, tokens, budget, entries)
     paths: list[dict[str, Any]] = []
     for start in starts:
-        paths.extend(_trace_from(root, start, graph, files, tokens, bounded_depth))
+        paths.extend(_trace_from(root, start, graph, files, tokens, bounded_depth, budget))
     paths.sort(key=lambda item: item["score"], reverse=True)
     deduped = _dedupe_targets(paths)[:bounded_limit]
     return {
@@ -148,13 +156,19 @@ def trace_query(root: Path, query: str, limit: int = 10, max_depth: int = 4) -> 
         "starts": [_compact_file(files[file_id]) for file_id in starts],
         "paths": deduped,
         "suggested_first_reads": [item["target"] for item in deduped[:5]],
-        "warnings": [],
+        "warnings": ["Trace work budget reached; results are partial."] if budget.truncated else [],
+        "work_budget": {"states": budget.states, "bytes_read": budget.bytes_read, "truncated": budget.truncated},
     }
 
 
-def _symbol_definitions(conn: sqlite3.Connection) -> dict[str, set[int]]:
+def _symbol_definitions(conn: sqlite3.Connection, file_symbols: dict[int, list[dict[str, Any]]] | None = None, budget: ReadBudget | None = None) -> dict[str, set[int]]:
     result: dict[str, set[int]] = {}
-    for row in conn.execute("SELECT file_id, name FROM symbols"):
+    rows = conn.execute("SELECT file_id, name, kind, line FROM symbols LIMIT 50000").fetchall()
+    if budget and len(rows) >= 50000:
+        budget.truncated = True
+    for row in rows:
+        if file_symbols is not None:
+            file_symbols[int(row["file_id"])].append(dict(row))
         result.setdefault(str(row["name"]).lower(), set()).add(int(row["file_id"]))
     return result
 
@@ -164,12 +178,17 @@ def _build_graph(
     files: dict[int, dict[str, Any]],
     path_to_id: dict[str, int],
     symbols: dict[str, set[int]],
+    budget: ReadBudget | None = None,
 ) -> dict[int, list[dict[str, Any]]]:
+    budget = budget or ReadBudget()
+    edge_count = 0
     graph_items: dict[int, dict[tuple[int, str], dict[str, Any]]] = defaultdict(dict)
     rows = list(conn.execute(
         "SELECT id, source_id, relation, target_type, target_id, confidence, metadata_json "
-        "FROM relations WHERE source_type = 'file'"
+        "FROM relations WHERE source_type = 'file' LIMIT 50000"
     ))
+    if len(rows) >= 50000:
+        budget.truncated = True
     resolved_raw_ids = {
         int(metadata["raw_relation_id"])
         for row in rows
@@ -178,6 +197,9 @@ def _build_graph(
     }
     strict_resolution = any(str(row["target_type"]) == "resolved_file" for row in rows)
     for row in rows:
+        if budget.expired() or edge_count >= 50000:
+            budget.truncated = True
+            break
         source = int(row["source_id"])
         if source not in files:
             continue
@@ -207,7 +229,9 @@ def _build_graph(
                 targets.add(resolved)
         elif target_type == "symbol_name" and relation in {"calls", "route_to_handler"}:
             targets.update(symbols.get(target_id.lower(), set()))
-        for target in targets:
+        if len(targets) > 25:
+            budget.truncated = True
+        for target in sorted(targets)[:25]:
             if target != source and target in files:
                 item = {
                     "target": target,
@@ -223,6 +247,7 @@ def _build_graph(
                     float(existing.get("confidence") or 0.0),
                 ):
                     graph_items[source][key] = item
+                    edge_count += 1
     return {source: list(items.values()) for source, items in graph_items.items()}
 
 
@@ -303,22 +328,25 @@ def _resolve_template(template: str, path_to_id: dict[str, int]) -> int | None:
     return None
 
 
-def _start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set[str]) -> list[int]:
-    query_starts = _query_start_files(root, files, tokens)
-    entry_starts = _overview_entrypoints(root, files)
+def _start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set[str], budget: ReadBudget | None = None, entries: list[dict[str, Any]] | None = None) -> list[int]:
+    query_starts = _query_start_files(root, files, tokens, budget)
+    entry_starts = _overview_entrypoints(root, files, entries)
     starts = [*query_starts, *entry_starts]
     return list(dict.fromkeys(starts))[:8]
 
 
-def _query_start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set[str]) -> list[int]:
+def _query_start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set[str], budget: ReadBudget | None = None) -> list[int]:
+    budget = budget or ReadBudget()
     strong_tokens = {token for token in tokens if len(token) >= 8 or "test" in token}
     wants_tests = any("test" in token for token in tokens)
     wants_docs = bool(tokens & {"doc", "docs", "documentazione", "readme"})
     scored: list[tuple[float, int]] = []
     for file_id, item in files.items():
+        if budget.expired():
+            break
         path = str(item["path"])
         try:
-            text = (root / path).read_text(errors="ignore").lower() if is_live_repo_file(root, path) else ""
+            text = budget.text(root, path).lower()
         except OSError:
             text = ""
         score = 0.0
@@ -334,24 +362,16 @@ def _query_start_files(root: Path, files: dict[int, dict[str, Any]], tokens: set
     return [file_id for _, file_id in scored[:4]]
 
 
-def _overview_entrypoints(root: Path, files: dict[int, dict[str, Any]]) -> list[int]:
+def _overview_entrypoints(root: Path, files: dict[int, dict[str, Any]], entries: list[dict[str, Any]] | None = None) -> list[int]:
     path_to_id = {str(item["path"]): file_id for file_id, item in files.items()}
-    result: list[int] = []
-    try:
-        overview = build_overview_pack(root)
-    except Exception:
-        overview = {}
-    for item in overview.get("entry_points", [])[:4]:
-        path = str(item.get("path") or "")
-        if path in path_to_id:
-            result.append(path_to_id[path])
-    if result:
-        return result
+    selected = [path_to_id[item["path"]] for item in (entries or [])[:4] if item["path"] in path_to_id]
+    if selected:
+        return selected
     scored: list[tuple[int, int]] = []
     for file_id, item in files.items():
         name = Path(str(item["path"])).name.lower()
         score = 0
-        if name in {"index.php", "main.py", "__main__.py", "app.py", "server.py", "main.ts", "main.tsx", "main.rs"}:
+        if name in {"index.php", "cli.py", "main.py", "__main__.py", "app.py", "server.py", "main.ts", "main.tsx", "main.rs"}:
             score += 10
         if item.get("role") == "route":
             score += 4
@@ -368,17 +388,19 @@ def _trace_from(
     files: dict[int, dict[str, Any]],
     tokens: set[str],
     max_depth: int,
+    budget: ReadBudget | None = None,
 ) -> list[dict[str, Any]]:
+    budget = budget or ReadBudget()
     queue = deque([(start, [start], [])])
     results: list[dict[str, Any]] = []
     seen: set[tuple[int, ...]] = set()
-    while queue:
+    while queue and budget.visit():
         current, path, edges = queue.popleft()
         state = tuple(path)
         if state in seen:
             continue
         seen.add(state)
-        score, reasons = _file_score(root, str(files[current]["path"]), tokens, len(path) - 1)
+        score, reasons = _file_score(root, str(files[current]["path"]), tokens, len(path) - 1, budget)
         if score > 0:
             results.append(
                 {
@@ -399,6 +421,9 @@ def _trace_from(
             target = int(edge["target"])
             if target in path:
                 continue
+            if len(queue) >= budget.max_states:
+                budget.truncated = True
+                break
             queue.append((target, [*path, target], [*edges, _edge_details(files[current], files[target], edge)]))
     return results
 
@@ -449,9 +474,10 @@ def _why_this_path(files: dict[int, dict[str, Any]], path: list[int], edges: lis
     return f"{target} is a start file; {reasons[0] if reasons else 'it matched trace scoring'}"
 
 
-def _file_score(root: Path, path: str, tokens: set[str], distance: int) -> tuple[float, list[str]]:
+def _file_score(root: Path, path: str, tokens: set[str], distance: int, budget: ReadBudget | None = None) -> tuple[float, list[str]]:
+    budget = budget or ReadBudget()
     try:
-        text = (root / path).read_text(errors="ignore").lower() if is_live_repo_file(root, path) else ""
+        text = budget.text(root, path).lower()
     except OSError:
         text = ""
     score = max(0.1, 3.0 - distance * 0.35)

@@ -10,6 +10,9 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
+from .signatures import minimize_signature
+from .parse_budget import CURRENT_PARSE_BUDGET, ParseBudget, ParseFailure, checked_lines, parser_checkpoint, preflight
+
 
 @dataclass(frozen=True)
 class ExtractedSymbol:
@@ -20,6 +23,10 @@ class ExtractedSymbol:
     qualified_name: str = ""
     container_name: str = ""
     end_line: int | None = None
+
+    def __post_init__(self) -> None:
+        parser_checkpoint(record=True)
+        object.__setattr__(self, "signature", minimize_signature(self.name, self.kind, self.signature))
 
 
 @dataclass(frozen=True)
@@ -32,6 +39,9 @@ class ExtractedRelation:
     metadata: dict[str, object] | None = None
     source_qualified_name: str = ""
     provenance: str = "extracted"
+
+    def __post_init__(self) -> None:
+        parser_checkpoint(record=True)
 
 
 PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -248,6 +258,25 @@ PY_CALL_EXCLUDES = {
 
 
 def extract_symbols_and_relations(
+    content: str | None, language: str, path: str | None = None,
+) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    if content is None:
+        return [], []
+    token = CURRENT_PARSE_BUDGET.set(ParseBudget())
+    try:
+        preflight(content, language)
+        result = _extract_symbols_and_relations(content, language, path)
+        parser_checkpoint()
+        return result
+    except ParseFailure:
+        raise
+    except (RecursionError, MemoryError, OverflowError, ValueError, RuntimeError) as exc:
+        raise ParseFailure(f"parser failed ({type(exc).__name__})") from None
+    finally:
+        CURRENT_PARSE_BUDGET.reset(token)
+
+
+def _extract_symbols_and_relations(
     content: str | None,
     language: str,
     path: str | None = None,
@@ -287,7 +316,7 @@ def _extract_markdown(content: str, file_name: str) -> tuple[list[ExtractedSymbo
     in_fence = False
     fence_language = ""
     collect_commands = file_name.startswith("readme")
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         if match := FENCE_RE.match(line):
             in_fence = not in_fence
             fence_language = match.group(1).lower() if in_fence else ""
@@ -338,7 +367,7 @@ def _extract_toml_config(content: str, file_name: str) -> tuple[list[ExtractedSy
 def _extract_yaml_config(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     seen: set[str] = set()
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if line[:1].isspace():
@@ -410,6 +439,9 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
     relations: list[ExtractedRelation] = []
 
     class Visitor(ast.NodeVisitor):
+        def visit(self, node: ast.AST):
+            parser_checkpoint(node=True)
+            return super().visit(node)
         def __init__(self) -> None:
             self.class_depth = 0
             self.scope_stack: list[str] = []
@@ -579,7 +611,7 @@ def _extract_python_regex(content: str, path: str | None = None) -> tuple[list[E
     relations: list[ExtractedRelation] = []
     class_indent: int | None = None
     pending_flask_routes: list[tuple[str, int, str]] = []
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         stripped = line.strip()
         indent = len(line) - len(line.lstrip())
         if class_indent is not None and stripped and indent <= class_indent and not stripped.startswith("@"):
@@ -733,6 +765,8 @@ def _python_dotted_name(node: ast.expr) -> str:
 def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     try:
         ts_symbols, ts_relations = _extract_php_tree_sitter(content)
+    except (ParseFailure, RecursionError, MemoryError):
+        raise
     except Exception:
         return _extract_php_regex(content)
     regex_symbols, regex_relations = _extract_php_regex(content)
@@ -763,7 +797,7 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
     class_brace_balance = 0
     current_callable = ""
     callable_brace_balance = 0
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         class_match = PHP_CLASS_RE.search(line)
         if class_match:
             in_class = True
@@ -852,10 +886,12 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
     parser.language = language
     source = content.encode("utf-8", "ignore")
     tree = parser.parse(source)
+    lines = content.splitlines()
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
 
     def walk(node: object, class_name: str = "", callable_name: str = "") -> None:
+        parser_checkpoint(node=True)
         node_type = getattr(node, "type", "")
         line_no = getattr(node, "start_point")[0] + 1
         if node_type == "class_declaration":
@@ -866,7 +902,7 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                         name,
                         "class",
                         line_no,
-                        _tree_sitter_line(content, line_no),
+                        _tree_sitter_line(lines, line_no),
                         name,
                         "",
                         getattr(node, "end_point")[0] + 1,
@@ -892,7 +928,7 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                         name,
                         node_type.removesuffix("_declaration"),
                         line_no,
-                        _tree_sitter_line(content, line_no),
+                        _tree_sitter_line(lines, line_no),
                         name,
                         "",
                         getattr(node, "end_point")[0] + 1,
@@ -906,7 +942,7 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                         name,
                         "function",
                         line_no,
-                        _tree_sitter_line(content, line_no),
+                        _tree_sitter_line(lines, line_no),
                         name,
                         "",
                         getattr(node, "end_point")[0] + 1,
@@ -920,7 +956,7 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                         name,
                         "method",
                         line_no,
-                        _tree_sitter_line(content, line_no),
+                        _tree_sitter_line(lines, line_no),
                         callable_name,
                         class_name,
                         getattr(node, "end_point")[0] + 1,
@@ -947,7 +983,8 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
             walk(child, class_name, callable_name)
 
     walk(tree.root_node)
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(lines, start=1):
+        parser_checkpoint()
         for table in _sql_tables_in_text(line):
             relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
     return symbols, relations
@@ -981,8 +1018,7 @@ def _tree_sitter_text(source: bytes, node: object) -> str:
     return source[getattr(node, "start_byte") : getattr(node, "end_byte")].decode("utf-8", "ignore")
 
 
-def _tree_sitter_line(content: str, line_no: int) -> str:
-    lines = content.splitlines()
+def _tree_sitter_line(lines: list[str], line_no: int) -> str:
     if 1 <= line_no <= len(lines):
         return lines[line_no - 1].strip()
     return ""
@@ -1204,7 +1240,7 @@ def _extract_go(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRela
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
     in_import_group = False
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         stripped = line.strip()
         if match := GO_FUNCTION_RE.match(line):
             symbols.append(ExtractedSymbol(match.group(1), "function", line_no, stripped))
@@ -1232,7 +1268,7 @@ def _extract_go(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRela
 def _extract_rust(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
-    for line_no, line in enumerate(content.splitlines(), start=1):
+    for line_no, line in enumerate(checked_lines(content), start=1):
         stripped = line.strip()
         if match := RUST_FUNCTION_RE.match(line):
             symbols.append(ExtractedSymbol(match.group(1), "function", line_no, stripped))

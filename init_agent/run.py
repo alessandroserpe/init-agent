@@ -45,7 +45,8 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
                 store.initialize()
                 run_id = store.begin_run("map")
                 summary = scan_project(root, store)
-                store.finish_run(run_id, "ok", summary)
+                store.finish_run(run_id, "warning" if summary.get("errors") else "ok", summary)
+                preparation["warnings"].extend(summary.get("errors", []))
             preparation["map"] = "done"
             if index_state["files"] > 0 and not index_state["current"]:
                 preparation["warnings"].append("index was rebuilt because it was created with an older extractor")
@@ -57,6 +58,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
         result = refresh_index(root)
         if result["status"] == "OK":
             preparation["refresh"] = "done"
+            preparation["warnings"].extend(result.get("errors", []))
         else:
             preparation["refresh"] = "failed"
             preparation["warnings"].extend(result.get("errors", []))

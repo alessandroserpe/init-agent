@@ -443,7 +443,7 @@ def cmd_map(args: argparse.Namespace) -> int:
         run_id = store.begin_run("map")
         try:
             summary = scan_project(root, store)
-            store.finish_run(run_id, "ok", summary)
+            store.finish_run(run_id, "warning" if summary.get("errors") else "ok", summary)
         except Exception as exc:
             store.finish_run(run_id, "error", {"error": str(exc)})
             print(f"Map failed: {exc}", file=sys.stderr)
@@ -452,6 +452,8 @@ def cmd_map(args: argparse.Namespace) -> int:
     print(f"Files: {summary['files']}")
     print(f"Symbols: {summary['symbols']}")
     print(f"Relations: {summary['relations']}")
+    for error in summary.get("errors", []):
+        print(f"Skipped: {error}", file=sys.stderr)
     return 0
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .parse_budget import ParseFailure
 from .language_detector import detect_language, detect_role
 from .relation_resolver import rebuild_resolved_relations
 from .symbol_extractor import ExtractedRelation, ExtractedSymbol, extract_symbols_and_relations
@@ -12,10 +13,12 @@ from .text_tokens import is_query_noise_token, tokenize_query
 from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
 
 
-INDEX_VERSION = "10"
+INDEX_VERSION = "11"
 
 
-def scan_project(root: Path, store: Any) -> dict[str, int]:
+def scan_project(root: Path, store: Any) -> dict[str, Any]:
+    errors: list[str] = []
+    error_count = 0
     indexed_files = 0
     indexed_symbols = 0
     indexed_relations = 0
@@ -28,7 +31,14 @@ def scan_project(root: Path, store: Any) -> dict[str, int]:
             indexed_files += 1
             indexed_symbols += summary["symbols"]
             indexed_relations += summary["relations"]
-        except OSError:
+        except (OSError, ParseFailure, RecursionError, MemoryError) as exc:
+            error_count += 1
+            if len(errors) < 50:
+                reason = str(exc) if isinstance(exc, ParseFailure) else type(exc).__name__
+                errors.append(f"{relative_path(path, root)[:300]}: {reason}")
+            # Remove stale symbols if a formerly readable file now fails parsing.
+            if hasattr(store, "delete_file_by_path"):
+                store.delete_file_by_path(relative_path(path, root))
             continue
 
     removed_files = 0
@@ -44,7 +54,7 @@ def scan_project(root: Path, store: Any) -> dict[str, int]:
     if hasattr(store, "set_meta"):
         store.set_meta("index_version", INDEX_VERSION)
     store.connection.commit()
-    return {"files": indexed_files, "symbols": indexed_symbols, "relations": indexed_relations, "removed": removed_files}
+    return {"files": indexed_files, "symbols": indexed_symbols, "relations": indexed_relations, "removed": removed_files, "errors": errors, "error_count": error_count}
 
 
 def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:

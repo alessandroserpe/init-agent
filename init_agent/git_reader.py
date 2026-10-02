@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .utils import env_with_clean_locale
+from .utils import git_read_command, git_read_environment
 
 
 def has_git(root: Path) -> bool:
@@ -58,7 +58,7 @@ def recent_commits(root: Path, limit: int = 50) -> list[dict[str, object]]:
 
 
 def commit_files(root: Path, commit_hash: str) -> list[str]:
-    result = _git(root, "show", "--pretty=format:", "--name-only", commit_hash)
+    result = _git(root, "show", "--pretty=format:", "--name-only", "--no-ext-diff", "--no-textconv", commit_hash)
     if result.returncode != 0:
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -76,11 +76,9 @@ def collect_git(root: Path) -> dict[str, object]:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=root,
-        env=env_with_clean_locale(),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    command = [*git_read_command(), *args]
+    try:
+        return subprocess.run(command, cwd=root, env=git_read_environment(), text=True,
+                              capture_output=True, check=False, timeout=10)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, 124, "", "Git metadata read timed out")

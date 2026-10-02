@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph_store import GraphStore
+from .read_budget import ReadBudget
 from .run import render_run_markdown, run_query
 from .utils import is_live_repo_file, terminal_safe
 
@@ -21,12 +22,17 @@ def estimate_query(root: Path, query: str) -> dict[str, Any]:
     top_candidate_paths = [item["path"] for item in context.get("candidate_files", [])[:10]]
     indexed_paths = _indexed_textual_paths(root)
 
-    suggested_chars = _character_count(root, suggested_paths)
-    top_chars = _character_count(root, top_candidate_paths)
-    indexed_chars = _character_count(root, indexed_paths)
+    budget = ReadBudget()
+    if len(indexed_paths) >= 10000:
+        budget.truncated = True
+    suggested_chars = _character_count(root, suggested_paths, budget)
+    top_chars = _character_count(root, top_candidate_paths, budget)
+    indexed_chars = _character_count(root, indexed_paths, budget)
 
     return {
         "query": query,
+        "truncated": budget.truncated,
+        "warnings": ["Read budget reached: counts and savings describe partial content."] if budget.truncated else [],
         "context_pack": {
             "characters": context_chars,
             "estimated_tokens": estimate_tokens(context_chars),
@@ -85,6 +91,7 @@ def render_estimate_text(report: dict[str, Any]) -> str:
         f"- Context pack + suggested reads vs full indexed project: {report['estimated_savings']['context_plus_reads_vs_full_percent']:.1f}%",
         f"- Context pack vs top 10 candidates: {report['estimated_savings']['context_vs_top10_percent']:.1f}%",
     ]
+    lines.extend(report.get("warnings", []))
     return terminal_safe("\n".join(lines))
 
 
@@ -103,37 +110,19 @@ def _indexed_textual_paths(root: Path) -> list[str]:
             FROM files
             WHERE role IN ('source', 'test', 'route', 'view', 'migration', 'documentation', 'config', 'unknown')
               AND language NOT IN ('unknown')
-            ORDER BY path
+            ORDER BY path LIMIT 10000
             """
         ).fetchall()
         return [row["path"] for row in rows if is_live_repo_file(root, row["path"])]
 
 
-def _character_count(root: Path, paths: list[str]) -> int:
+def _character_count(root: Path, paths: list[str], budget: ReadBudget | None = None) -> int:
+    budget = budget or ReadBudget()
     total = 0
-    seen: set[str] = set()
-    for rel_path in paths:
-        if rel_path in seen:
-            continue
-        seen.add(rel_path)
-        if not is_live_repo_file(root, rel_path):
-            continue
-        path = root / rel_path
-        try:
-            data = path.read_bytes()
-        except OSError:
-            continue
-        if b"\x00" in data[:4096]:
-            continue
-        text = None
-        for encoding in ("utf-8", "utf-8-sig", "latin-1"):
-            try:
-                text = data.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        if text is not None:
-            total += len(text)
+    for rel_path in dict.fromkeys(paths):
+        if budget.expired():
+            break
+        total += len(budget.text(root, rel_path))
     return total
 
 

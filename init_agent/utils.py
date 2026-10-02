@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .private_files import ensure_private_dir, harden_private_path, write_private_text
+
 
 DEFAULT_EXCLUDED_DIRS = {
     ".git",
@@ -129,9 +131,12 @@ def agent_dir(root: Path) -> Path:
     if directory.is_symlink():
         raise OSError("Refusing symlinked .agent directory")
     if directory.is_dir():
+        harden_private_path(directory, directory=True)
         for child in directory.iterdir():
             if child.is_symlink():
                 raise OSError(f"Refusing symlinked metadata file: {child.name!r}")
+            if child.is_file():
+                harden_private_path(child)
     return directory
 
 
@@ -144,7 +149,7 @@ def config_path(root: Path) -> Path:
 
 
 def ensure_agent_dir(root: Path) -> None:
-    agent_dir(root).mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(agent_dir(root))
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -161,7 +166,10 @@ def read_text_safely(path: Path, max_bytes: int = 2_000_000) -> str | None:
     try:
         if path.stat().st_size > max_bytes:
             return None
-        data = path.read_bytes()
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            return None
     except OSError:
         return None
     if b"\x00" in data[:4096]:
@@ -175,7 +183,7 @@ def read_text_safely(path: Path, max_bytes: int = 2_000_000) -> str | None:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_private_text(path, json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def relative_path(path: Path, root: Path) -> str:
@@ -323,14 +331,15 @@ def _git_indexable_paths(root: Path) -> list[str] | None:
         return None
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-co", "--exclude-standard"],
+            [*git_read_command(), "ls-files", "-co", "--exclude-standard"],
             cwd=root,
-            env=env_with_clean_locale(),
+            env=git_read_environment(),
             text=True,
             capture_output=True,
             check=False,
+            timeout=10,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
         return None
@@ -348,4 +357,18 @@ def mtime_iso(path: Path) -> str:
 def env_with_clean_locale() -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault("LC_ALL", "C")
+    return env
+
+
+def git_read_command() -> list[str]:
+    """Disable executable Git configuration in repository metadata reads."""
+    return ["git", "--no-pager", "-c", "core.fsmonitor=", "-c", "core.hooksPath=" + os.devnull,
+            "-c", "core.untrackedCache=false", "-c", "diff.external=", "-c", "submodule.recurse=false"]
+
+
+def git_read_environment() -> dict[str, str]:
+    env = env_with_clean_locale()
+    env.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1",
+                "GIT_OPTIONAL_LOCKS": "0", "GIT_PAGER": "cat"})
     return env
