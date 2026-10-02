@@ -60,7 +60,8 @@ def preflight(content: str, language: str) -> None:
 
 
 def _python_preflight(content: str) -> None:
-    depth = indents = statement = 0
+    depth = indents = lambdas = 0
+    expressions = [0]
     try:
         for count, token in enumerate(tokenize.generate_tokens(io.StringIO(content).readline), 1):
             parser_checkpoint()
@@ -69,17 +70,27 @@ def _python_preflight(content: str) -> None:
             if token.type == tokenize.OP:
                 if token.string in ("(", "[", "{"):
                     depth += 1
+                    expressions.append(0)
                 elif token.string in (")", "]", "}"):
                     depth = max(0, depth - 1)
+                    if len(expressions) > 1:
+                        expressions.pop()
             if token.type == tokenize.INDENT:
                 indents += 1
             elif token.type == tokenize.DEDENT:
                 indents -= 1
+            # Count expression chains separately at each delimiter depth. A
+            # comma in an inner call must not reset its outer addition chain.
             if token.type == tokenize.NEWLINE:
-                statement = 0
+                expressions = [0] * len(expressions)
+                lambdas = 0
+            elif token.type == tokenize.OP and token.string == "," and depth:
+                expressions[-1] = 0
             elif token.type not in {tokenize.NL, tokenize.COMMENT}:
-                statement += 1
-            if max(depth, indents) > MAX_PARSE_DEPTH or statement > 512:
+                expressions[-1] += 1
+            if token.type == tokenize.NAME and token.string == "lambda":
+                lambdas += 1
+            if max(depth, indents) > MAX_PARSE_DEPTH or expressions[-1] > 512 or lambdas > MAX_PARSE_DEPTH:
                 raise ParseFailure("parser nesting/statement limit exceeded")
     except (tokenize.TokenError, IndentationError, SyntaxError):
         # The Python extractor retains its bounded regex fallback for invalid syntax.

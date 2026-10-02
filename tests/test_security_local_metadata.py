@@ -129,6 +129,10 @@ class LocalMetadataSecurityTests(unittest.TestCase):
                 self.assertNotIn('old_symbol', names)
 
     def test_parser_failures_and_output_budgets_are_bounded(self):
+        # Large flat schemas/configuration literals are ordinary Python code.
+        flat = 'SCHEMA = {' + ','.join(f'"key{i}": {i}' for i in range(1000)) + '}\ndef after_schema(): pass\n'
+        symbols, _ = extract_symbols_and_relations(flat, 'python')
+        self.assertIn('after_schema', [symbol.name for symbol in symbols])
         for error in [RecursionError('SOURCE_SECRET'), MemoryError('SOURCE_SECRET')]:
             with patch('init_agent.symbol_extractor._extract_json_config', side_effect=error):
                 with self.assertRaises(ParseFailure) as caught:
@@ -142,6 +146,9 @@ class LocalMetadataSecurityTests(unittest.TestCase):
                 extract_symbols_and_relations('def f(): pass', 'python')
         with self.assertRaises(ParseFailure):
             extract_symbols_and_relations('x = ' + '+1' * 1000, 'python')
+        for expression in (' + '.join(['f(1, 2)'] * 1000), '(' + 'lambda a,b: ' * 1000 + '0)'):
+            with self.assertRaises(ParseFailure):
+                extract_symbols_and_relations('x = ' + expression, 'python')
         # Braces inside strings should not be counted as syntax nesting.
         symbols, _ = extract_symbols_and_relations('{"data": "' + '[' * 1000 + '"}', 'json')
         self.assertEqual(symbols[0].name, 'data')
