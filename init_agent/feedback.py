@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .metadata_limits import bounded_metadata
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
 from .utils import normalize_repo_path, utc_now
@@ -32,6 +33,7 @@ MAX_POSITIVE_BOOST = 30.0
 MAX_NEGATIVE_PENALTY = -5.0
 
 
+@bounded_metadata
 def add_feedback(root: Path, query: str, path: str, rating: str, reason: str = "", source: str = "agent") -> dict[str, Any]:
     normalized_rating = rating.lower().strip()
     normalized_source = source.lower().strip()
@@ -63,9 +65,12 @@ def add_feedback(root: Path, query: str, path: str, rating: str, reason: str = "
     return record
 
 
-def list_feedback(root: Path, query: str | None = None, path: str | None = None) -> list[dict[str, Any]]:
+def list_feedback(root: Path, query: str | None = None, path: str | None = None, limit: int = 1000, before_id: int | None = None) -> list[dict[str, Any]]:
     clauses = []
     params: list[str] = []
+    if before_id is not None:
+        clauses.append("id < ?")
+        params.append(int(before_id))
     if query:
         clauses.append("query = ?")
         params.append(query)
@@ -80,9 +85,9 @@ def list_feedback(root: Path, query: str | None = None, path: str | None = None)
             SELECT id, query, query_tokens_json, path, rating, reason, source, created_at
             FROM orientation_feedback
             {where}
-            ORDER BY id DESC
+            ORDER BY id DESC LIMIT ?
             """,
-            params,
+            [*params, max(1, min(int(limit), 5000))],
         ).fetchall()
     return [_row_to_feedback(row) for row in rows]
 
@@ -106,10 +111,14 @@ def clear_feedback(root: Path, query: str | None = None, path: str | None = None
         return int(cursor.rowcount)
 
 
-def export_feedback(root: Path) -> dict[str, Any]:
-    return {"feedback": list_feedback(root)}
+def export_feedback(root: Path, before_id: int | None = None) -> dict[str, Any]:
+    rows = list_feedback(root, limit=5000, before_id=before_id)
+    more = bool(rows and list_feedback(root, limit=1, before_id=rows[-1]["id"]))
+    return {"feedback": rows, "truncated": more,
+            "next_before_id": rows[-1]["id"] if more else None}
 
 
+@bounded_metadata
 def import_feedback(root: Path, payload: Any) -> int:
     if isinstance(payload, list):
         items = payload

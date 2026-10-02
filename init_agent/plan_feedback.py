@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from .feedback import add_feedback
+from .metadata_limits import bounded_metadata
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
 from .utils import ensure_agent_dir, is_live_repo_file, iter_indexable_files, normalize_repo_path, relative_path, shell_quote, utc_now
@@ -22,6 +22,7 @@ EXCLUDED_SCORECARD_KINDS = {"smoke", "experiment", "planning", "diagnostic", "do
 WORKSTREAM_DECISIONS = {"accepted", "rework", "rejected"}
 
 
+@bounded_metadata
 def save_reading_plan(
     root: Path,
     query: str,
@@ -143,6 +144,7 @@ def save_reading_plan(
     }
 
 
+@bounded_metadata
 def finish_reading_plan(
     root: Path,
     plan_id: int,
@@ -180,6 +182,8 @@ def finish_reading_plan(
         plan_row = store.connection.execute("SELECT * FROM reading_plans WHERE id = ?", (plan_id,)).fetchone()
         if plan_row is None:
             return {"updated": False, "id": plan_id, "plan": None, "events": [], "feedback": [], "suggested_memory": []}
+        if plan_row["finished_at"]:
+            return {"updated": False, "id": plan_id, "already_finished": True, "events": [], "feedback": [], "suggested_memory": []}
         pending_review = [
             _workstream(row)
             for row in store.connection.execute(
@@ -212,31 +216,32 @@ def finish_reading_plan(
         ]
         event_paths["missing"] = [path for path in event_paths["missing"] if path not in inferred_created]
         event_paths["created"] = _unique([*event_paths["created"], *inferred_created])
-    event_records: list[dict[str, Any]] = []
     feedback: list[dict[str, Any]] = []
-    for event, paths in event_paths.items():
-        for path in paths:
-            feedback_id = None
-            if event in {"useful", "central", "support", "noisy", "missing"}:
-                reason = _feedback_reason(event, path)
-                rating = "crucial" if event == "central" else "useful" if event == "support" else event
-                record = add_feedback(root, query, path, rating, reason=reason, source=normalized_source)
-                feedback_id = int(record["id"])
-                feedback.append(record)
-            event_records.append({"event": event, "path": path, "feedback_id": feedback_id})
     with GraphStore(root) as store:
         store.initialize()
+        store.connection.execute("BEGIN IMMEDIATE")
+        row = store.connection.execute("SELECT finished_at FROM reading_plans WHERE id = ?", (plan_id,)).fetchone()
+        if row is None or row["finished_at"]:
+            return {"updated": False, "id": plan_id, "already_finished": bool(row), "events": [], "feedback": [], "suggested_memory": []}
         events: list[dict[str, Any]] = []
         now = utc_now()
-        for record in event_records:
-            store.connection.execute(
-                """
-                INSERT INTO reading_plan_events(plan_id, event, path, note, feedback_id, created_at)
-                VALUES(?, ?, ?, ?, ?, ?)
-                """,
-                (plan_id, record["event"], record["path"], "", record["feedback_id"], now),
-            )
-            events.append(dict(record))
+        for event, paths in event_paths.items():
+            for path in paths:
+                feedback_id = None
+                if event in {"useful", "central", "support", "noisy", "missing"}:
+                    rating = "crucial" if event == "central" else "useful" if event == "support" else event
+                    record = {"query": query, "query_tokens_json": json.dumps(tokenize_query(query)),
+                              "path": path, "rating": rating, "reason": _feedback_reason(event, path),
+                              "source": normalized_source, "created_at": now}
+                    cursor = store.connection.execute("""INSERT INTO orientation_feedback
+                        (query, query_tokens_json, path, rating, reason, source, created_at)
+                        VALUES (:query, :query_tokens_json, :path, :rating, :reason, :source, :created_at)""", record)
+                    feedback_id = int(cursor.lastrowid)
+                    record["id"] = feedback_id
+                    feedback.append(record)
+                store.connection.execute("""INSERT INTO reading_plan_events(plan_id, event, path, note, feedback_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)""", (plan_id, event, path, "", feedback_id, now))
+                events.append({"event": event, "path": path, "feedback_id": feedback_id})
         if normalized_kind is None:
             store.connection.execute(
                 "UPDATE reading_plans SET summary = ?, finished_at = ? WHERE id = ?",
@@ -274,6 +279,7 @@ def mark_reading_plan_kind(root: Path, plan_id: int, kind: str) -> dict[str, Any
     return {"updated": True, "id": plan_id, "kind": normalized_kind, "plan": get_reading_plan(root, plan_id)}
 
 
+@bounded_metadata
 def record_reading_plan_read(
     root: Path,
     plan_id: int,
@@ -373,6 +379,7 @@ def reading_plan_diff(root: Path, plan_id: int) -> dict[str, Any]:
     }
 
 
+@bounded_metadata
 def record_workstream_report(
     root: Path,
     plan_id: int,
@@ -447,6 +454,7 @@ def record_workstream_report(
     return {"updated": True, "id": plan_id, "workstream_key": key, "workstream": _workstream(updated)}
 
 
+@bounded_metadata
 def review_workstream_report(
     root: Path,
     plan_id: int,
@@ -501,21 +509,21 @@ def get_reading_plan(root: Path, plan_id: int) -> dict[str, Any] | None:
         items = [
             _item(row)
             for row in store.connection.execute(
-                "SELECT * FROM reading_plan_items WHERE plan_id = ? ORDER BY rank, id",
+                "SELECT * FROM reading_plan_items WHERE plan_id = ? ORDER BY rank, id LIMIT 129",
                 (plan_id,),
             ).fetchall()
         ]
         events = [
             _event(row)
             for row in store.connection.execute(
-                "SELECT * FROM reading_plan_events WHERE plan_id = ? ORDER BY id",
+                "SELECT * FROM reading_plan_events WHERE plan_id = ? ORDER BY id LIMIT 1001",
                 (plan_id,),
             ).fetchall()
         ]
         workstreams = [
             _workstream(row)
             for row in store.connection.execute(
-                "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id",
+                "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id LIMIT 1001",
                 (plan_id,),
             ).fetchall()
         ]
@@ -537,7 +545,7 @@ def list_reading_plans(root: Path, limit: int = 20, unfinished_only: bool = Fals
             events = [
                 _event(item)
                 for item in store.connection.execute(
-                    "SELECT * FROM reading_plan_events WHERE plan_id = ? ORDER BY id",
+                    "SELECT * FROM reading_plan_events WHERE plan_id = ? ORDER BY id LIMIT 1001",
                     (int(row["id"]),),
                 ).fetchall()
             ]
@@ -551,7 +559,7 @@ def list_reading_plans(root: Path, limit: int = 20, unfinished_only: bool = Fals
             workstreams = [
                 _workstream(item)
                 for item in store.connection.execute(
-                    "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id",
+                    "SELECT * FROM reading_plan_workstreams WHERE plan_id = ? ORDER BY id LIMIT 1001",
                     (int(row["id"]),),
                 ).fetchall()
             ]
@@ -560,15 +568,23 @@ def list_reading_plans(root: Path, limit: int = 20, unfinished_only: bool = Fals
 
 
 def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -> dict[str, Any]:
+    bounded_limit = max(1, min(int(limit), 100))
     ensure_agent_dir(root)
     with GraphStore(root) as store:
         store.initialize()
-        plans = [dict(row) for row in store.connection.execute("SELECT * FROM reading_plans").fetchall()]
-        items = [dict(row) for row in store.connection.execute("SELECT * FROM reading_plan_items").fetchall()]
-        events = [dict(row) for row in store.connection.execute("SELECT * FROM reading_plan_events").fetchall()]
+        counts = store.connection.execute("SELECT COUNT(*) AS total, COUNT(finished_at) AS finished FROM reading_plans").fetchone()
+        plans = [dict(row) for row in store.connection.execute(
+            "SELECT * FROM reading_plans WHERE finished_at IS NOT NULL ORDER BY id DESC LIMIT ?", (bounded_limit,))]
+        ids = [int(row["id"]) for row in plans]
+        placeholders = ",".join("?" for _ in ids) or "NULL"
+        items = [dict(row) for row in store.connection.execute(
+            f"SELECT * FROM reading_plan_items WHERE plan_id IN ({placeholders}) ORDER BY id LIMIT 10001", ids)]
+        events = [dict(row) for row in store.connection.execute(
+            f"SELECT * FROM reading_plan_events WHERE plan_id IN ({placeholders}) ORDER BY id LIMIT 10001", ids)]
+        history_truncated = len(items) > 10000 or len(events) > 10000
+        items, events = items[:10000], events[:10000]
     for plan in plans:
         plan["effective_kind"] = _effective_plan_kind(plan)
-    bounded_limit = max(1, min(int(limit), 100))
     finished_plans = [plan for plan in plans if plan.get("finished_at")]
     finished_plans.sort(key=lambda item: int(item["id"]), reverse=True)
     recent_finished = finished_plans[:bounded_limit]
@@ -579,7 +595,6 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
     ]
     excluded_plans = [plan for plan in recent_finished if plan not in included_plans]
     finished_ids = {int(plan["id"]) for plan in included_plans}
-    all_finished_ids = {int(plan["id"]) for plan in finished_plans}
     rank_by_plan_path = {(int(item["plan_id"]), str(item["path"])): int(item["rank"] or 0) for item in items}
     item_by_plan_path = {(int(item["plan_id"]), str(item["path"])): item for item in items}
     planned_paths = defaultdict(set)
@@ -711,9 +726,10 @@ def reading_plan_stats(root: Path, limit: int = 20, include_all: bool = False) -
         for signal in ("memory", "feedback", "tags")
     }
     return {
-        "plan_count": len(plans),
-        "finished_plan_count": len(all_finished_ids),
-        "unfinished_plan_count": len(plans) - len(all_finished_ids),
+        "plan_count": int(counts["total"]),
+        "finished_plan_count": int(counts["finished"]),
+        "unfinished_plan_count": int(counts["total"]) - int(counts["finished"]),
+        "history_truncated": history_truncated,
         "scorecard_limit": bounded_limit,
         "scorecard_include_all": bool(include_all),
         "scorecard_included_plan_count": len(included_plans),
@@ -783,9 +799,10 @@ def _plan(
         "summary": str(row["summary"] or ""),
         "finished_at": row["finished_at"],
         "created_at": str(row["created_at"]),
-        "items": items,
-        "events": events,
-        "workstreams": workstreams or [],
+        "items": items[:128],
+        "events": events[:1000],
+        "history_truncated": len(items) > 128 or len(events) > 1000 or len(workstreams or []) > 1000,
+        "workstreams": (workstreams or [])[:1000],
     }
 
 

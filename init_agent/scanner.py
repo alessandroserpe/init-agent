@@ -11,7 +11,8 @@ from .language_detector import detect_language, detect_role
 from .relation_resolver import rebuild_resolved_relations
 from .symbol_extractor import ExtractedRelation, ExtractedSymbol, extract_symbols_and_relations
 from .text_tokens import is_query_noise_token, tokenize_query
-from .utils import iter_indexable_files, mtime_iso, read_text_safely, relative_path, sha256_file, utc_now
+from .repo_files import repo_snapshot, stat_mtime
+from .utils import iter_indexable_files, relative_path, utc_now
 
 
 INDEX_VERSION = "11"
@@ -59,12 +60,13 @@ def scan_project(root: Path, store: Any) -> dict[str, Any]:
     return {"files": indexed_files, "symbols": indexed_symbols, "relations": indexed_relations, "removed": removed_files, "errors": errors, "error_count": error_count}
 
 
-def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
+def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, int | str]:
     rel_path = relative_path(path, root)
-    stat = path.stat()
+    snapshot = snapshot or repo_snapshot(root, rel_path)
+    stat = snapshot.info
     language = detect_language(path)
     role = detect_role(path)
-    content = read_text_safely(path)
+    content = snapshot.content
     symbols, extracted_relations = extract_symbols_and_relations(content, language, rel_path)
     file_id = store.upsert_file(
         {
@@ -73,8 +75,8 @@ def index_file(root: Path, path: Path, store: Any) -> dict[str, int | str]:
             "language": language,
             "role": role,
             "size": stat.st_size,
-            "sha256": sha256_file(path),
-            "modified_at": mtime_iso(path),
+            "sha256": snapshot.sha256,
+            "modified_at": stat_mtime(stat),
             "indexed_at": utc_now(),
         }
     )

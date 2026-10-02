@@ -9,6 +9,7 @@ from typing import Any
 from .repo_budget import bounded_operation, budgeted, checkpoint
 from .git_reader import current_branch, git_available, has_git
 from .graph_store import GraphStore
+from .markdown_text import inline_code
 from .utils import terminal_safe
 
 
@@ -146,10 +147,10 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
     lines = [
         "# Init Agent Repository Overview",
         "",
-        f"Project: `{project['name']}`",
-        f"Root: `{project['root']}`",
+        f"Project: {inline_code(project['name'])}",
+        f"Root: {inline_code(project['root'])}",
         f"Git: `{'yes' if project['git'] else 'no'}`",
-        f"Branch: `{project['branch'] or '-'}`",
+        f"Branch: {inline_code(project['branch'] or '-')}",
         "",
         "## Suggested first reads",
     ]
@@ -157,25 +158,25 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
         lines.append("-")
     for index, item in enumerate(pack["suggested_first_reads"], start=1):
         checkpoint()
-        lines.append(f"{index}. `{item['path']}`")
-        lines.append(f"   - role: {item['role'] or '-'}")
-        lines.append(f"   - language: {item['language'] or '-'}")
+        lines.append(f"{index}. {inline_code(item['path'])}")
+        lines.append(f"   - role: {inline_code(item['role'] or '-')}")
+        lines.append(f"   - language: {inline_code(item['language'] or '-')}")
         for reason in item["reasons"]:
             checkpoint()
-            lines.append(f"   - {reason}")
+            lines.append(f"   - {inline_code(reason)}")
     lines.extend(["", "## Likely entry points"])
     if not pack["entry_points"]:
         lines.append("-")
     for item in pack["entry_points"]:
         checkpoint()
         detail = f":{item['line']}" if item.get("line") else ""
-        lines.append(f"- `{item['path']}{detail}` {item['kind']} `{item['name']}`")
+        lines.append(f"- {inline_code(str(item['path']) + detail)} {inline_code(item['kind'])} {inline_code(item['name'])}")
     lines.extend(["", "## Package manifests and config"])
     if not pack["manifests"]:
         lines.append("-")
     for item in pack["manifests"]:
         checkpoint()
-        lines.append(f"- `{item['path']}`")
+        lines.append(f"- {inline_code(item['path'])}")
     lines.extend(["", "## Major subsystems"])
     if not pack["subsystems"]:
         lines.append("-")
@@ -183,7 +184,7 @@ def render_overview_markdown(pack: dict[str, Any]) -> str:
         checkpoint()
         languages = ", ".join(item["languages"]) if item["languages"] else "-"
         roles = ", ".join(item["roles"]) if item["roles"] else "-"
-        lines.append(f"- `{item['path_prefix']}`: {item['files']} files; languages: {languages}; roles: {roles}")
+        lines.append(f"- {inline_code(item['path_prefix'])}: {inline_code(item['files'])} files; languages: {inline_code(languages)}; roles: {inline_code(roles)}")
     lines.extend(["", "_Heuristic overview. Verify by reading files before changing code._"])
     return terminal_safe("\n".join(lines))
 

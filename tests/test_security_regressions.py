@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -59,7 +60,11 @@ class SecurityRegressionTests(unittest.TestCase):
             commands = [item['command'] for item in _followup_commands(value, [{'path': value}], [{'name': value, 'kind': 'function'}])]
             commands += [item['command'] for item in _verification_actions(value, [{'path': value}])]
             commands += [item['command'] for item in _recommended_actions(value, [{'path': value, 'read_priority': 'read_now', 'action': 'read', 'reason': 'test'}])]
-            commands += [line[3:-1] for line in _render_handoff_commands({'query': value, 'candidate_files': [{'path': value}], 'related_symbols': [{'name': value, 'kind': 'function'}]})]
+            for line in _render_handoff_commands({'query': value, 'candidate_files': [{'path': value}], 'related_symbols': [{'name': value, 'kind': 'function'}]}):
+                # Decode the Markdown code span, including variable-length fences.
+                match = re.fullmatch(r"- (?P<fence>`+)(?P<command>.*?)(?P=fence)", line)
+                self.assertIsNotNone(match)
+                commands.append(match.group('command').strip())
             # Replace documented placeholders, then capture argv with a harmless shell function.
             for command in commands:
                 with self.subTest(command=command):

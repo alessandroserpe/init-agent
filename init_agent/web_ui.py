@@ -23,6 +23,7 @@ from .web_budget import (BoundedHTTPServer, LimitedHeaders, SnapshotCache,
 from .plan_feedback import scorecard_evidence_confidence
 from .memory import _with_staleness
 from .trajectory import stored_tool_status
+from .repo_files import open_repo_file
 from .utils import db_path, safe_print as print
 
 
@@ -361,13 +362,10 @@ def _bounded_staleness(root: Path, notes: list[dict[str, Any]]) -> list[dict[str
             continue
         hashes[path] = None
         try:
-            target = (root / path).resolve()
-            target.relative_to(root.resolve())
             if time.monotonic() >= deadline or remaining <= 0:
                 limited.add(path)
                 continue
-            fd = os.open(target, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
-            with os.fdopen(fd, "rb") as handle:
+            with open_repo_file(root, path) as handle:
                 info = os.fstat(handle.fileno())
                 allowance = min(remaining, 256 * 1024)
                 if not stat.S_ISREG(info.st_mode):

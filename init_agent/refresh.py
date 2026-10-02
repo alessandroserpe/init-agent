@@ -10,7 +10,8 @@ from .graph_store import GraphStore
 from .parse_budget import ParseFailure
 from .relation_resolver import rebuild_resolved_relations
 from .scanner import INDEX_VERSION, index_file, iter_project_files
-from .utils import agent_dir, db_path, relative_path, sha256_file, utc_now
+from .repo_files import repo_snapshot
+from .utils import agent_dir, db_path, relative_path, utc_now
 
 
 @bounded_operation
@@ -71,13 +72,14 @@ def refresh_index(root: Path) -> dict[str, Any]:
                 real_paths.add(rel_path)
                 result["scanned_files"] += 1
                 try:
-                    current_hash = sha256_file(path)
+                    snapshot = repo_snapshot(root, rel_path)
+                    current_hash = snapshot.sha256
                     old_hash = existing_hashes.get(rel_path)
                     if old_hash is None:
-                        index_file(root, path, store)
+                        index_file(root, path, store, snapshot=snapshot)
                         result["added"].append(rel_path)
                     elif old_hash != current_hash:
-                        index_file(root, path, store)
+                        index_file(root, path, store, snapshot=snapshot)
                         result["updated"].append(rel_path)
                     else:
                         result["unchanged"] += 1

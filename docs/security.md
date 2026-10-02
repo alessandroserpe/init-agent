@@ -257,3 +257,45 @@ You can inspect the local database directly:
 sqlite3 .agent/graph.sqlite ".tables"
 sqlite3 .agent/graph.sqlite "select path, language, role from files limit 10;"
 ```
+
+### Repository reads and rendered metadata
+
+Live repository reads use component-wise directory-descriptor opens with
+`O_NOFOLLOW`, reject non-regular files, and never reopen a checked pathname to
+obtain content. Mapping and refresh derive text, hash, size and modification time
+from the same open descriptor; an in-place change detected during reading is
+reported as a per-file error. Symlinks inside the selected root (including those
+pointing inside it) are skipped. Platforms without `dir_fd`/`O_NOFOLLOW` fail
+closed for live reads rather than using a pathname-check fallback. The selected
+repository root itself is trusted. Hashing has a 64 MiB per-file ceiling in
+addition to request-wide budgets.
+
+Overview and context Markdown encode each repository-derived value as literal
+inline data, with backtick delimiters longer than any embedded run and visible
+newline/tab escapes. Rendered metadata remains untrusted evidence, even when its
+Markdown structure is safe.
+
+### Persistent metadata quotas
+
+MCP handlers and public metadata mutation functions reject collections over 128
+items, strings over 4,096 characters, nesting over eight levels, and input over
+64 KiB before mutation. MCP schemas advertise string and collection limits.
+SQLite additionally enforces a shared 64 MiB logical payload quota for notes,
+tasks, feedback and reading plans. Records are limited to 32 KiB (512 KiB for a
+plan including its compressed file manifest). Row ceilings are 1,000 notes,
+tasks, plans and workstreams per table, 5,000 feedback and task-note rows per
+table, and 10,000 plan items and events per table. These are metadata limits;
+they do not describe SQLite's physical file size or the source graph tables.
+
+Quota failures roll back the active mutation and ask the operator to export or
+remove old metadata. Existing user records are not automatically deleted.
+Plan finalization commits events, feedback and completion atomically; repeating
+finalization returns `already_finished` without adding records. Classification
+changes require a new plan; the separate kind-marking operation remains available.
+
+Feedback reads default to the latest 1,000 rows and support `limit` (up to 5,000)
+and `before_id` pagination in the Python API. Feedback export returns a bounded
+page, with `truncated` and `next_before_id` for legacy histories above 5,000 rows.
+Task details return the latest 100 notes and `notes_truncated`. Plan details cap
+items/events and expose `history_truncated`; scorecards load only the selected
+recent finished plans and bounded matching histories before calculating results.

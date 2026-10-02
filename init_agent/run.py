@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .markdown_text import inline_code
 from .repo_budget import WorkBudgetExceeded, bounded_operation
 from .context_builder import build_context_pack
 from .git_reader import collect_git, has_git
@@ -163,7 +164,7 @@ def render_run_markdown(result: dict[str, Any]) -> str:
     lines = [
         "# Init Agent Context Pack",
         "",
-        f"Query: {context['query']}",
+        f"Query: {inline_code(context['query'])}",
         "",
         "## Preparation",
         f"- Init: {_status_label(prep['init'])}",
@@ -172,37 +173,37 @@ def render_run_markdown(result: dict[str, Any]) -> str:
         f"- Git: {_status_label(prep['git'])}",
     ]
     for warning in prep["warnings"]:
-        lines.append(f"- Warning: {warning}")
+        lines.append(f"- Warning: {inline_code(warning)}")
     lines.extend(["", "## Suggested first reads"])
     if not context["candidate_files"]:
         lines.append("-")
     for index, item in enumerate(context["candidate_files"], start=1):
-        lines.append(f"{index}. `{item['path']}`")
+        lines.append(f"{index}. {inline_code(item['path'])}")
         lines.append(f"   - score: {item['score']:.2f}")
         for reason in item["reasons"]:
-            lines.append(f"   - {reason}")
+            lines.append(f"   - {inline_code(reason)}")
     confidence = context.get("confidence", {})
-    lines.extend(["", "## Confidence", f"- Level: {confidence.get('level', '-')}"])
+    lines.extend(["", "## Confidence", f"- Level: {inline_code(confidence.get('level', '-'))}"])
     for reason in confidence.get("reasons", []):
-        lines.append(f"- {reason}")
+        lines.append(f"- {inline_code(reason)}")
     lines.extend(["", "## Next agent actions"])
     actions = context.get("next_agent_actions", [])
     if not actions:
         lines.append("-")
     for action in actions:
-        lines.append(f"- `{action.get('command', '-')}`")
+        lines.append(f"- {inline_code(action.get('command', '-'))}")
         if action.get("reason"):
-            lines.append(f"  - reason: {action['reason']}")
+            lines.append(f"  - reason: {inline_code(action['reason'])}")
     lines.extend(["", "## Related symbols"])
     if not context["related_symbols"]:
         lines.append("-")
     for symbol in context["related_symbols"]:
-        lines.append(f"- `{symbol['name']}` {symbol['kind']} in `{symbol['file']}:{symbol['line']}`")
+        lines.append(f"- {inline_code(symbol['name'])} {inline_code(symbol['kind'])} in {inline_code(str(symbol['file']) + ':' + str(symbol['line']))}")
     lines.extend(["", "## Recent related commits"])
     if not context["recent_commits"]:
         lines.append("-")
     for commit in context["recent_commits"]:
-        lines.append(f"- `{commit['hash'][:10]}` {commit['message']}")
+        lines.append(f"- {inline_code(commit['hash'][:10])} {inline_code(commit['message'])}")
         if commit.get("files_truncated"):
             lines.append(f"  - files: {len(commit.get('files', []))} of {commit.get('total_files', 0)} shown")
     lines.extend(["", "## Useful follow-up commands"])
@@ -226,22 +227,22 @@ def _render_handoff_commands(context: dict[str, Any]) -> list[str]:
         path = str(item.get("path") or "")
         if path and path not in seen:
             seen.add(path)
-            commands.append(f"- `init-agent related {shell_quote(path)}`")
+            commands.append("- " + inline_code("init-agent related " + shell_quote(path)))
     symbol_seen: set[str] = set()
     for symbol in context.get("related_symbols", [])[:5]:
         name = str(symbol.get("name") or "")
         kind = str(symbol.get("kind") or "")
         if name and name not in symbol_seen and kind in {"function", "method", "class"}:
             symbol_seen.add(name)
-            commands.append(f"- `init-agent callers {shell_quote(name)}`")
+            commands.append("- " + inline_code("init-agent callers " + shell_quote(name)))
     first_path = ""
     if context.get("candidate_files"):
         first_path = str(context["candidate_files"][0].get("path") or "")
     if first_path:
         query = shell_quote(str(context.get("query") or ""))
         commands.append(
-            f"- `init-agent feedback add {query} {shell_quote(first_path)} "
-            '--rating useful --source agent --reason "verified relevant"`'
+            '- ' + inline_code(f"init-agent feedback add {query} {shell_quote(first_path)} "
+            '--rating useful --source agent --reason "verified relevant"')
         )
     return commands or ["-"]
 
@@ -366,7 +367,7 @@ def _render_run_overview_markdown(result: dict[str, Any]) -> str:
         f"- Git: {_status_label(prep['git'])}",
     ]
     for warning in prep["warnings"]:
-        lines.append(f"- Warning: {warning}")
+        lines.append(f"- Warning: {inline_code(warning)}")
     overview_markdown = render_overview_markdown(result["overview"]).splitlines()
     if overview_markdown and overview_markdown[0].startswith("# "):
         overview_markdown = overview_markdown[2:]

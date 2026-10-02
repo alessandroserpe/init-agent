@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from .metadata_limits import install_quotas
 from .repo_budget import BudgetConnection
 from .private_files import private_open
 from .signatures import minimize_signature
@@ -286,6 +287,7 @@ class GraphStore:
     def initialize(self) -> None:
         self.connection.executescript(SCHEMA)
         self._migrate_schema()
+        install_quotas(self.connection)
         self.connection.commit()
 
     def _migrate_schema(self) -> None:

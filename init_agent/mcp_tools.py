@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .metadata_limits import bounded_metadata, validate_input, MAX_ITEMS, MAX_STRING
 from .mcp_compact import compact_mcp_result
 
 from .agent_tools import (
@@ -424,6 +425,7 @@ def _handle_repo_task_close(root: Path, arguments: dict[str, Any]) -> dict[str, 
 
 
 def _string_list(value: Any) -> list[str]:
+    validate_input(value)
     if isinstance(value, str):
         stripped = value.strip()
         return [stripped] if stripped else []
@@ -433,6 +435,7 @@ def _string_list(value: Any) -> list[str]:
 
 
 def _int_list(value: Any) -> list[int]:
+    validate_input(value)
     if not isinstance(value, list):
         return []
     result: list[int] = []
@@ -487,6 +490,8 @@ MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "repo_task_update": _handle_repo_task_update,
 }
 
+
+MCP_TOOL_HANDLERS = {name: bounded_metadata(handler) for name, handler in MCP_TOOL_HANDLERS.items()}
 
 def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
     normalized_profile = profile.strip().lower()
@@ -1022,6 +1027,20 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
             },
         },
     ]
+    def constrain(schema):
+        if schema.get("type") == "string":
+            schema["maxLength"] = min(schema.get("maxLength", MAX_STRING), MAX_STRING)
+        if schema.get("type") == "array":
+            schema["maxItems"] = min(schema.get("maxItems", MAX_ITEMS), MAX_ITEMS)
+        for value in schema.values():
+            if isinstance(value, dict):
+                constrain(value)
+            elif isinstance(value, list):
+                for child in value:
+                    if isinstance(child, dict):
+                        constrain(child)
+    for definition in definitions:
+        constrain(definition["inputSchema"])
     if normalized_profile == "full":
         return definitions
     return [definition for definition in definitions if definition["name"] in MCP_CORE_TOOL_NAMES]

@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 
-from .utils import is_live_repo_file
+import os
+from .repo_files import open_repo_file
 
 
 @dataclass
@@ -42,13 +43,11 @@ class ReadBudget:
             self.truncated = True
             return ""
         self.cache[path] = ""
-        if not is_live_repo_file(root, path):
-            return ""
         allowance = min(self.max_file_bytes, self.max_bytes - self.bytes_read)
         try:
-            with (root / path).open("rb") as handle:
+            with open_repo_file(root, path) as handle:
                 data = handle.read(allowance)
-                if (root / path).stat().st_size > len(data):
+                if os.fstat(handle.fileno()).st_size > len(data):
                     self.truncated = True
         except OSError:
             return ""

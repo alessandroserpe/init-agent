@@ -103,7 +103,7 @@ class MemoryEvidenceTests(InitAgentTestCase):
             outside.write_text("VALUE = 1\n")
             (root / "link.py").symlink_to(outside)
             notes = [{"path": "link.py", "scope": "file", "file_sha256": "old"}] * 2
-            with patch("init_agent.memory.sha256_file") as hasher:
+            with patch("init_agent.repo_files.hashlib.sha256") as hasher:
                 self.assertTrue(all(note["stale"] for note in with_live_staleness(root, notes)))
                 hasher.assert_not_called()
             with patch("init_agent.memory._current_file_sha256", return_value="old") as hasher:

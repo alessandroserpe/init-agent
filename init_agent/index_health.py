@@ -10,7 +10,9 @@ from typing import Any
 
 from .repo_budget import BudgetConnection, bounded_operation, budgeted, checkpoint
 from .scanner import INDEX_VERSION, iter_project_files
-from .utils import db_path, mtime_iso, relative_path
+import os
+from .repo_files import open_repo_file, stat_mtime
+from .utils import db_path, relative_path
 
 
 _CACHE_TTL_SECONDS = 2.0
@@ -108,8 +110,9 @@ def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
         checkpoint()
         path = real_files[rel_path]
         try:
-            stat = path.stat()
-            current_mtime = mtime_iso(path)
+            with open_repo_file(root, rel_path) as handle:
+                stat = os.fstat(handle.fileno())
+                current_mtime = stat_mtime(stat)
         except OSError:
             missing.append(rel_path)
             continue

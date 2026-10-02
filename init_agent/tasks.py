@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .metadata_limits import bounded_metadata
 from .graph_store import GraphStore
 from .utils import ensure_agent_dir, normalize_repo_path, utc_now
 
@@ -14,6 +15,7 @@ STATUSES = {"open", "in_progress", "blocked", "done"}
 SOURCES = {"agent", "user", "benchmark"}
 
 
+@bounded_metadata
 def add_task(
     root: Path,
     title: str,
@@ -118,6 +120,7 @@ def get_task(root: Path, task_id: int) -> dict[str, Any] | None:
     return _row_to_task(row, notes=notes)
 
 
+@bounded_metadata
 def update_task(
     root: Path,
     task_id: int,
@@ -182,6 +185,7 @@ def update_task(
     return {"updated": True, "id": task_id, "task": _row_to_task(row, notes=notes) if row else None}
 
 
+@bounded_metadata
 def add_task_note(
     root: Path,
     task_id: int,
@@ -265,6 +269,7 @@ def add_task_note(
     }
 
 
+@bounded_metadata
 def close_task(
     root: Path,
     task_id: int,
@@ -304,7 +309,7 @@ def _fetch_task_notes(store: GraphStore, task_id: int) -> list[dict[str, Any]]:
                tests_json, remaining_json, source, created_at
         FROM agent_task_notes
         WHERE task_id = ?
-        ORDER BY id DESC
+        ORDER BY id DESC LIMIT 101
         """,
         (task_id,),
     ).fetchall()
@@ -327,7 +332,8 @@ def _row_to_task(row: Any, notes: list[dict[str, Any]]) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "closed_at": row["closed_at"] or "",
-        "notes": notes,
+        "notes": notes[:100],
+        "notes_truncated": len(notes) > 100,
     }
 
 
@@ -347,7 +353,8 @@ def _record_to_task(record: dict[str, Any], notes: list[dict[str, Any]]) -> dict
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
         "closed_at": record.get("closed_at") or "",
-        "notes": notes,
+        "notes": notes[:100],
+        "notes_truncated": len(notes) > 100,
     }
 
 

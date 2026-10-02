@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .metadata_limits import bounded_metadata
 from .graph_store import GraphStore
 from .text_tokens import tokenize_query
-from .utils import ensure_agent_dir, normalize_repo_path, sha256_file, utc_now
+from .repo_files import repo_snapshot
+from .utils import ensure_agent_dir, normalize_repo_path, utc_now
 
 
 SOURCES = {"agent", "user", "benchmark"}
@@ -24,6 +26,7 @@ EVIDENCE_TYPES = {
 }
 
 
+@bounded_metadata
 def add_note(
     root: Path,
     path: str | None,
@@ -157,6 +160,7 @@ def delete_note(root: Path, note_id: int) -> dict[str, Any]:
     return {"deleted": True, "id": note_id, "note": _public_note(note)}
 
 
+@bounded_metadata
 def update_note(
     root: Path,
     note_id: int,
@@ -424,10 +428,7 @@ def _public_note(note: dict[str, Any]) -> dict[str, Any]:
 
 def _current_file_sha256(root: Path, path: str) -> str | None:
     try:
-        target = (root / path).resolve()
-        target.relative_to(root.resolve())
-        if target.is_file():
-            return sha256_file(target)
+        return repo_snapshot(root, path, max_text=0).sha256
     except (OSError, ValueError):
         pass
     return None

@@ -193,7 +193,7 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def relative_path(path: Path, root: Path) -> str:
-    return path.resolve().relative_to(root.resolve()).as_posix()
+    return path.absolute().relative_to(root.absolute()).as_posix()
 
 
 def normalize_repo_path(path: str | Path | None) -> str:
@@ -213,9 +213,9 @@ def is_live_repo_file(root: Path, path: str | Path | None) -> bool:
         relative = Path(normalized)
         if not normalized or relative.is_absolute() or ".." in relative.parts:
             return False
-        candidate = (root / relative).resolve()
-        candidate.relative_to(root.resolve())
-        return candidate.is_file()
+        from .repo_files import open_repo_file
+        with open_repo_file(root, relative):
+            return True
     except (OSError, ValueError, RuntimeError):
         return False
 
