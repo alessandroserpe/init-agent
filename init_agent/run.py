@@ -20,6 +20,14 @@ from .utils import config_path, ensure_agent_dir, has_project_marker, shell_quot
 
 @bounded_operation
 def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
+    preparation = prepare_repository(root)
+    failed = preparation["init"] == "failed" or preparation["map"] == "failed"
+    return _run_result(root, query, preparation, overview, empty=failed)
+
+
+@bounded_operation
+def prepare_repository(root: Path) -> dict[str, Any]:
+    """Initialize/refresh metadata without building a disposable query result."""
     preparation = {
         "init": "skipped",
         "map": "skipped",
@@ -37,7 +45,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
         except Exception as exc:
             preparation["init"] = "failed"
             preparation["warnings"].append(f"init failed: {exc}")
-            return _run_result(root, query, preparation, overview, empty=True)
+            return preparation
 
     try:
         index_state = _index_state(root)
@@ -46,7 +54,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
     except Exception as exc:
         preparation["map"] = "failed"
         preparation["warnings"].append(f"database check failed: {exc}")
-        return _run_result(root, query, preparation, overview, empty=True)
+        return preparation
 
     if index_state["files"] == 0 or not index_state["current"]:
         try:
@@ -64,7 +72,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
         except Exception as exc:
             preparation["map"] = "failed"
             preparation["warnings"].append(f"map failed: {exc}")
-            return _run_result(root, query, preparation, overview, empty=True)
+            return preparation
     else:
         result = refresh_index(root)
         if result["status"] == "OK":
@@ -104,7 +112,7 @@ def run_query(root: Path, query: str, overview: bool = False) -> dict[str, Any]:
             preparation["git"] = "failed"
             preparation["warnings"].append(f"git failed: {exc}")
 
-    return _run_result(root, query, preparation, overview, empty=preparation["map"] == "failed")
+    return preparation
 
 
 def render_run_text(result: dict[str, Any]) -> str:

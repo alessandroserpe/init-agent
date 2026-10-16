@@ -27,7 +27,7 @@ from .plan_feedback import (
 )
 from .query import callers_for_symbol, related
 from .reading_plan import build_reading_plan
-from .run import run_query
+from .run import prepare_repository, run_query
 from .tasks import add_task, add_task_note, close_task, list_tasks, update_task
 from .trace import trace_query
 from .session_tools import repo_session_close, repo_session_summary
@@ -317,14 +317,14 @@ def repo_reading_plan(
     bounded_limit = max(1, min(limit, 30))
     bounded_read_budget = max(1, min(read_budget, 10))
     if prepare:
-        run_result = run_query(root, f"reading plan {query}", overview=False)
-        preparation = run_result.get("preparation", {})
-        warnings = _warnings(run_result)
+        preparation = prepare_repository(root)
+        warnings = _warnings({"preparation": preparation})
     else:
         readiness = _readiness(root)
         preparation = _lazy_preparation(readiness["warnings"], readiness["health"])
         warnings = list(readiness["warnings"])
-    if prepare or readiness["ready"]:
+    ready = (preparation["init"] != "failed" and preparation["map"] != "failed") if prepare else readiness["ready"]
+    if ready:
         plan = build_reading_plan(
             root,
             query,
