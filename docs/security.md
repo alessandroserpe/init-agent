@@ -358,10 +358,16 @@ Git commands receive validated explicit `--git-dir` and `--work-tree` paths.
 A `.git` symlink or special file is rejected. A gitdir file must name a real
 relative directory inside the selected root, without parent traversal. The
 administrative tree must contain only real directories and regular files; the
-validation walk is capped at 20,000 entries per repository operation. Linked
-worktrees (`commondir`) and object alternates are unsupported, even when they
-would be internal: use a self-contained clone for indexing. Rejected Git layouts
-fall back to non-Git source enumeration and contribute no Git history. Inherited
+validation walk is capped at 20,000 entries per repository operation. A main
+checkout may register linked worktrees: only `worktrees/<id>/commondir` containing
+exactly `../..` (apart from surrounding whitespace) is accepted, because it
+refers back to the same validated administrative directory. This does not enable
+indexing a linked checkout through an external gitdir. Top-level common-directory
+indirection, other pointer values, symlinks and object alternates remain rejected.
+The entire administrative tree is still inspected; no worktree subtree is skipped.
+Rejected Git layouts fall back to non-Git source enumeration and contribute no
+Git history. That fallback applies init-agent exclusions, not Git-ignore rules.
+Inherited
 `GIT_*` variables are removed before installing the controlled read environment,
 so ambient gitdir/object-store/config overrides cannot bypass this boundary.
 

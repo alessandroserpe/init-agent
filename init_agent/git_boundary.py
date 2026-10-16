@@ -46,8 +46,9 @@ def validated_git_dir(root: Path) -> Path:
                 raise OSError('gitdir must use real in-repository directories')
     else:
         raise OSError('unexpected .git type')
-    # Reject indirection anywhere in refs/objects, including linked worktrees
-    # and alternates. A self-contained checkout is the supported boundary.
+    # Reject external indirection in the administrative tree. A main checkout
+    # may register linked worktrees: their canonical commondir points back to
+    # this same admin directory, not outside the selected repository.
     pending = [admin]
     count = 0
     while pending:
@@ -63,7 +64,13 @@ def validated_git_dir(root: Path) -> Path:
                 elif not stat.S_ISREG(info.st_mode):
                     raise OSError('Git administrative tree contains a symlink or special file')
                 elif item.name in {'commondir', 'alternates', 'http-alternates'}:
-                    if _small_file(root, Path(item.path).relative_to(root)).strip():
+                    value = _small_file(root, Path(item.path).relative_to(root)).strip()
+                    relative = Path(item.path).relative_to(admin).parts
+                    internal_worktree_pointer = (
+                        len(relative) == 3 and relative[0] == 'worktrees'
+                        and relative[2] == 'commondir' and value == b'../..'
+                    )
+                    if value and not internal_worktree_pointer:
                         raise OSError('Git common directories and object alternates are not supported')
     validate_git_config(root, admin)
     if budget:
