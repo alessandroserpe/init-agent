@@ -53,9 +53,11 @@ python3 -m init_agent.local_search 'backup skill' --root /path/to/project --path
 ```
 
 Leave `local_watch` running without `--once` for subsequent automatic maintenance.
-The query interface only reads; it does not silently initialize/update the index.
-The function `local_search.search` is callable from Python. An MCP tool is not
-registered yet; the current prototype is usable through the CLI/Python interface.
+The direct query interface only reads; it does not initialize/update the index.
+The function `local_search.search` remains callable from Python. MCP now exposes
+`repo_search` in core/full profiles: its wrapper performs maintenance before
+retrieval and reuses unchanged state within the server process. Thus MCP callers
+do not need the manual preparation commands above. See [MCP](mcp.md).
 
 Source chunks are now persisted in the private `.agent/graph.sqlite`, unlike the
 previous metadata-only graph. Existing file exclusions apply, with additional
@@ -121,8 +123,8 @@ outside the source-index transaction; this is not whole-repository atomicity.
 
 No manual database deletion or skill sync is required. From this worktree,
 `python3 -m init_agent.local_watch --root /path/to/repo --once` performs the
-maintenance/migration. This remains an experimental CLI/watch integration,
-not an installed release or newly registered MCP tool.
+maintenance/migration. The CLI/watch path remains experimental; the MCP wrapper now also exposes it
+as `repo_search` with maintenance on demand.
 
 69 focused tests pass, including unchanged-file migration, note preservation,
 no-op subsequent maintenance, failure rollback, future-version refusal and
@@ -131,3 +133,25 @@ limitations remain in `local-search-scope-cost.md` and
 `local-search-scope-passages.md`; their measurements predate integration.
 Historical scope experiments explicitly recreate fixed-window baselines so
 rerunning them does not silently compare the integrated index to itself.
+
+
+## MCP on-demand integration
+
+`repo_search` is available in core/full MCP profiles. It owns a per-server
+maintenance instance and performs initialization and reconciliation on demand,
+under the same advisory lock as the foreground watcher. Invalid input is
+rejected before creating metadata. An unchanged request does not remap files;
+reconciliation is due after 60 seconds and occurs on the next request. Stored
+notes remain independently freshness-checked. Indexing warnings accompany
+results; failures and work-budget exhaustion produce explicit MCP errors.
+The existing `repo_graph_search` contract and the skill text are unchanged.
+
+The complete working-tree suite passes 390 tests with two skips. Dedicated
+checks exercise first-call initialization, unchanged-state reuse, edits and
+deletion, stale notes, rejected inputs without metadata writes, lock contention,
+maintenance warnings/failures, budget exhaustion/recovery and real stdio JSON
+framing. A fresh exported init-agent snapshot also succeeds through the MCP
+entry point, including first initialization and subsequent calls. No model
+benchmark was run. Restart the MCP server (or start a new Codex session) after
+updating the package so the client discovers the new tool; skill sync is not
+needed for this change.

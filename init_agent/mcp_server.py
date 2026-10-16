@@ -15,6 +15,7 @@ from . import __version__
 from .private_files import private_open
 from .utils import terminal_safe
 from .mcp_tools import MCP_TOOL_HANDLERS, MCP_TOOL_PROFILES, mcp_tool_definitions, mcp_tool_names
+from .search_tool import make_repo_search_handler
 
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -59,6 +60,8 @@ class InitAgentMcpServer:
         self.root = root
         self.profile = profile
         self.enabled_tools = mcp_tool_names(profile)
+        self.handlers = dict(MCP_TOOL_HANDLERS)
+        self.handlers["repo_search"] = make_repo_search_handler()
         self.debug_log = Path(os.environ["INIT_AGENT_MCP_DEBUG_LOG"]).expanduser() if os.environ.get("INIT_AGENT_MCP_DEBUG_LOG") else None
 
     def serve(self) -> int:
@@ -112,7 +115,7 @@ class InitAgentMcpServer:
         if not isinstance(name, str) or len(name) > MAX_METHOD_LENGTH:
             return _tool_error("invalid or oversized MCP tool name")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-        handler = MCP_TOOL_HANDLERS.get(name)
+        handler = self.handlers.get(name)
         if handler is None:
             return _tool_error(f"unknown tool: {name}")
         if name not in self.enabled_tools:

@@ -5,6 +5,7 @@ Model Context Protocol tools.
 
 The default `core` profile exposes the small daily agent loop:
 
+- `repo_search` (source passages and saved notes, with automatic local maintenance)
 - `repo_reading_plan`
 - `repo_reading_plan_finish`
 - `repo_overview`
@@ -24,7 +25,20 @@ legacy, maintenance, scorecard, task and delegated-workstream contracts. These
 tools also remain available through `init-agent tool ...`; reducing the MCP
 surface does not remove their functionality.
 
-It does not call an LLM and does not modify project source files. Most MCP tool
+`repo_search` is the experimental full-text entry point. Pass the complete
+question as `query` (up to 1000 characters); it returns up to three source hits
+by default with line ranges, bounded excerpts and relevant saved notes. Optional
+`path_prefixes` restrict source hits; notes remain repository-wide. Freshness
+warnings remain authoritative, and stale notes are not revalidated automatically.
+
+Python initializes/refreshes the index within that call. Later calls check file
+metadata and reuse unchanged state; full reconciliation is due after 60 seconds
+and runs on the next call. Listing tools does not initialize a repository. No
+background process is started. Existing init/map diagnostics go to stderr so
+MCP stdout remains valid JSON. Maintenance failure or a competing prototype
+worker produces a tool error rather than an apparently complete result.
+
+It does not call an LLM and does not modify project source files. Most other MCP tool
 calls are intentionally lazy: they read the existing `.agent/graph.sqlite`
 index and return warnings if the index is missing or empty. Feedback tools can
 write local feedback metadata to `.agent/graph.sqlite` after an agent verifies
@@ -305,7 +319,7 @@ Inside Codex, run:
 Expected result:
 
 - `init_agent` is listed as enabled.
-- The repo tools are available, for example `repo_overview`,
+- The repo tools are available, for example `repo_search`, `repo_overview`,
   `repo_reading_plan`, `repo_reading_plan_finish`, `repo_related_file`,
   `repo_memory_search` and `repo_session_close`.
 - Calling `repo_overview` reports the same repository root you started Codex

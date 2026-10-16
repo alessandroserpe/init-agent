@@ -14,6 +14,7 @@ class McpTests(InitAgentTestCase):
             self.assertEqual(
                 tool_names,
                 {
+                    "repo_search",
                     "repo_graph_search",
                     "repo_reading_plan",
                     "repo_reading_plan_read",
@@ -57,6 +58,7 @@ class McpTests(InitAgentTestCase):
             self.assertEqual(
                 {item["name"] for item in listed["result"]["tools"]},
                 {
+                    "repo_search",
                     "repo_overview",
                     "repo_reading_plan",
                     "repo_reading_plan_finish",

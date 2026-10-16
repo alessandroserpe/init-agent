@@ -167,10 +167,12 @@ Useful follow-ups:
 
 See [docs/commands.md](docs/commands.md) for the full command reference.
 
-The default MCP `core` profile exposes only the daily agent loop: overview,
+The default MCP `core` profile exposes the daily agent loop: local full-text search, overview,
 reading plan, plan finish, targeted file/symbol follow-up, memory search/write
 and session close. Administrative and legacy contracts remain available through
-the CLI or the explicit MCP `full` profile.
+the CLI or the explicit MCP `full` profile. The experimental `repo_search` tool
+returns source passages and saved notes, initializing/refreshing its local index
+within the call; no manual preparation or background service is required.
 
 Core orientation responses include a lightweight `index_health` check. Agents
 can see when files changed, disappeared or were added after the last map instead

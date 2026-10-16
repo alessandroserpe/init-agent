@@ -8,6 +8,7 @@ from typing import Any
 
 from .metadata_limits import bounded_metadata, validate_input, MAX_ITEMS, MAX_STRING
 from .mcp_compact import compact_mcp_result
+from .search_tool import make_repo_search_handler
 
 from .agent_tools import (
     repo_entrypoints,
@@ -50,6 +51,7 @@ ToolHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
 
 MCP_CORE_TOOL_NAMES = frozenset(
     {
+        "repo_search",
         "repo_overview",
         "repo_reading_plan",
         "repo_reading_plan_finish",
@@ -456,6 +458,7 @@ def _mcp_result(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, 
 
 
 MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
+    "repo_search": make_repo_search_handler(),
     "repo_graph_search": _handle_repo_graph_search,
     "repo_trace": _handle_repo_trace,
     "repo_reading_plan": _handle_repo_reading_plan,
@@ -498,6 +501,20 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
     if normalized_profile not in MCP_TOOL_PROFILES:
         raise ValueError(f"unknown MCP tool profile: {profile}")
     definitions = [
+        {
+            "name": "repo_search",
+            "description": "Search source passages and saved notes for a coding question. Automatically initializes/refreshes the local index; returns line evidence and freshness warnings. No preparation call needed.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
+                    "path_prefixes": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Optional relative prefixes restricting source hits; notes remain repository-wide."},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
         {
             "name": "repo_graph_search",
             "description": "Search the local init-agent graph for a coding task and return candidate files, symbols and follow-up commands.",

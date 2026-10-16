@@ -128,7 +128,7 @@ class RepositoryBudgetTests(unittest.TestCase):
             self.assertTrue(json.loads(output.getvalue())['truncated'])
             server = InitAgentMcpServer(root)
             name = next(iter(server.enabled_tools))
-            with patch.dict(mcp_server.MCP_TOOL_HANDLERS, {name: lambda *_: (_ for _ in ()).throw(WorkBudgetExceeded('incomplete'))}):
+            with patch.dict(server.handlers, {name: lambda *_: (_ for _ in ()).throw(WorkBudgetExceeded('incomplete'))}):
                 result = server._call_tool({'name': name, 'arguments': {}})
             self.assertTrue(result['isError'])
             self.assertTrue(result['structuredContent']['truncated'])
