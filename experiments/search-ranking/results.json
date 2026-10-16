@@ -1,0 +1,264 @@
+{
+  "fixture_sha256": "9513ff772f10626d46969ca0d068b71d9cf7b2ccc5b1fd5d9bc8c19bb31be8e7",
+  "baseline_sha256": "fe24809d4eca293c732e9b282d8161db7b6e153db6e486ba6fa0db565d5148d5",
+  "development": [
+    {
+      "id": "symbol_definition",
+      "split": "development",
+      "expected": "engine.py",
+      "query": "rotateArchive",
+      "before": {
+        "paths": [
+          "guide.md",
+          "engine.py"
+        ],
+        "top1": false,
+        "bytes": 1090
+      },
+      "after": {
+        "paths": [
+          "engine.py",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 1251
+      }
+    },
+    {
+      "id": "explicit_path",
+      "split": "development",
+      "expected": "pkg/settings.py",
+      "query": "pkg/settings.py",
+      "before": {
+        "paths": [
+          "guide.md",
+          "pkg/settings.py"
+        ],
+        "top1": false,
+        "bytes": 1039
+      },
+      "after": {
+        "paths": [
+          "pkg/settings.py",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 1200
+      }
+    },
+    {
+      "id": "multi_term",
+      "split": "development",
+      "expected": "engine.py",
+      "query": "transaction retry timeout",
+      "before": {
+        "paths": [
+          "engine.py",
+          "retry.txt",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 1376
+      },
+      "after": {
+        "paths": [
+          "engine.py",
+          "retry.txt",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 1527
+      }
+    },
+    {
+      "id": "literal_error",
+      "split": "development",
+      "expected": "engine.py",
+      "query": "connection pool exhausted",
+      "before": {
+        "paths": [
+          "engine.py",
+          "other.txt"
+        ],
+        "top1": true,
+        "bytes": 893
+      },
+      "after": {
+        "paths": [
+          "engine.py",
+          "other.txt"
+        ],
+        "top1": true,
+        "bytes": 1030
+      }
+    },
+    {
+      "id": "body_only",
+      "split": "development",
+      "expected": "opaque.py",
+      "query": "retention window",
+      "before": {
+        "paths": [
+          "opaque.py"
+        ],
+        "top1": true,
+        "bytes": 660
+      },
+      "after": {
+        "paths": [
+          "opaque.py"
+        ],
+        "top1": true,
+        "bytes": 757
+      }
+    },
+    {
+      "id": "unknown",
+      "split": "development",
+      "expected": null,
+      "query": "qzxvnotpresent",
+      "before": {
+        "paths": [],
+        "top1": true,
+        "bytes": 323
+      },
+      "after": {
+        "paths": [],
+        "top1": true,
+        "bytes": 380
+      }
+    }
+  ],
+  "validation": [
+    {
+      "id": "symbol_other_domain",
+      "split": "validation",
+      "expected": "billing.py",
+      "query": "validateInvoice",
+      "before": {
+        "paths": [
+          "docs.md",
+          "billing.py"
+        ],
+        "top1": false,
+        "bytes": 1081
+      },
+      "after": {
+        "paths": [
+          "billing.py",
+          "docs.md"
+        ],
+        "top1": true,
+        "bytes": 1242
+      }
+    },
+    {
+      "id": "path_other_language",
+      "split": "validation",
+      "expected": "src/client.ts",
+      "query": "src/client.ts",
+      "before": {
+        "paths": [
+          "docs.md",
+          "src/client.ts"
+        ],
+        "top1": false,
+        "bytes": 931
+      },
+      "after": {
+        "paths": [
+          "src/client.ts",
+          "docs.md"
+        ],
+        "top1": true,
+        "bytes": 1092
+      }
+    },
+    {
+      "id": "docs_answer",
+      "split": "validation",
+      "expected": "guide.md",
+      "query": "retention policy",
+      "before": {
+        "paths": [
+          "guide.md",
+          "engine.py"
+        ],
+        "top1": true,
+        "bytes": 1012
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "engine.py"
+        ],
+        "top1": true,
+        "bytes": 1136
+      }
+    },
+    {
+      "id": "configuration",
+      "split": "validation",
+      "expected": "settings.toml",
+      "query": "connection retry limit",
+      "before": {
+        "paths": [
+          "settings.toml",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 976
+      },
+      "after": {
+        "paths": [
+          "settings.toml",
+          "guide.md"
+        ],
+        "top1": true,
+        "bytes": 1100
+      }
+    },
+    {
+      "id": "morphology",
+      "split": "validation",
+      "expected": "engine.py",
+      "query": "connections",
+      "before": {
+        "paths": [
+          "engine.py"
+        ],
+        "top1": true,
+        "bytes": 660
+      },
+      "after": {
+        "paths": [
+          "engine.py"
+        ],
+        "top1": true,
+        "bytes": 757
+      }
+    },
+    {
+      "id": "tests_answer",
+      "split": "validation",
+      "expected": "tests/test_auth.py",
+      "query": "expired token regression",
+      "before": {
+        "paths": [
+          "tests/test_auth.py",
+          "auth.py"
+        ],
+        "top1": true,
+        "bytes": 1046
+      },
+      "after": {
+        "paths": [
+          "tests/test_auth.py",
+          "auth.py"
+        ],
+        "top1": true,
+        "bytes": 1170
+      }
+    }
+  ]
+}

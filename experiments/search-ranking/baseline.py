@@ -1,0 +1,190 @@
+"""Experimental local full-text retrieval with source evidence; no model calls."""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import sqlite3
+
+from .graph_store import GraphStore
+from .memory import with_live_staleness
+from .metadata_db import connect_metadata
+from .repo_budget import bounded_operation, checkpoint
+from .repo_files import repo_snapshot
+from .text_tokens import FUNCTION_WORDS, identifier_terms
+
+SCHEMA = '''
+CREATE TABLE IF NOT EXISTS search_files(path TEXT PRIMARY KEY, sha256 TEXT NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS search_chunks USING fts5(
+ path UNINDEXED, sha256 UNINDEXED, first_line UNINDEXED, last_line UNINDEXED,
+ excerpt UNINDEXED, names, body, tokenize='porter unicode61'
+);
+'''
+
+
+MEMORY_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS search_notes USING fts5(
+ note, topic, query, tags_json, path, content='agent_notes', content_rowid='id',
+ tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS search_notes_insert AFTER INSERT ON agent_notes BEGIN
+ INSERT INTO search_notes(rowid,note,topic,query,tags_json,path)
+ VALUES(new.id,new.note,new.topic,new.query,new.tags_json,new.path);
+END;
+CREATE TRIGGER IF NOT EXISTS search_notes_delete AFTER DELETE ON agent_notes BEGIN
+ INSERT INTO search_notes(search_notes,rowid,note,topic,query,tags_json,path)
+ VALUES('delete',old.id,old.note,old.topic,old.query,old.tags_json,old.path);
+END;
+CREATE TRIGGER IF NOT EXISTS search_notes_update AFTER UPDATE ON agent_notes BEGIN
+ INSERT INTO search_notes(search_notes,rowid,note,topic,query,tags_json,path)
+ VALUES('delete',old.id,old.note,old.topic,old.query,old.tags_json,old.path);
+ INSERT INTO search_notes(rowid,note,topic,query,tags_json,path)
+ VALUES(new.id,new.note,new.topic,new.query,new.tags_json,new.path);
+END;
+"""
+
+
+def searchable_path(path):
+    name = Path(path).name.lower()
+    return not (name.startswith('.env') or name in {'credentials.json', 'secrets.json', 'id_rsa', 'id_ed25519'}
+                or Path(path).suffix.lower() in {'.pem', '.key', '.p12', '.pfx'})
+
+
+def terms(text):
+    return [t for t in identifier_terms(text) if t not in FUNCTION_WORDS]
+
+
+@bounded_operation
+def update_search_index(root: Path):
+    """Update only graph-indexed, readable text files whose content hash changed."""
+    with GraphStore(root) as store:
+        conn = store.connection
+        conn.executescript(SCHEMA)
+        had_notes = conn.execute("SELECT 1 FROM sqlite_master WHERE name='search_notes'").fetchone()
+        conn.executescript(MEMORY_SCHEMA)
+        if not had_notes:
+            conn.execute("INSERT INTO search_notes(search_notes) VALUES('rebuild')")
+            conn.commit()
+        indexed = {p: h for p, h in store.file_hashes().items() if searchable_path(p)}
+        previous = dict(conn.execute('SELECT path,sha256 FROM search_files'))
+        result = {'updated': 0, 'removed': 0, 'skipped': []}
+        try:
+            for path in previous.keys() - indexed.keys():
+                conn.execute('DELETE FROM search_chunks WHERE path=?', (path,))
+                conn.execute('DELETE FROM search_files WHERE path=?', (path,))
+                result['removed'] += 1
+            for path, sha in indexed.items():
+                checkpoint()
+                if previous.get(path) == sha:
+                    continue
+                conn.execute('DELETE FROM search_chunks WHERE path=?', (path,))
+                conn.execute('DELETE FROM search_files WHERE path=?', (path,))
+                try:
+                    snapshot = repo_snapshot(root, path)
+                except OSError:
+                    result['skipped'].append(path)
+                    continue
+                if snapshot.sha256 != sha or snapshot.content is None:
+                    result['skipped'].append(path)
+                    continue
+                lines = snapshot.content.splitlines()
+                symbols = list(conn.execute('SELECT s.name,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=?', (path,)))
+                for start in range(0, len(lines), 20):
+                    end = min(start + 24, len(lines))
+                    excerpt = '\n'.join(lines[start:end])
+                    names = path + ' ' + ' '.join(str(s['name']) for s in symbols if start < s['line'] <= end)
+                    body = ' '.join(terms(excerpt))
+                    checkpoint('bytes', len(body.encode()) + len(excerpt.encode()))
+                    conn.execute('INSERT INTO search_chunks VALUES(?,?,?,?,?,?,?)',
+                                 (path, sha, start+1, end, excerpt, ' '.join(terms(names)), body))
+                conn.execute('INSERT INTO search_files VALUES(?,?)', (path, sha))
+                result['updated'] += 1
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        result['skipped_count'] = len(result['skipped'])
+        result['skipped'] = result['skipped'][:20]
+        return result
+
+
+@bounded_operation
+def search(root: Path, query: str, limit=3, path_prefixes=()):
+    if not 1 <= limit <= 10 or len(query) > 1000:
+        raise ValueError('limit must be 1..10; query at most 1000 characters')
+    if len(path_prefixes) > 8 or any(Path(p).is_absolute() or '..' in Path(p).parts for p in path_prefixes):
+        raise ValueError('Use at most eight repository-relative path prefixes')
+    query_terms = list(dict.fromkeys(terms(query)))[:16]
+    result = {'query': query, 'terms': query_terms, 'results': [], 'memories': [], 'stale_candidates': [],
+              'path_prefixes': list(path_prefixes), 'candidate_limit': 80, 'warnings': [], 'excerpt_character_limit': 1400}
+    if not query_terms:
+        return result
+    expression = ' OR '.join('"' + t.replace('"', '""') + '"' for t in query_terms)
+    conn = connect_metadata(root, readonly=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='search_chunks'").fetchone():
+            raise ValueError('Search index missing; run local_watch --once first')
+        note_rows = [dict(r) for r in conn.execute('SELECT n.id,n.path,n.scope,n.topic,n.note,n.file_sha256,n.evidence,n.source,n.created_at FROM search_notes JOIN agent_notes n ON n.id=search_notes.rowid WHERE search_notes MATCH ? ORDER BY bm25(search_notes) LIMIT 3', (expression,))]
+        for note in with_live_staleness(root, note_rows):
+            note['note_truncated'] = len(note['note']) > 1000
+            note['note'] = note['note'][:1000]
+            result['memories'].append(note)
+        scope = ' AND (' + ' OR '.join('substr(path,1,length(?))=?' for _ in path_prefixes) + ')' if path_prefixes else ''
+        parameters = [expression, *[v for p in path_prefixes for v in (p,p)]]
+        rows = list(conn.execute('SELECT *,bm25(search_chunks,0,0,0,0,0,2,1) AS rank FROM search_chunks WHERE search_chunks MATCH ?' + scope + ' ORDER BY rank LIMIT 80', parameters))
+        result['candidate_limit_reached'] = len(rows) == 80
+        snapshots, seen = {}, set()
+        for row in rows:
+            path = row['path']
+            if path in seen or not searchable_path(path):
+                continue
+            if path not in snapshots:
+                try:
+                    snapshots[path] = repo_snapshot(root, path)
+                except OSError:
+                    snapshots[path] = None
+            snapshot = snapshots[path]
+            if snapshot is None or snapshot.sha256 != row['sha256']:
+                seen.add(path)
+                result['stale_candidates'].append(path)
+                continue
+            seen.add(path)
+            lines = row['excerpt'].splitlines()
+            # Center the returned evidence on a matching line within the hit chunk.
+            position = max(range(len(lines)), key=lambda i: len(set(terms(lines[i])) & set(query_terms))) if lines else 0
+            start = max(0, position-3)
+            selected = lines[start:start+12]
+            text = '\n'.join(selected)
+            first = int(row['first_line']) + start
+            symbols = [dict(s) for s in conn.execute('SELECT s.name,s.kind,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=? AND s.line<=? AND (s.end_line>=? OR s.line>=?) ORDER BY s.line DESC LIMIT 3', (path, first+len(selected)-1, first, first))]
+            links = [dict(r) for r in conn.execute("SELECT r.relation,f.path AS source,r.target_id AS target,r.confidence FROM relations r JOIN files f ON f.id=r.source_id WHERE r.source_type='file' AND r.target_type='resolved_file' AND (f.path=? OR r.target_id=?) ORDER BY r.confidence DESC,f.path,r.target_id LIMIT 4", (path,path))]
+            result['results'].append({'path': path, 'sha256': snapshot.sha256,
+                'start_line': first, 'end_line': first+len(selected)-1,
+                'excerpt': text[:1400], 'excerpt_truncated': len(text)>1400,
+                'bm25': row['rank'], 'symbols': symbols, 'graph_links': links})
+            if len(result['results']) >= limit:
+                break
+        if result['stale_candidates']:
+            result['warnings'].append('Changed or missing candidates omitted; maintenance must catch up.')
+        result['warnings'].append('Graph links are index evidence, not proof of test coverage or semantic correctness.')
+        return result
+    finally:
+        conn.close()
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('query')
+    parser.add_argument('--root',type=Path,default=Path.cwd())
+    parser.add_argument('--limit',type=int,default=3)
+    parser.add_argument('--path-prefix',action='append',default=[],help='Restrict source hits; repeat for multiple directories')
+    args=parser.parse_args(argv)
+    try:
+        print(json.dumps(search(args.root.resolve(),args.query,args.limit,args.path_prefix),indent=2,ensure_ascii=False))
+        return 0
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        print(json.dumps({'status':'error','error':str(exc)}))
+        return 1
+
+if __name__=='__main__':
+    raise SystemExit(main())

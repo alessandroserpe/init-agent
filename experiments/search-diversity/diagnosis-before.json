@@ -1,0 +1,245 @@
+[
+  {
+    "query": "backup skills orientation synchron",
+    "target": "init_agent/skill_installer.py",
+    "rank": 1,
+    "unique_candidates": 21,
+    "caps": [
+      "any_term"
+    ],
+    "top3": [
+      "init_agent/skill_installer.py",
+      "init_agent/cli.py",
+      "init_agent/resources/skills/init-agent-orientation/SKILL.md"
+    ],
+    "target_chunks": [
+      {
+        "first_line": 101,
+        "last_line": 124,
+        "rank": -13.105596736921733,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 61,
+        "last_line": 84,
+        "rank": -12.997646982074318,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 141,
+        "last_line": 164,
+        "rank": -12.956733893105943,
+        "channels": [
+          "any_term"
+        ]
+      }
+    ],
+    "edges_to_target": [
+      {
+        "source": "init_agent/skill_installer.py",
+        "relation": "calls",
+        "target": "init_agent/skill_installer.py",
+        "confidence": 0.8,
+        "metadata_json": "{\"line\": 27, \"qualified_name\": \"_sha256_file\", \"raw_relation_id\": 8428, \"raw_target_id\": \"_sha256_file\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolved_symbol_name\": \"_sha256_file\", \"resolver\": \"same_file_symbol\"}"
+      },
+      {
+        "source": "init_agent/cli.py",
+        "relation": "calls",
+        "target": "init_agent/skill_installer.py",
+        "confidence": 0.8,
+        "metadata_json": "{\"line\": 1276, \"qualified_name\": \"install_codex_skill\", \"raw_relation_id\": 1935, \"raw_target_id\": \"install_codex_skill\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolved_symbol_name\": \"install_codex_skill\", \"resolver\": \"imported_symbol_call\"}"
+      },
+      {
+        "source": "init_agent/cli.py",
+        "relation": "imports",
+        "target": "init_agent/skill_installer.py",
+        "confidence": 0.9,
+        "metadata_json": "{\"line\": 99, \"raw_relation_id\": 1433, \"raw_target_id\": \"init_agent.skill_installer\", \"raw_target_type\": \"module\", \"resolved\": true, \"resolver\": \"module_import\"}"
+      },
+      {
+        "source": "init_agent/cli.py",
+        "relation": "imports_symbol",
+        "target": "init_agent/skill_installer.py",
+        "confidence": 0.95,
+        "metadata_json": "{\"imported_name\": \"install_codex_skill\", \"line\": 99, \"local_name\": \"install_codex_skill\", \"module\": \"init_agent.skill_installer\", \"raw_relation_id\": 1434, \"raw_target_id\": \"install_codex_skill\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolver\": \"imported_symbol\"}"
+      }
+    ]
+  },
+  {
+    "query": "related.files related_files related-file callers callee calls",
+    "target": "init_agent/relation_resolver.py",
+    "rank": 10,
+    "unique_candidates": 13,
+    "caps": [
+      "any_term"
+    ],
+    "top3": [
+      "init_agent/agent_tools.py",
+      "init_agent/query.py",
+      "init_agent/mcp_compact.py"
+    ],
+    "target_chunks": [
+      {
+        "first_line": 201,
+        "last_line": 224,
+        "rank": -4.910043371974979,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 261,
+        "last_line": 284,
+        "rank": -4.880521530773835,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 21,
+        "last_line": 44,
+        "rank": -4.393266557672763,
+        "channels": [
+          "any_term"
+        ]
+      }
+    ],
+    "edges_to_target": []
+  },
+  {
+    "query": "fresh stale memory metadata mtime modified",
+    "target": "init_agent/web_ui.py",
+    "rank": 12,
+    "unique_candidates": 17,
+    "caps": [
+      "any_term"
+    ],
+    "top3": [
+      "init_agent/index_health.py",
+      "init_agent/reading_plan.py",
+      "init_agent/agent_tools.py"
+    ],
+    "target_chunks": [
+      {
+        "first_line": 1281,
+        "last_line": 1304,
+        "rank": -6.982160314497136,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 21,
+        "last_line": 44,
+        "rank": -6.067806459986081,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 401,
+        "last_line": 424,
+        "rank": -5.758858368040652,
+        "channels": [
+          "any_term"
+        ]
+      }
+    ],
+    "edges_to_target": []
+  },
+  {
+    "query": "overview candidate repository map repo map unindexed drift deleted removed",
+    "target": "init_agent/index_health.py",
+    "rank": 1,
+    "unique_candidates": 24,
+    "caps": [
+      "any_term"
+    ],
+    "top3": [
+      "init_agent/index_health.py",
+      "init_agent/doctor.py",
+      "init_agent/agent_tools.py"
+    ],
+    "target_chunks": [
+      {
+        "first_line": 121,
+        "last_line": 144,
+        "rank": -15.212697469343034,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 141,
+        "last_line": 164,
+        "rank": -9.75853728556664,
+        "channels": [
+          "any_term"
+        ]
+      },
+      {
+        "first_line": 21,
+        "last_line": 44,
+        "rank": -9.360935355353192,
+        "channels": [
+          "any_term"
+        ]
+      }
+    ],
+    "edges_to_target": [
+      {
+        "source": "init_agent/index_health.py",
+        "relation": "calls",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.8,
+        "metadata_json": "{\"line\": 36, \"qualified_name\": \"_unavailable\", \"raw_relation_id\": 3824, \"raw_target_id\": \"_unavailable\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolved_symbol_name\": \"_unavailable\", \"resolver\": \"same_file_symbol\"}"
+      },
+      {
+        "source": "init_agent/doctor.py",
+        "relation": "calls",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.8,
+        "metadata_json": "{\"line\": 152, \"qualified_name\": \"index_readiness\", \"raw_relation_id\": 3157, \"raw_target_id\": \"index_readiness\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolved_symbol_name\": \"index_readiness\", \"resolver\": \"imported_symbol_call\"}"
+      },
+      {
+        "source": "init_agent/doctor.py",
+        "relation": "imports",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.9,
+        "metadata_json": "{\"line\": 13, \"raw_relation_id\": 3093, \"raw_target_id\": \"init_agent.index_health\", \"raw_target_type\": \"module\", \"resolved\": true, \"resolver\": \"module_import\"}"
+      },
+      {
+        "source": "init_agent/doctor.py",
+        "relation": "imports_symbol",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.95,
+        "metadata_json": "{\"imported_name\": \"index_readiness\", \"line\": 13, \"local_name\": \"index_readiness\", \"module\": \"init_agent.index_health\", \"raw_relation_id\": 3094, \"raw_target_id\": \"index_readiness\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolver\": \"imported_symbol\"}"
+      },
+      {
+        "source": "init_agent/agent_tools.py",
+        "relation": "calls",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.8,
+        "metadata_json": "{\"line\": 1029, \"qualified_name\": \"index_readiness\", \"raw_relation_id\": 1059, \"raw_target_id\": \"index_readiness\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolved_symbol_name\": \"index_readiness\", \"resolver\": \"imported_symbol_call\"}"
+      },
+      {
+        "source": "init_agent/agent_tools.py",
+        "relation": "imports",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.9,
+        "metadata_json": "{\"line\": 14, \"raw_relation_id\": 812, \"raw_target_id\": \"init_agent.index_health\", \"raw_target_type\": \"module\", \"resolved\": true, \"resolver\": \"module_import\"}"
+      },
+      {
+        "source": "init_agent/agent_tools.py",
+        "relation": "imports_symbol",
+        "target": "init_agent/index_health.py",
+        "confidence": 0.95,
+        "metadata_json": "{\"imported_name\": \"index_readiness\", \"line\": 14, \"local_name\": \"index_readiness\", \"module\": \"init_agent.index_health\", \"raw_relation_id\": 813, \"raw_target_id\": \"index_readiness\", \"raw_target_type\": \"symbol_name\", \"resolved\": true, \"resolver\": \"imported_symbol\"}"
+      }
+    ]
+  }
+]

@@ -1,0 +1,462 @@
+{
+  "synthetic_cases": [
+    {
+      "query": "restoreArchive checksum mismatch",
+      "guide": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 4,
+        "text_bytes": 1862
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 4,
+        "text_bytes": 1910
+      }
+    },
+    {
+      "query": "restoreArchive checksum mismatch",
+      "guide": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 5,
+        "text_bytes": 1987
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 6,
+        "text_bytes": 2041
+      }
+    },
+    {
+      "query": "renewLease deadline exceeded",
+      "guide": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 4,
+        "text_bytes": 1850
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 4,
+        "text_bytes": 1886
+      }
+    },
+    {
+      "query": "renewLease deadline exceeded",
+      "guide": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 5,
+        "text_bytes": 1967
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 6,
+        "text_bytes": 2009
+      }
+    },
+    {
+      "query": "parseManifest unsupported encoding",
+      "guide": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 4,
+        "text_bytes": 1865
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 4,
+        "text_bytes": 1910
+      }
+    },
+    {
+      "query": "parseManifest unsupported encoding",
+      "guide": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 5,
+        "text_bytes": 1994
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 6,
+        "text_bytes": 2045
+      }
+    },
+    {
+      "query": "flushJournal durability barrier",
+      "guide": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 4,
+        "text_bytes": 1858
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 4,
+        "text_bytes": 1900
+      }
+    },
+    {
+      "query": "flushJournal durability barrier",
+      "guide": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": false,
+        "chunks": 5,
+        "text_bytes": 1981
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "implementation_excerpt_correct": true,
+        "chunks": 6,
+        "text_bytes": 2029
+      }
+    }
+  ],
+  "scope_controls": {
+    "outer AND foreignneedle": 0,
+    "child AND outerneedle": 0,
+    "child AND innerneedle": 1,
+    "parent AND outerneedle": 1
+  },
+  "repository": {
+    "revision": "14636ac00129565d298811bd0e61a7024c88e800",
+    "before": {
+      "chunks": 1897,
+      "text_bytes": 3146216
+    },
+    "queries": [
+      {
+        "query": "backup skills orientation synchron",
+        "before": [
+          "init_agent/skill_installer.py",
+          "init_agent/cli.py",
+          "init_agent/resources/skills/init-agent-orientation/SKILL.md"
+        ],
+        "after": [
+          "init_agent/skill_installer.py",
+          "init_agent/resources/skills/init-agent-orientation/SKILL.md",
+          "init_agent/cli.py"
+        ]
+      },
+      {
+        "query": "related.files related_files related-file callers callee calls",
+        "before": [
+          "init_agent/agent_tools.py",
+          "init_agent/query.py",
+          "init_agent/mcp_compact.py"
+        ],
+        "after": [
+          "init_agent/mcp_compact.py",
+          "init_agent/query.py",
+          "init_agent/renderers.py"
+        ]
+      },
+      {
+        "query": "fresh stale memory metadata mtime modified",
+        "before": [
+          "init_agent/index_health.py",
+          "init_agent/reading_plan.py",
+          "init_agent/agent_tools.py"
+        ],
+        "after": [
+          "init_agent/index_health.py",
+          "init_agent/reading_plan.py",
+          "init_agent/utils.py"
+        ]
+      },
+      {
+        "query": "overview candidate repository map repo map unindexed drift deleted removed",
+        "before": [
+          "init_agent/index_health.py",
+          "init_agent/doctor.py",
+          "init_agent/agent_tools.py"
+        ],
+        "after": [
+          "init_agent/index_health.py",
+          "init_agent/overview.py",
+          "init_agent/doctor.py"
+        ]
+      }
+    ],
+    "experimental_rebuild_seconds": 0.19837179200112587,
+    "after": {
+      "chunks": 4325,
+      "text_bytes": 2993320
+    }
+  },
+  "regressions": [
+    {
+      "id": "symbol_definition",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "engine.py",
+        "guide.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "engine.py",
+        "guide.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "explicit_path",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "pkg/settings.py",
+        "guide.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "pkg/settings.py",
+        "guide.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "multi_term",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "engine.py",
+        "retry.txt",
+        "guide.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "engine.py",
+        "retry.txt",
+        "guide.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "literal_error",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "engine.py",
+        "other.txt"
+      ],
+      "before_passes": true,
+      "after": [
+        "engine.py",
+        "other.txt"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "body_only",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "opaque.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "opaque.py"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "unknown",
+      "fixture": "local_search_cases.json",
+      "before": [],
+      "before_passes": true,
+      "after": [],
+      "after_passes": true
+    },
+    {
+      "id": "symbol_other_domain",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "billing.py",
+        "docs.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "billing.py",
+        "docs.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "path_other_language",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "src/client.ts",
+        "docs.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "src/client.ts",
+        "docs.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "docs_answer",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "guide.md",
+        "engine.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "guide.md",
+        "engine.py"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "configuration",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "settings.toml",
+        "guide.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "settings.toml",
+        "guide.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "morphology",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "engine.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "engine.py"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "tests_answer",
+      "fixture": "local_search_cases.json",
+      "before": [
+        "tests/test_auth.py",
+        "auth.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "tests/test_auth.py",
+        "auth.py"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "python_runtime",
+      "fixture": "search_diversity_cases.json",
+      "before": [
+        "notes.txt",
+        "core.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "notes.txt",
+        "core.py"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "typescript_configuration",
+      "fixture": "search_diversity_cases.json",
+      "before": [
+        "reference.md",
+        "client.ts"
+      ],
+      "before_passes": true,
+      "after": [
+        "reference.md",
+        "client.ts"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "documentation_answer",
+      "fixture": "search_diversity_cases.json",
+      "before": [
+        "generated.txt",
+        "docs/policy.md"
+      ],
+      "before_passes": true,
+      "after": [
+        "generated.txt",
+        "docs/policy.md"
+      ],
+      "after_passes": true
+    },
+    {
+      "id": "test_answer",
+      "fixture": "search_diversity_cases.json",
+      "before": [
+        "catalog.txt",
+        "tests/test_session.py"
+      ],
+      "before_passes": true,
+      "after": [
+        "catalog.txt",
+        "tests/test_session.py"
+      ],
+      "after_passes": true
+    }
+  ]
+}

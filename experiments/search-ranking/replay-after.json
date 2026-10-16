@@ -1,0 +1,807 @@
+{
+  "revision": "14636ac00129565d298811bd0e61a7024c88e800",
+  "index_seconds": 1.585850292001851,
+  "index_event": {
+    "at": "2026-10-16T17:28:10+00:00",
+    "status": "ready",
+    "reason": "startup",
+    "counts": {
+      "added": 129,
+      "removed": 0,
+      "updated": 0
+    },
+    "paths": {
+      "added": [
+        ".gitignore",
+        "CONTRIBUTING.md",
+        "LICENSE",
+        "README.md",
+        "docs/agent-usage.md",
+        "docs/commands.md",
+        "docs/experiments.md",
+        "docs/feedback.md",
+        "docs/mcp.md",
+        "docs/memory-workflows.md",
+        "docs/parsing.md",
+        "docs/roadmap.md",
+        "docs/scoring.md",
+        "docs/security.md",
+        "docs/trajectory.md",
+        "experiments/README.md",
+        "experiments/agent-runs/README.md",
+        "experiments/agent-runs/plan-preparation-fix-2026-10-16.md",
+        "experiments/agent-runs/prompt-compaction-2026-10-16.md",
+        "experiments/bounded_process.py",
+        "experiments/cases.json",
+        "experiments/django-hidden-cause/README.md",
+        "experiments/django-hidden-cause/patches/final_fix.diff",
+        "experiments/django-hidden-cause/prompts/baseline_no_init_agent.md",
+        "experiments/django-hidden-cause/prompts/with_init_agent.md",
+        "experiments/django-hidden-cause/results.json",
+        "experiments/django-hidden-cause/results.md",
+        "experiments/django-hidden-cause/task.md",
+        "experiments/evaluate.py",
+        "experiments/flow-graph/README.md",
+        "experiments/flow-graph/evaluate.py",
+        "experiments/flow-graph/results/.gitignore",
+        "experiments/plot_results.py",
+        "experiments/results/.gitignore",
+        "init_agent/__init__.py",
+        "init_agent/agent_tools.py",
+        "init_agent/bounded_json.py",
+        "init_agent/bounded_process.py",
+        "init_agent/cli.py",
+        "init_agent/cli_tool_commands.py",
+        "init_agent/cli_trajectory_commands.py",
+        "init_agent/context_builder.py",
+        "init_agent/contracts.py",
+        "init_agent/delegation.py",
+        "init_agent/doctor.py",
+        "init_agent/estimate.py",
+        "init_agent/executables.py",
+        "init_agent/exporter.py",
+        "init_agent/feedback.py",
+        "init_agent/git_boundary.py"
+      ],
+      "removed": [],
+      "updated": []
+    },
+    "paths_truncated": true,
+    "preparation": {
+      "init": "done",
+      "map": "done",
+      "refresh": "skipped",
+      "git": "not_available",
+      "warnings": []
+    },
+    "search_index": {
+      "updated": 129,
+      "removed": 0,
+      "skipped": [],
+      "skipped_count": 0
+    },
+    "elapsed_seconds": 1.5848652920030872
+  },
+  "cases": [
+    {
+      "query": "backup skills orientation synchron",
+      "expected_reference": "init_agent/skill_installer.py",
+      "search_seconds": 0.011940750002395362,
+      "response_bytes": 3868,
+      "new_paths": [
+        "skills/README.md",
+        "docs/commands.md",
+        "tests/test_docs_install.py"
+      ],
+      "old_paths": [
+        "init_agent/mcp_installer.py",
+        "init_agent/skill_installer.py",
+        "init_agent/trajectory_hooks.py"
+      ],
+      "code_paths": [
+        "init_agent/skill_installer.py",
+        "init_agent/cli.py",
+        "init_agent/resources/skills/init-agent-orientation/SKILL.md"
+      ],
+      "result": {
+        "query": "backup skills orientation synchron",
+        "terms": [
+          "backup",
+          "skills",
+          "orientation",
+          "synchron"
+        ],
+        "results": [
+          {
+            "path": "skills/README.md",
+            "sha256": "d290be5870936b6f8517e19b304e7609ef1cb1d1e1aa294c5c46cc0d00de505e",
+            "start_line": 31,
+            "end_line": 42,
+            "excerpt": "\n```bash\nmkdir -p ~/.codex/skills\ncp -R skills/init-agent-orientation ~/.codex/skills/\n```\n\nRestart Codex after installation or synchronization.\n\n## Workflow Taught By The Skill\n\nThe default loop is intentionally small:\n",
+            "excerpt_truncated": false,
+            "bm25": -21.95589443719571,
+            "retrieval": [
+              "all_terms",
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "Workflow Taught By The Skill",
+                "kind": "heading",
+                "line": 39,
+                "end_line": null
+              },
+              {
+                "name": "cp -R skills/init-agent-orientation ~/.codex/skills/",
+                "kind": "command_example",
+                "line": 34,
+                "end_line": null
+              },
+              {
+                "name": "mkdir -p ~/.codex/skills",
+                "kind": "command_example",
+                "line": 33,
+                "end_line": null
+              }
+            ],
+            "graph_links": []
+          },
+          {
+            "path": "docs/commands.md",
+            "sha256": "ef97a652b027de66869354dbaec2bf533785cdab6cc5009cd9b58044bf68133c",
+            "start_line": 190,
+            "end_line": 201,
+            "excerpt": "```\n\nThe command writes an install manifest beside the skill and creates backups in\n`~/.codex/init-agent-backups/skills/` before replacing modified or untracked\nskill contents. Legacy backup directories are migrated out of\n`~/.codex/skills/` so Codex does not discover duplicate skills. The command\ndoes not modify Codex MCP or hook configuration.\n\n## `init-agent trajectory`\n\nManages optional Codex lifecycle hooks used for a redacted technical timeline:\n",
+            "excerpt_truncated": false,
+            "bm25": -16.984256585322306,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "`init-agent trajectory`",
+                "kind": "heading",
+                "line": 198,
+                "end_line": null
+              }
+            ],
+            "graph_links": []
+          },
+          {
+            "path": "tests/test_docs_install.py",
+            "sha256": "57e37c0dc873784f52ca171f95e606e518653c352cb5a3a202bd1d68444f4d3c",
+            "start_line": 501,
+            "end_line": 512,
+            "excerpt": "            self.assertTrue(backup.is_dir())\n            self.assertNotEqual(backup.parent, target)\n            self.assertFalse(list(target.glob(\"init-agent-orientation.bak-*\")))\n            self.assertEqual(codex_skill_status(target)[\"status\"], \"current\")\n\n    def test_sync_migrates_legacy_backups_outside_skill_discovery(self) -> None:\n        with tempfile.TemporaryDirectory() as tmp:\n            target = Path(tmp) / \"skills\"\n            sync_codex_skill(target)\n            legacy = target / \"init-agent-orientation.bak-legacy\"\n            legacy.mkdir()\n            (legacy / \"SKILL.md\").write_text(\"legacy backup\\n\", encoding=\"utf-8\")",
+            "excerpt_truncated": false,
+            "bm25": -16.336969513571113,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_sync_migrates_legacy_backups_outside_skill_discovery",
+                "kind": "method",
+                "line": 506,
+                "end_line": 522
+              },
+              {
+                "name": "test_sync_skill_is_idempotent_and_backs_up_local_changes",
+                "kind": "method",
+                "line": 486,
+                "end_line": 504
+              },
+              {
+                "name": "DocsInstallTests",
+                "kind": "class",
+                "line": 18,
+                "end_line": 627
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_docs_install.py",
+                "target": "init_agent/mcp_installer.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_docs_install.py",
+                "target": "init_agent/skill_installer.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "inherits",
+                "source": "tests/test_docs_install.py",
+                "target": "tests/support.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports",
+                "source": "tests/test_docs_install.py",
+                "target": "init_agent/mcp_installer.py",
+                "confidence": 0.9
+              }
+            ]
+          }
+        ],
+        "memories": [],
+        "stale_candidates": [],
+        "path_prefixes": [],
+        "candidate_limit_per_channel": 80,
+        "warnings": [
+          "Graph links are index evidence, not proof of test coverage or semantic correctness."
+        ],
+        "excerpt_character_limit": 1400,
+        "candidate_limit_reached": true,
+        "capped_channels": [
+          "any_term"
+        ],
+        "candidate_count": 80
+      }
+    },
+    {
+      "query": "related.files related_files related-file callers callee calls",
+      "expected_reference": "init_agent/relation_resolver.py",
+      "search_seconds": 0.013867125002434477,
+      "response_bytes": 5084,
+      "new_paths": [
+        "tests/test_index_context.py",
+        "init_agent/agent_tools.py",
+        "tests/test_mcp.py"
+      ],
+      "old_paths": [
+        "init_agent/query.py",
+        "init_agent/repo_files.py",
+        "init_agent/agent_tools.py"
+      ],
+      "code_paths": [
+        "init_agent/agent_tools.py",
+        "init_agent/query.py",
+        "init_agent/mcp_compact.py"
+      ],
+      "result": {
+        "query": "related.files related_files related-file callers callee calls",
+        "terms": [
+          "related",
+          "files",
+          "file",
+          "callers",
+          "callee",
+          "calls"
+        ],
+        "results": [
+          {
+            "path": "tests/test_index_context.py",
+            "sha256": "e2b28163678c88e5570700bbbc5942cb82ef18dde26a3b12d4945a7d4febf9d9",
+            "start_line": 481,
+            "end_line": 492,
+            "excerpt": "            finally:\n                os.chdir(previous)\n\n    def test_related_php_call_relation_resolves_definition_and_callers(self) -> None:\n        with tempfile.TemporaryDirectory() as tmp:\n            root = _create_php_call_fixture(Path(tmp))\n            previous = Path.cwd()\n            try:\n                os.chdir(root)\n                main([\"init\"])\n                main([\"map\"])\n                index_related = related_query(root, \"index.php\")",
+            "excerpt_truncated": false,
+            "bm25": -10.862982489083727,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_related_php_call_relation_resolves_definition_and_callers",
+                "kind": "method",
+                "line": 484,
+                "end_line": 509
+              },
+              {
+                "name": "test_context_php_call_relation_finds_caller_file",
+                "kind": "method",
+                "line": 467,
+                "end_line": 482
+              },
+              {
+                "name": "IndexContextTests",
+                "kind": "class",
+                "line": 4,
+                "end_line": 1282
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "inherits",
+                "source": "tests/test_index_context.py",
+                "target": "tests/support.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports",
+                "source": "tests/test_index_context.py",
+                "target": "tests/support.py",
+                "confidence": 0.9
+              },
+              {
+                "relation": "calls",
+                "source": "tests/test_index_context.py",
+                "target": "tests/support.py",
+                "confidence": 0.65
+              }
+            ]
+          },
+          {
+            "path": "init_agent/agent_tools.py",
+            "sha256": "ff3d9e1a3b9bdbbf8fa4329064cceb2a37d12b9636e631bbe9964646c692b40a",
+            "start_line": 141,
+            "end_line": 152,
+            "excerpt": "    result.update(\n        {\n            \"file\": _trim_file_record(related_data[\"file\"]),\n            \"symbols\": list(related_data[\"symbols\"])[:30],\n            \"relations\": list(related_data[\"relations\"])[:30],\n            \"calls\": _live_calls(root, list(related_data[\"resolved_calls\"]))[:30],\n            \"called_by\": _live_path_records(root, list(related_data[\"callers\"]))[:30],\n            \"recent_commits\": _compact_commits(list(related_data[\"commits\"])[:5]),\n            \"cochanged_files\": _live_path_records(root, list(related_data[\"cochanged_files\"]))[:20],\n            \"counts\": {\n                \"symbols\": len(related_data[\"symbols\"]),\n                \"relations\": len(related_data[\"relations\"]),",
+            "excerpt_truncated": false,
+            "bm25": -10.806560646970885,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "repo_related_file",
+                "kind": "function",
+                "line": 108,
+                "end_line": 161
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/context_builder.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/contracts.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/feedback.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/git_reader.py",
+                "confidence": 0.95
+              }
+            ]
+          },
+          {
+            "path": "tests/test_mcp.py",
+            "sha256": "4ccc67f4e1b475825353a5640802f60e4d04591a4b7c1f20ea5ae2609e585848",
+            "start_line": 782,
+            "end_line": 793,
+            "excerpt": "            self.assertEqual(result[\"candidate_files\"], [])\n            self.assertTrue(result[\"warnings\"])\n\n    def test_mcp_tool_call_related_and_callers_are_json_contracts(self) -> None:\n        with tempfile.TemporaryDirectory() as tmp:\n            root = _create_php_call_fixture(Path(tmp))\n            _prepare_index(root)\n            server = InitAgentMcpServer(root, profile=\"full\")\n            related = server.handle(\n                {\n                    \"jsonrpc\": \"2.0\",\n                    \"id\": 4,",
+            "excerpt_truncated": false,
+            "bm25": -10.73296634047695,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_mcp_tool_call_related_and_callers_are_json_contracts",
+                "kind": "method",
+                "line": 785,
+                "end_line": 810
+              },
+              {
+                "name": "test_mcp_tools_do_not_auto_initialize_or_refresh_project",
+                "kind": "method",
+                "line": 765,
+                "end_line": 783
+              },
+              {
+                "name": "McpTests",
+                "kind": "class",
+                "line": 4,
+                "end_line": 825
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_mcp.py",
+                "target": "init_agent/mcp_server.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "inherits",
+                "source": "tests/test_mcp.py",
+                "target": "tests/support.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports",
+                "source": "tests/test_mcp.py",
+                "target": "init_agent/mcp_server.py",
+                "confidence": 0.9
+              },
+              {
+                "relation": "imports",
+                "source": "tests/test_mcp.py",
+                "target": "tests/support.py",
+                "confidence": 0.9
+              }
+            ]
+          }
+        ],
+        "memories": [],
+        "stale_candidates": [],
+        "path_prefixes": [],
+        "candidate_limit_per_channel": 80,
+        "warnings": [
+          "Graph links are index evidence, not proof of test coverage or semantic correctness."
+        ],
+        "excerpt_character_limit": 1400,
+        "candidate_limit_reached": true,
+        "capped_channels": [
+          "any_term"
+        ],
+        "candidate_count": 80
+      }
+    },
+    {
+      "query": "fresh stale memory metadata mtime modified",
+      "expected_reference": "init_agent/web_ui.py",
+      "search_seconds": 0.01406525000493275,
+      "response_bytes": 4735,
+      "new_paths": [
+        "tests/test_memory.py",
+        "docs/mcp.md",
+        "init_agent/index_health.py"
+      ],
+      "old_paths": [
+        "init_agent/memory.py",
+        "init_agent/metadata_db.py",
+        "init_agent/cli.py"
+      ],
+      "code_paths": [
+        "init_agent/index_health.py",
+        "init_agent/reading_plan.py",
+        "init_agent/agent_tools.py"
+      ],
+      "result": {
+        "query": "fresh stale memory metadata mtime modified",
+        "terms": [
+          "fresh",
+          "stale",
+          "memory",
+          "metadata",
+          "mtime",
+          "modified"
+        ],
+        "results": [
+          {
+            "path": "tests/test_memory.py",
+            "sha256": "858e9a2413814cea978ff3ac364f8b20c9a0677d6c79f43520996df8728ad33d",
+            "start_line": 52,
+            "end_line": 63,
+            "excerpt": "                    self.assertTrue(note[\"stale\"])\n                    self.assertEqual(note[\"file_sha256\"], original[\"file_sha256\"])\n                    self.assertEqual(note[\"created_at\"], original[\"created_at\"])\n            fresh = _handle_repo_memory_update(root, {\"id\": original[\"id\"], \"revalidate\": True})[\"memory\"]\n            self.assertFalse(fresh[\"stale\"])\n            self.assertEqual(fresh[\"file_sha256\"], fresh[\"current_file_sha256\"])\n            self.assertNotEqual(fresh[\"created_at\"], original[\"created_at\"])\n            with self.assertRaises(ValueError):\n                _handle_repo_memory_update(root, {\"id\": original[\"id\"], \"revalidate\": \"false\"})\n            (root / path).unlink()\n            with self.assertRaises(ValueError):\n                update_note(root, original[\"id\"], revalidate=True)",
+            "excerpt_truncated": false,
+            "bm25": -14.277034877066168,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_metadata_edits_do_not_revalidate_changed_files",
+                "kind": "method",
+                "line": 41,
+                "end_line": 64
+              },
+              {
+                "name": "MemoryEvidenceTests",
+                "kind": "class",
+                "line": 13,
+                "end_line": 111
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_memory.py",
+                "target": "init_agent/agent_tools.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_memory.py",
+                "target": "init_agent/mcp_tools.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_memory.py",
+                "target": "init_agent/memory.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_memory.py",
+                "target": "init_agent/session_tools.py",
+                "confidence": 0.95
+              }
+            ]
+          },
+          {
+            "path": "docs/mcp.md",
+            "sha256": "7acb92b01a4a5f31b7988e1d3d21ac368ec16ce399506e5d93ea4abf3b59066b",
+            "start_line": 64,
+            "end_line": 75,
+            "excerpt": "Read-only core orientation calls also expose lightweight index freshness data.\nOverview, plan and targeted graph contracts place it under\n`preparation.index_health`; session contracts expose `index_health` directly.\nThe status becomes `stale` when indexed files changed or disappeared, new\nindexable files appeared, or the extractor version changed. Results remain\navailable with deleted paths filtered, but agents should run `init-agent map`\nbefore relying on graph-sensitive conclusions. The probe compares paths, sizes\nand mtimes and uses a short process-local cache; it does not hash or remap the\nwhole repository.\n\nFor decision-log and area-map patterns, see\n[memory-workflows.md](memory-workflows.md).",
+            "excerpt_truncated": false,
+            "bm25": -12.63901730453296,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [],
+            "graph_links": []
+          },
+          {
+            "path": "init_agent/index_health.py",
+            "sha256": "e79cba31b12d472684fee9775bb288d89cbacfd8ce4fcfeb822de1513d827e32",
+            "start_line": 121,
+            "end_line": 132,
+            "excerpt": "        if stat.st_size != record[\"size\"] or current_mtime != record[\"modified_at\"]:\n            changed.append(rel_path)\n\n    index_version = str(version_row[\"value\"]) if version_row else None\n    version_stale = index_version != INDEX_VERSION\n    stale = bool(changed or missing or unindexed or version_stale)\n    warnings: list[str] = []\n    if version_stale:\n        warnings.append(\"init-agent index uses an older extractor. Run: init-agent map\")\n    if changed or missing or unindexed:\n        warnings.append(\n            \"init-agent index may be stale: \"",
+            "excerpt_truncated": false,
+            "bm25": -12.228244811205226,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "_inspect_index",
+                "kind": "function",
+                "line": 67,
+                "end_line": 157
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/index_health.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/doctor.py",
+                "target": "init_agent/index_health.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/index_health.py",
+                "target": "init_agent/metadata_db.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/index_health.py",
+                "target": "init_agent/repo_budget.py",
+                "confidence": 0.95
+              }
+            ]
+          }
+        ],
+        "memories": [],
+        "stale_candidates": [],
+        "path_prefixes": [],
+        "candidate_limit_per_channel": 80,
+        "warnings": [
+          "Graph links are index evidence, not proof of test coverage or semantic correctness."
+        ],
+        "excerpt_character_limit": 1400,
+        "candidate_limit_reached": true,
+        "capped_channels": [
+          "any_term"
+        ],
+        "candidate_count": 80
+      }
+    },
+    {
+      "query": "overview candidate repository map repo map unindexed drift deleted removed",
+      "expected_reference": "init_agent/index_health.py",
+      "search_seconds": 0.012421792001987342,
+      "response_bytes": 4932,
+      "new_paths": [
+        "tests/test_index_health.py",
+        "init_agent/index_health.py",
+        "tests/test_experiments.py"
+      ],
+      "old_paths": [
+        "init_agent/overview.py",
+        "init_agent/index_health.py",
+        "init_agent/cli.py"
+      ],
+      "code_paths": [
+        "init_agent/index_health.py",
+        "init_agent/doctor.py",
+        "init_agent/agent_tools.py"
+      ],
+      "result": {
+        "query": "overview candidate repository map repo map unindexed drift deleted removed",
+        "terms": [
+          "overview",
+          "candidate",
+          "repository",
+          "map",
+          "repo",
+          "unindexed",
+          "drift",
+          "deleted",
+          "removed"
+        ],
+        "results": [
+          {
+            "path": "tests/test_index_health.py",
+            "sha256": "701295aa047cc812006909f89b70d3a6775ce96605b4e79aa62a7131d3fe7035",
+            "start_line": 13,
+            "end_line": 24,
+            "excerpt": "    def tearDown(self) -> None:\n        clear_index_health_cache()\n\n    def test_mcp_overview_reports_filesystem_drift_and_hides_deleted_files(self) -> None:\n        with tempfile.TemporaryDirectory() as tmp:\n            root = _create_overview_fixture(Path(tmp))\n            _prepare_index(root)\n            (root / \"README.md\").unlink()\n            (root / \"src\" / \"sample\" / \"cli.py\").write_text(\n                \"def main():\\n    return 42\\n\\ndef changed():\\n    return True\\n\",\n                encoding=\"utf-8\",\n            )",
+            "excerpt_truncated": false,
+            "bm25": -20.7053895039546,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_mcp_overview_reports_filesystem_drift_and_hides_deleted_files",
+                "kind": "method",
+                "line": 16,
+                "end_line": 53
+              },
+              {
+                "name": "tearDown",
+                "kind": "method",
+                "line": 13,
+                "end_line": 14
+              },
+              {
+                "name": "IndexHealthTests",
+                "kind": "class",
+                "line": 12,
+                "end_line": 187
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_index_health.py",
+                "target": "init_agent/agent_tools.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_index_health.py",
+                "target": "init_agent/index_health.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "tests/test_index_health.py",
+                "target": "init_agent/memory.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "inherits",
+                "source": "tests/test_index_health.py",
+                "target": "tests/support.py",
+                "confidence": 0.95
+              }
+            ]
+          },
+          {
+            "path": "init_agent/index_health.py",
+            "sha256": "e79cba31b12d472684fee9775bb288d89cbacfd8ce4fcfeb822de1513d827e32",
+            "start_line": 130,
+            "end_line": 141,
+            "excerpt": "    if changed or missing or unindexed:\n        warnings.append(\n            \"init-agent index may be stale: \"\n            f\"{len(changed)} changed, {len(missing)} removed, {len(unindexed)} unindexed files. \"\n            \"Run: init-agent map\"\n        )\n\n    health = {\n        \"status\": \"stale\" if stale else \"ready\",\n        \"indexed_file_count\": len(indexed_paths),\n        \"checked_file_count\": len(real_paths),\n        \"changed_count\": len(changed),",
+            "excerpt_truncated": false,
+            "bm25": -15.212697469343034,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "_inspect_index",
+                "kind": "function",
+                "line": 67,
+                "end_line": 157
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/agent_tools.py",
+                "target": "init_agent/index_health.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/doctor.py",
+                "target": "init_agent/index_health.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/index_health.py",
+                "target": "init_agent/metadata_db.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports_symbol",
+                "source": "init_agent/index_health.py",
+                "target": "init_agent/repo_budget.py",
+                "confidence": 0.95
+              }
+            ]
+          },
+          {
+            "path": "tests/test_experiments.py",
+            "sha256": "fa8b497ca8ff53d835947a9dfb18b17ac5554d9e0c782d70da63823d0adb9a7c",
+            "start_line": 21,
+            "end_line": 32,
+            "excerpt": "    def test_experiment_case_filter_loads_overview_case(self) -> None:\n        cases = load_cases([\"init-agent-repository-overview\"])\n        self.assertEqual(len(cases), 1)\n        self.assertEqual(cases[0][\"command\"], \"overview\")\n\n    def test_experiment_init_agent_case_falls_back_to_current_checkout(self) -> None:\n        case = {\n            \"name\": \"init-agent-repository-overview\",\n            \"repo\": \"/tmp/init-agent-bench-does-not-exist\",\n            \"query\": \"repository overview\",\n        }\n        self.assertEqual(resolve_case_repo(case), Path(__file__).resolve().parents[1])",
+            "excerpt_truncated": false,
+            "bm25": -12.649619670182313,
+            "retrieval": [
+              "any_term"
+            ],
+            "symbols": [
+              {
+                "name": "test_experiment_init_agent_case_falls_back_to_current_checkout",
+                "kind": "method",
+                "line": 26,
+                "end_line": 32
+              },
+              {
+                "name": "test_experiment_case_filter_loads_overview_case",
+                "kind": "method",
+                "line": 21,
+                "end_line": 24
+              },
+              {
+                "name": "ExperimentsTests",
+                "kind": "class",
+                "line": 4,
+                "end_line": 173
+              }
+            ],
+            "graph_links": [
+              {
+                "relation": "inherits",
+                "source": "tests/test_experiments.py",
+                "target": "tests/support.py",
+                "confidence": 0.95
+              },
+              {
+                "relation": "imports",
+                "source": "tests/test_experiments.py",
+                "target": "tests/support.py",
+                "confidence": 0.9
+              }
+            ]
+          }
+        ],
+        "memories": [],
+        "stale_candidates": [],
+        "path_prefixes": [],
+        "candidate_limit_per_channel": 80,
+        "warnings": [
+          "Graph links are index evidence, not proof of test coverage or semantic correctness."
+        ],
+        "excerpt_character_limit": 1400,
+        "candidate_limit_reached": true,
+        "capped_channels": [
+          "any_term"
+        ],
+        "candidate_count": 80
+      }
+    }
+  ]
+}

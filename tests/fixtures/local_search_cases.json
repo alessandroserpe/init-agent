@@ -1,0 +1,14 @@
+[
+ {"id":"symbol_definition","split":"development","query":"rotateArchive","expected":"engine.py","files":{"engine.py":"def rotateArchive():\n    return 'archive rotation implementation'\n","guide.md":"# rotateArchive\nrotateArchive rotateArchive rotateArchive rotateArchive\n"}},
+ {"id":"explicit_path","split":"development","query":"pkg/settings.py","expected":"pkg/settings.py","files":{"pkg/settings.py":"TIMEOUT = 30\n","guide.md":"# pkg/settings.py\npkg/settings.py pkg/settings.py pkg/settings.py\n"}},
+ {"id":"multi_term","split":"development","query":"transaction retry timeout","expected":"engine.py","files":{"engine.py":"def execute():\n    # transaction retry timeout\n    return False\n","guide.md":"# transaction\ntransaction transaction transaction transaction transaction\n","retry.txt":"retry retry retry retry retry\n"}},
+ {"id":"literal_error","split":"development","query":"connection pool exhausted","expected":"engine.py","files":{"engine.py":"raise RuntimeError('connection pool exhausted')\n","other.txt":"connection hints\npool hints\nexhausted hints\n"}},
+ {"id":"body_only","split":"development","query":"retention window","expected":"opaque.py","files":{"opaque.py":"def apply():\n    return 'retention window'\n","other.py":"def process():\n    return 'something else'\n"}},
+ {"id":"unknown","split":"development","query":"qzxvnotpresent","expected":null,"files":{"one.py":"x=1\n"}},
+ {"id":"symbol_other_domain","split":"validation","query":"validateInvoice","expected":"billing.py","files":{"billing.py":"def validateInvoice():\n    return True\n","docs.md":"# validateInvoice\nvalidateInvoice validateInvoice validateInvoice validateInvoice\n"}},
+ {"id":"path_other_language","split":"validation","query":"src/client.ts","expected":"src/client.ts","files":{"src/client.ts":"export const ready = true;\n","docs.md":"src/client.ts src/client.ts src/client.ts\n"}},
+ {"id":"docs_answer","split":"validation","query":"retention policy","expected":"guide.md","files":{"guide.md":"# Storage\nThe retention policy keeps records for thirty days.\n","engine.py":"RETENTION = 30\n"}},
+ {"id":"configuration","split":"validation","query":"connection retry limit","expected":"settings.toml","files":{"settings.toml":"[connection]\nretry_limit = 4\n","guide.md":"connection connection connection connection\n"}},
+ {"id":"morphology","split":"validation","query":"connections","expected":"engine.py","files":{"engine.py":"def process():\n    return 'connection'\n","other.py":"def rotate(): pass\n"}},
+ {"id":"tests_answer","split":"validation","query":"expired token regression","expected":"tests/test_auth.py","files":{"tests/test_auth.py":"def test_expiry():\n    # expired token regression\n    assert True\n","auth.py":"def token(): return 1\n"}}
+]

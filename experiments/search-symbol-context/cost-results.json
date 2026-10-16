@@ -1,0 +1,1342 @@
+{
+  "revision": "14636ac00129565d298811bd0e61a7024c88e800",
+  "python": "3.14.7",
+  "platform": "Darwin arm64",
+  "protocol": "3 fresh processes per mode, alternating order; 10 warm queries x7; identical reindex pipeline; no cache flush; no model; single-file reindex excludes graph refresh and source edits",
+  "summary": {
+    "fixed": {
+      "full_reindex_ms": {
+        "median": 186.79462499858346,
+        "p95": 192.71412499801954,
+        "min": 181.80425000173273,
+        "max": 192.71412499801954
+      },
+      "single_file_reindex_ms": {
+        "median": 10.73891599662602,
+        "p95": 12.196542003948707,
+        "min": 10.433792005642317,
+        "max": 12.196542003948707
+      },
+      "warm_search_ms": {
+        "median": 16.04729150494677,
+        "p95": 33.98524999647634,
+        "min": 7.056917005684227,
+        "max": 342.6683329962543
+      },
+      "peak_rss_bytes": {
+        "median": 47906816,
+        "p95": 49512448,
+        "min": 47808512,
+        "max": 49512448
+      },
+      "compacted_database_bytes": 11243520,
+      "search_tables_bytes": 5246976,
+      "chunks": 1897,
+      "per_query": [
+        {
+          "query": "backup skills orientation synchron",
+          "median_ms": 10.186541003349703,
+          "response_bytes": 3868
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "median_ms": 18.566624996310566,
+          "response_bytes": 5084
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "median_ms": 13.75170800019987,
+          "response_bytes": 4735
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "median_ms": 15.262084001733456,
+          "response_bytes": 4932
+        },
+        {
+          "query": "prepare_repository",
+          "median_ms": 17.70358300564112,
+          "response_bytes": 4711
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "median_ms": 33.7593329968513,
+          "response_bytes": 4289
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "median_ms": 10.632582998368889,
+          "response_bytes": 5000
+        },
+        {
+          "query": "function symbol qualified name",
+          "median_ms": 14.901458001986612,
+          "response_bytes": 4206
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "median_ms": 16.518874996108934,
+          "response_bytes": 5498
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "median_ms": 7.555458003480453,
+          "response_bytes": 394
+        }
+      ]
+    },
+    "scope": {
+      "full_reindex_ms": {
+        "median": 241.80424999940442,
+        "p95": 309.7773330009659,
+        "min": 217.74474999983795,
+        "max": 309.7773330009659
+      },
+      "single_file_reindex_ms": {
+        "median": 12.028292003378738,
+        "p95": 36.732749998918734,
+        "min": 11.095833004219458,
+        "max": 36.732749998918734
+      },
+      "warm_search_ms": {
+        "median": 13.068624499283032,
+        "p95": 43.79670900380006,
+        "min": 7.984500000020489,
+        "max": 66.48845900053857
+      },
+      "peak_rss_bytes": {
+        "median": 47874048,
+        "p95": 50282496,
+        "min": 47611904,
+        "max": 50282496
+      },
+      "compacted_database_bytes": 11374592,
+      "search_tables_bytes": 5378048,
+      "chunks": 4325,
+      "per_query": [
+        {
+          "query": "backup skills orientation synchron",
+          "median_ms": 9.515166995697655,
+          "response_bytes": 2956
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "median_ms": 15.10404200234916,
+          "response_bytes": 4938
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "median_ms": 11.15308400039794,
+          "response_bytes": 4716
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "median_ms": 13.146916004188824,
+          "response_bytes": 4787
+        },
+        {
+          "query": "prepare_repository",
+          "median_ms": 21.10533299855888,
+          "response_bytes": 5052
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "median_ms": 43.79670900380006,
+          "response_bytes": 3776
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "median_ms": 8.311500001582317,
+          "response_bytes": 4247
+        },
+        {
+          "query": "function symbol qualified name",
+          "median_ms": 12.430917005985975,
+          "response_bytes": 3536
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "median_ms": 12.64979099505581,
+          "response_bytes": 4801
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "median_ms": 13.102125005389098,
+          "response_bytes": 394
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "mode": "fixed",
+      "full_reindex_ms": 192.71412499801954,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        11.190042001544498,
+        10.797625000122935,
+        10.523500000999775,
+        11.452416001702659,
+        10.693083000660408
+      ],
+      "compacted_database_bytes": 11243520,
+      "search_tables_bytes": 5246976,
+      "chunks": 1897,
+      "peak_process_rss_bytes": 49512448,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            10.388999995484482,
+            10.127000001375563,
+            11.27995800197823,
+            10.110124996572267,
+            9.868417000689078,
+            9.840500002610497,
+            9.91450000583427
+          ],
+          "response_bytes": 3868,
+          "paths": [
+            "skills/README.md",
+            "docs/commands.md",
+            "tests/test_docs_install.py"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            17.445208999561146,
+            18.920709000667557,
+            18.862999997509178,
+            18.488207999325823,
+            19.57370899617672,
+            18.68295800522901,
+            22.837542004708666
+          ],
+          "response_bytes": 5084,
+          "paths": [
+            "tests/test_index_context.py",
+            "init_agent/agent_tools.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            18.391958001302555,
+            14.659957996627782,
+            12.882416995125823,
+            13.541416999942157,
+            13.75170800019987,
+            13.501166002242826,
+            16.66766600101255
+          ],
+          "response_bytes": 4735,
+          "paths": [
+            "tests/test_memory.py",
+            "docs/mcp.md",
+            "init_agent/index_health.py"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            17.91587499610614,
+            23.696791999100242,
+            19.990875000075903,
+            15.197041997453198,
+            14.814166999713052,
+            14.778709002712276,
+            14.828209001279902
+          ],
+          "response_bytes": 4932,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "tests/test_experiments.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            16.66250000562286,
+            17.186000004585367,
+            18.34245800273493,
+            17.70358300564112,
+            17.253040998184588,
+            16.755874996306375,
+            17.01741699798731
+          ],
+          "response_bytes": 4711,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            31.818707997445017,
+            33.50745799980359,
+            46.79920899798162,
+            342.6683329962543,
+            115.08633300400106,
+            187.02474999736296,
+            268.6617090002983
+          ],
+          "response_bytes": 4289,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            23.986250002053566,
+            24.05712500330992,
+            25.7869590059272,
+            23.084916996594984,
+            20.651332997658756,
+            21.122540994838346,
+            15.607999994244892
+          ],
+          "response_bytes": 5000,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "init_agent/refresh.py"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            18.310916995687876,
+            20.449708004889544,
+            20.890374995360617,
+            34.94708399375668,
+            33.31320799770765,
+            33.16833300050348,
+            25.30404100252781
+          ],
+          "response_bytes": 4206,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "init_agent/relation_resolver.py"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            39.61045799951535,
+            29.15124999708496,
+            23.61824999388773,
+            21.185708996199537,
+            19.673249997140374,
+            19.954332994529977,
+            21.889667004870716
+          ],
+          "response_bytes": 5498,
+          "paths": [
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py",
+            "init_agent/mcp_server.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            10.622207999404054,
+            12.231540997163393,
+            11.525957997946534,
+            12.86120800068602,
+            14.753540999663528,
+            16.16329199896427,
+            17.065416999685112
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 0
+    },
+    {
+      "mode": "scope",
+      "full_reindex_ms": 309.7773330009659,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        31.70483400026569,
+        35.699708001629915,
+        36.732749998918734,
+        35.178750003979076,
+        30.34404200298013
+      ],
+      "compacted_database_bytes": 11374592,
+      "search_tables_bytes": 5378048,
+      "chunks": 4325,
+      "peak_process_rss_bytes": 50282496,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            11.675665999064222,
+            9.756583996932022,
+            10.1730420064996,
+            10.557166999205947,
+            10.868083001696505,
+            10.14841700089164,
+            9.541542000079062
+          ],
+          "response_bytes": 2956,
+          "paths": [
+            "docs/commands.md",
+            "tests/test_docs_install.py",
+            "skills/README.md"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            17.567458002304193,
+            18.614624998008367,
+            22.36508299392881,
+            21.50741600053152,
+            18.449041999701876,
+            17.92333299817983,
+            18.08920800249325
+          ],
+          "response_bytes": 4938,
+          "paths": [
+            "init_agent/mcp_compact.py",
+            "init_agent/query.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            13.171541999327019,
+            12.980583000171464,
+            12.712957999610808,
+            13.336957999854349,
+            12.553166998259258,
+            13.843125001585577,
+            13.5617909982102
+          ],
+          "response_bytes": 4716,
+          "paths": [
+            "tests/test_memory.py",
+            "init_agent/index_health.py",
+            "docs/mcp.md"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            17.855749996670056,
+            16.40274999954272,
+            16.339291003532708,
+            16.164083004696295,
+            15.351915993960574,
+            16.145374996995088,
+            16.04383299854817
+          ],
+          "response_bytes": 4787,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "init_agent/overview.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            23.45437499752734,
+            22.322459000861272,
+            21.755791000032332,
+            22.475792000477668,
+            25.71695799997542,
+            27.93879200180527,
+            24.859791999915615
+          ],
+          "response_bytes": 5052,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            50.69825000100536,
+            50.632708000193816,
+            54.56591700203717,
+            66.48845900053857,
+            58.20249999669613,
+            52.50229100056458,
+            51.4844589997665
+          ],
+          "response_bytes": 3776,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            9.805250003410038,
+            9.755500002938788,
+            9.166999996523373,
+            9.02075000340119,
+            8.972291005193256,
+            8.541249997506384,
+            9.320791003119666
+          ],
+          "response_bytes": 4247,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "docs/security.md"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            13.380000003962778,
+            13.030125002842396,
+            12.483792001148686,
+            12.741584003379103,
+            12.430917005985975,
+            12.187250002170913,
+            12.059291999321431
+          ],
+          "response_bytes": 3536,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "docs/parsing.md"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            13.143958000000566,
+            13.149000005796552,
+            12.818375005736016,
+            12.805291000404395,
+            13.093125002342276,
+            13.033334005740471,
+            12.633541999093723
+          ],
+          "response_bytes": 4801,
+          "paths": [
+            "tests/test_transport_git_boundaries.py",
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            14.169792004395276,
+            13.97608299885178,
+            14.327124998089857,
+            13.747375000093598,
+            13.386374994297512,
+            13.477667002007365,
+            13.640459001180716
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 0
+    },
+    {
+      "mode": "scope",
+      "full_reindex_ms": 217.74474999983795,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        11.095833004219458,
+        11.86500000039814,
+        12.382417000480928,
+        12.027666001813486,
+        12.028292003378738
+      ],
+      "compacted_database_bytes": 11374592,
+      "search_tables_bytes": 5378048,
+      "chunks": 4325,
+      "peak_process_rss_bytes": 47611904,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            10.683125001378357,
+            8.944000001065433,
+            9.630874999857042,
+            9.1584160036291,
+            8.901834000425879,
+            8.815166998829227,
+            8.817792004265357
+          ],
+          "response_bytes": 2956,
+          "paths": [
+            "docs/commands.md",
+            "tests/test_docs_install.py",
+            "skills/README.md"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            14.51170899963472,
+            15.896165998128708,
+            15.10404200234916,
+            14.929333003237844,
+            15.098957999725826,
+            14.9704159994144,
+            14.579125003365334
+          ],
+          "response_bytes": 4938,
+          "paths": [
+            "init_agent/mcp_compact.py",
+            "init_agent/query.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            10.783917001390364,
+            10.804040997754782,
+            11.15308400039794,
+            11.38633299706271,
+            10.984041000483558,
+            11.384416997316293,
+            11.303874998702668
+          ],
+          "response_bytes": 4716,
+          "paths": [
+            "tests/test_memory.py",
+            "init_agent/index_health.py",
+            "docs/mcp.md"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            13.096000002406072,
+            12.929542004712857,
+            12.488791995565407,
+            13.146916004188824,
+            13.12300000427058,
+            12.766291001753416,
+            12.590709004143719
+          ],
+          "response_bytes": 4787,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "init_agent/overview.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            19.988917003502138,
+            19.880291998561006,
+            19.957916003477294,
+            21.29837499524001,
+            20.55066599859856,
+            19.79633299924899,
+            20.382208000228275
+          ],
+          "response_bytes": 5052,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            43.79670900380006,
+            46.88112499570707,
+            45.12329200224485,
+            43.89737500605406,
+            43.55612499784911,
+            40.35633300372865,
+            39.83850000076927
+          ],
+          "response_bytes": 3776,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            8.310083001560997,
+            8.390000002691522,
+            9.131833001447376,
+            8.203874996979721,
+            8.11858299857704,
+            8.086499998171348,
+            8.280957998067606
+          ],
+          "response_bytes": 4247,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "docs/security.md"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            11.729291996743996,
+            11.768666001444217,
+            11.699791997671127,
+            12.255957997695077,
+            11.635208000370767,
+            12.290958999074064,
+            12.114334000216331
+          ],
+          "response_bytes": 3536,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "docs/parsing.md"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            12.195290997624397,
+            11.76774999476038,
+            11.845000000903383,
+            11.759625005652197,
+            13.27020800090395,
+            11.91941700380994,
+            11.987499994575046
+          ],
+          "response_bytes": 4801,
+          "paths": [
+            "tests/test_transport_git_boundaries.py",
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            13.101834003464319,
+            12.850458006141707,
+            12.819208997825626,
+            12.45175000076415,
+            12.902959002531134,
+            13.071665998722892,
+            13.073458001599647
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 1
+    },
+    {
+      "mode": "fixed",
+      "full_reindex_ms": 181.80425000173273,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        10.59262500348268,
+        10.709208996559028,
+        10.777290997793898,
+        11.610749999817926,
+        10.83620799909113
+      ],
+      "compacted_database_bytes": 11243520,
+      "search_tables_bytes": 5246976,
+      "chunks": 1897,
+      "peak_process_rss_bytes": 47808512,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            10.197958996286616,
+            10.281999995640945,
+            11.127249999844935,
+            10.111584000696894,
+            10.031666999566369,
+            10.085333000461105,
+            10.191458000917919
+          ],
+          "response_bytes": 3868,
+          "paths": [
+            "skills/README.md",
+            "docs/commands.md",
+            "tests/test_docs_install.py"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            18.174749995523598,
+            17.666332998487633,
+            18.566624996310566,
+            18.410707998555154,
+            17.86083299521124,
+            18.155583005864173,
+            18.611916995723732
+          ],
+          "response_bytes": 5084,
+          "paths": [
+            "tests/test_index_context.py",
+            "init_agent/agent_tools.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            18.014792003668845,
+            18.90208400436677,
+            23.145207997004036,
+            13.964791003672872,
+            15.540791995590553,
+            14.069833006942645,
+            13.94179099588655
+          ],
+          "response_bytes": 4735,
+          "paths": [
+            "tests/test_memory.py",
+            "docs/mcp.md",
+            "init_agent/index_health.py"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            18.274707996170036,
+            19.353291994775645,
+            16.48291700257687,
+            15.262084001733456,
+            18.17116699385224,
+            20.79954100190662,
+            15.761249997012783
+          ],
+          "response_bytes": 4932,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "tests/test_experiments.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            19.104125000012573,
+            18.27679200505372,
+            18.10795799974585,
+            17.952041001990438,
+            18.246042003738694,
+            17.617333003727254,
+            17.399542004568502
+          ],
+          "response_bytes": 4711,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            31.969249997928273,
+            32.22924999863608,
+            31.610707999789156,
+            31.84299999702489,
+            31.785499995748978,
+            30.602040998928715,
+            30.91245799441822
+          ],
+          "response_bytes": 4289,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            9.970540995709598,
+            9.559124999213964,
+            9.739999994053505,
+            9.569792004185729,
+            9.780165994015988,
+            9.676458001194987,
+            9.536917001241818
+          ],
+          "response_bytes": 5000,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "init_agent/refresh.py"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            13.327874999959022,
+            13.341458005015738,
+            13.142707997758407,
+            12.703666994639207,
+            13.25029199506389,
+            12.951374999829568,
+            12.885582997114398
+          ],
+          "response_bytes": 4206,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "init_agent/relation_resolver.py"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            14.333083003293723,
+            14.126042005955242,
+            14.508459003991447,
+            15.029958995000925,
+            15.605624997988343,
+            15.461208997294307,
+            15.07020799908787
+          ],
+          "response_bytes": 5498,
+          "paths": [
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py",
+            "init_agent/mcp_server.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            7.110542006557807,
+            7.158749998779967,
+            7.229333998111542,
+            7.128500001272187,
+            7.420333997288253,
+            7.360208001045976,
+            7.056917005684227
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 1
+    },
+    {
+      "mode": "fixed",
+      "full_reindex_ms": 186.79462499858346,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        10.541416995692998,
+        10.433792005642317,
+        10.493542002222966,
+        12.196542003948707,
+        10.73891599662602
+      ],
+      "compacted_database_bytes": 11243520,
+      "search_tables_bytes": 5246976,
+      "chunks": 1897,
+      "peak_process_rss_bytes": 47906816,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            10.290917001839262,
+            10.131957998964936,
+            11.11079200200038,
+            10.077374994580168,
+            10.186541003349703,
+            10.972541997034568,
+            11.186541996721644
+          ],
+          "response_bytes": 3868,
+          "paths": [
+            "skills/README.md",
+            "docs/commands.md",
+            "tests/test_docs_install.py"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            18.342417002713773,
+            18.7648330029333,
+            18.2724580008653,
+            18.598124996060506,
+            18.665332994714845,
+            18.524374994740356,
+            18.627707999257836
+          ],
+          "response_bytes": 5084,
+          "paths": [
+            "tests/test_index_context.py",
+            "init_agent/agent_tools.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            12.24437500059139,
+            11.93408299877774,
+            11.930833003134467,
+            11.948291001317557,
+            12.394624995067716,
+            12.14037500176346,
+            12.652750003326219
+          ],
+          "response_bytes": 4735,
+          "paths": [
+            "tests/test_memory.py",
+            "docs/mcp.md",
+            "init_agent/index_health.py"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            14.601250004488975,
+            14.762666993192397,
+            15.295584002160467,
+            14.83274999918649,
+            15.187416996923275,
+            15.203790993837174,
+            14.733000003616326
+          ],
+          "response_bytes": 4932,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "tests/test_experiments.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            16.502625003340654,
+            17.095791998144705,
+            19.14375000342261,
+            17.539958003908396,
+            17.89491600356996,
+            19.190624996554106,
+            19.222540999180637
+          ],
+          "response_bytes": 4711,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            33.98524999647634,
+            36.173125001369044,
+            34.76862499519484,
+            33.7593329968513,
+            33.86358299758285,
+            33.73762499541044,
+            35.15145799610764
+          ],
+          "response_bytes": 4289,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            11.113291999208741,
+            11.157375003676862,
+            10.262458003126085,
+            10.254375003569294,
+            10.632582998368889,
+            10.78254200547235,
+            10.399833001429215
+          ],
+          "response_bytes": 5000,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "init_agent/refresh.py"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            14.34454200352775,
+            14.429540999117307,
+            14.927665994036943,
+            14.76912500220351,
+            15.353250004409347,
+            16.581291994953062,
+            14.901458001986612
+          ],
+          "response_bytes": 4206,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "init_agent/relation_resolver.py"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            16.529957996681333,
+            18.390292003459763,
+            16.518874996108934,
+            16.1015000048792,
+            15.993083005014341,
+            16.253916001005564,
+            16.549583000596613
+          ],
+          "response_bytes": 5498,
+          "paths": [
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py",
+            "init_agent/mcp_server.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            8.566625001549255,
+            7.838666999305133,
+            7.503082997573074,
+            7.191167002019938,
+            7.555458003480453,
+            7.252250004967209,
+            7.664583004952874
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 2
+    },
+    {
+      "mode": "scope",
+      "full_reindex_ms": 241.80424999940442,
+      "single_file": "init_agent/cli.py",
+      "single_file_reindex_ms": [
+        11.76833299541613,
+        12.004333999357186,
+        12.45645900053205,
+        11.741000002075452,
+        11.648208004771732
+      ],
+      "compacted_database_bytes": 11374592,
+      "search_tables_bytes": 5378048,
+      "chunks": 4325,
+      "peak_process_rss_bytes": 47874048,
+      "queries": [
+        {
+          "query": "backup skills orientation synchron",
+          "milliseconds": [
+            9.797499995329417,
+            8.581957998103462,
+            9.515166995697655,
+            8.584541996242478,
+            8.719332996406592,
+            8.521374998963438,
+            8.491583001159597
+          ],
+          "response_bytes": 2956,
+          "paths": [
+            "docs/commands.md",
+            "tests/test_docs_install.py",
+            "skills/README.md"
+          ]
+        },
+        {
+          "query": "related.files related_files related-file callers callee calls",
+          "milliseconds": [
+            15.038582998386119,
+            15.142832999117672,
+            14.38087499991525,
+            15.942207995976787,
+            14.13466699887067,
+            14.72187499894062,
+            14.37854200048605
+          ],
+          "response_bytes": 4938,
+          "paths": [
+            "init_agent/mcp_compact.py",
+            "init_agent/query.py",
+            "tests/test_mcp.py"
+          ]
+        },
+        {
+          "query": "fresh stale memory metadata mtime modified",
+          "milliseconds": [
+            10.824541001056787,
+            10.70041699858848,
+            10.801000003993977,
+            11.014625000825617,
+            10.655582998879254,
+            10.718792000261601,
+            10.910499993769918
+          ],
+          "response_bytes": 4716,
+          "paths": [
+            "tests/test_memory.py",
+            "init_agent/index_health.py",
+            "docs/mcp.md"
+          ]
+        },
+        {
+          "query": "overview candidate repository map repo map unindexed drift deleted removed",
+          "milliseconds": [
+            13.689041996258311,
+            13.080541000817902,
+            15.465416996448766,
+            13.75091599766165,
+            13.102208002237603,
+            12.811500004318077,
+            12.975416000699624
+          ],
+          "response_bytes": 4787,
+          "paths": [
+            "tests/test_index_health.py",
+            "init_agent/index_health.py",
+            "init_agent/overview.py"
+          ]
+        },
+        {
+          "query": "prepare_repository",
+          "milliseconds": [
+            21.50245799566619,
+            20.15729100094177,
+            20.100292000279296,
+            21.10533299855888,
+            22.54483299475396,
+            20.577167000737973,
+            20.748166003613733
+          ],
+          "response_bytes": 5052,
+          "paths": [
+            "init_agent/run.py",
+            "tests/test_plan_preparation.py",
+            "init_agent/agent_tools.py"
+          ]
+        },
+        {
+          "query": "init_agent/graph_store.py",
+          "milliseconds": [
+            41.056417001527734,
+            41.334082998218946,
+            39.874208996479865,
+            38.97012500237906,
+            40.446749997499865,
+            39.755666999553796,
+            41.22966700379038
+          ],
+          "response_bytes": 3776,
+          "paths": [
+            "init_agent/graph_store.py",
+            "experiments/cases.json",
+            "tests/test_plan_preparation.py"
+          ]
+        },
+        {
+          "query": "sqlite transaction rollback",
+          "milliseconds": [
+            8.190916996682063,
+            7.984500000020489,
+            8.082791995548178,
+            8.311500001582317,
+            8.321374996739905,
+            8.27170900447527,
+            8.260916998551693
+          ],
+          "response_bytes": 4247,
+          "paths": [
+            "init_agent/repo_budget.py",
+            "tests/test_metadata_boundaries.py",
+            "docs/security.md"
+          ]
+        },
+        {
+          "query": "function symbol qualified name",
+          "milliseconds": [
+            12.308541001402773,
+            12.93450000230223,
+            13.065582999843173,
+            13.832832999469247,
+            14.444749998801854,
+            12.99908399960259,
+            12.618792003195267
+          ],
+          "response_bytes": 3536,
+          "paths": [
+            "init_agent/symbol_extractor.py",
+            "docs/commands.md",
+            "docs/parsing.md"
+          ]
+        },
+        {
+          "query": "Verifica quali informazioni vengono invalidate quando cambia il contenuto di un file gi\u00e0 letto",
+          "milliseconds": [
+            12.98579200374661,
+            12.61174999672221,
+            12.64979099505581,
+            13.745124997512903,
+            12.954166995768901,
+            12.38300000113668,
+            12.319624998781364
+          ],
+          "response_bytes": 4801,
+          "paths": [
+            "tests/test_transport_git_boundaries.py",
+            "tests/test_trajectory.py",
+            "tests/test_security_resource_budgets.py"
+          ]
+        },
+        {
+          "query": "zznonexistentneedlezz",
+          "milliseconds": [
+            13.833208002324682,
+            12.847958001657389,
+            13.133958003891166,
+            12.794457994459663,
+            13.086083003145177,
+            14.337332999275532,
+            13.102125005389098
+          ],
+          "response_bytes": 394,
+          "paths": []
+        }
+      ],
+      "trial": 2
+    }
+  ]
+}

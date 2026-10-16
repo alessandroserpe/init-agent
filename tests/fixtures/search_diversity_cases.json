@@ -1,0 +1,6 @@
+[
+ {"id":"python_runtime","split":"development","query":"lease expiry renewal","noise_path":"notes.txt","noise_line":"lease expiry renewal lease expiry renewal\n","target":"core.py","target_text":"def run():\n    # lease expiry renewal are handled here with bounded retries\n    return True\n"},
+ {"id":"typescript_configuration","split":"development","query":"connection retry budget","noise_path":"reference.md","noise_line":"connection retry budget connection retry budget\n","target":"client.ts","target_text":"export const options = { connection: true, retry: 3, budget: 20 };\n"},
+ {"id":"documentation_answer","split":"validation","query":"archive retention policy","noise_path":"generated.txt","noise_line":"archive retention policy archive retention policy\n","target":"docs/policy.md","target_text":"# Operations\nThe archive retention policy applies for thirty days and requires approval for deletion.\n"},
+ {"id":"test_answer","split":"validation","query":"expired session rejection","noise_path":"catalog.txt","noise_line":"expired session rejection expired session rejection\n","target":"tests/test_session.py","target_text":"def test_reject():\n    # expired session rejection is a regression scenario\n    assert True\n"}
+]

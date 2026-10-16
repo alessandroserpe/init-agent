@@ -1,0 +1,210 @@
+{
+  "nested_scope": {
+    "child_with_inner_evidence": 1,
+    "child_with_distant_outer_evidence": 0,
+    "parent_with_outer_evidence": 1
+  },
+  "cases": [
+    {
+      "query": "restoreArchive checksum mismatch",
+      "distractor": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": true,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "restoreArchive checksum mismatch",
+      "distractor": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "renewLease deadline exceeded",
+      "distractor": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": true,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "renewLease deadline exceeded",
+      "distractor": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "parseManifest unsupported encoding",
+      "distractor": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": true,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "parseManifest unsupported encoding",
+      "distractor": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "flushJournal durability barrier",
+      "distractor": false,
+      "before": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "worker.py"
+        ],
+        "top_has_target_evidence": true,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    },
+    {
+      "query": "flushJournal durability barrier",
+      "distractor": true,
+      "before": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "any_term"
+        ]
+      },
+      "after": {
+        "paths": [
+          "guide.md",
+          "worker.py"
+        ],
+        "top_has_target_evidence": false,
+        "target_channels": [
+          "all_terms",
+          "any_term"
+        ]
+      }
+    }
+  ],
+  "boundary_false_association": [
+    {
+      "first_line": 21,
+      "last_line": 27,
+      "names": "scope py outer scope unrelated"
+    }
+  ],
+  "unknown_end_extension": [],
+  "limitations": "Synthetic mechanism checks only; intersecting windows do not prove that every token belongs to the named symbol."
+}

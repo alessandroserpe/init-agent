@@ -1,0 +1,82 @@
+[
+  {
+    "id": "python_runtime",
+    "split": "development",
+    "target": "core.py",
+    "before": {
+      "paths": [
+        "notes.txt"
+      ],
+      "found": false,
+      "bytes": 1216
+    },
+    "after": {
+      "paths": [
+        "notes.txt",
+        "core.py"
+      ],
+      "found": true,
+      "bytes": 1627
+    }
+  },
+  {
+    "id": "typescript_configuration",
+    "split": "development",
+    "target": "client.ts",
+    "before": {
+      "paths": [
+        "reference.md"
+      ],
+      "found": false,
+      "bytes": 1297
+    },
+    "after": {
+      "paths": [
+        "reference.md",
+        "client.ts"
+      ],
+      "found": true,
+      "bytes": 1690
+    }
+  },
+  {
+    "id": "documentation_answer",
+    "split": "validation",
+    "target": "docs/policy.md",
+    "before": {
+      "paths": [
+        "generated.txt"
+      ],
+      "found": false,
+      "bytes": 1324
+    },
+    "after": {
+      "paths": [
+        "generated.txt",
+        "docs/policy.md"
+      ],
+      "found": true,
+      "bytes": 1760
+    }
+  },
+  {
+    "id": "test_answer",
+    "split": "validation",
+    "target": "tests/test_session.py",
+    "before": {
+      "paths": [
+        "catalog.txt"
+      ],
+      "found": false,
+      "bytes": 1348
+    },
+    "after": {
+      "paths": [
+        "catalog.txt",
+        "tests/test_session.py"
+      ],
+      "found": true,
+      "bytes": 1780
+    }
+  }
+]
