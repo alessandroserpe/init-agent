@@ -11,9 +11,9 @@ from .memory import with_live_staleness
 from .metadata_db import connect_metadata
 from .repo_budget import bounded_operation, checkpoint
 from .repo_files import repo_snapshot
-from .text_tokens import FUNCTION_WORDS, identifier_terms
+from .search_tokens import search_terms
 
-SEARCH_INDEX_VERSION = 3
+SEARCH_INDEX_VERSION = 4
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS search_index_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL);
@@ -54,7 +54,7 @@ def searchable_path(path):
 
 
 def terms(text):
-    return [t for t in identifier_terms(text) if t not in FUNCTION_WORDS]
+    return search_terms(text)
 
 
 @bounded_operation

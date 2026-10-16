@@ -112,7 +112,7 @@ The experimental maintenance path now uses `init_agent.search_passages`:
 Missing or invalid end lines label only the declaration line. Existing output
 limits and ranking rules remain unchanged; no model or skill prompt is added.
 
-`search_index_meta` stores source index version 3. The next maintenance pass
+`search_index_meta` stores source index version 4. The next maintenance pass
 rebuilds an unversioned/older source index, even with unchanged source hashes.
 Source chunks, indexed hashes and the version are committed in one transaction;
 an unexpected failure rolls them back together. Notes and their FTS triggers
@@ -169,3 +169,18 @@ Updates delete retired chunks in one SQL pass using a temporary set of changed
 or removed paths. New files require no prior deletion. This avoids repeated
 full-table scans of the unindexed FTS path column. Source rows and their version
 still use the same transaction and rollback behavior. Work budgets are unchanged.
+
+
+## Unicode normalization
+
+Source index version 4 uses NFC Unicode normalization for full-text queries and
+source passages. It preserves accented/non-Latin words and retains the previous
+ASCII identifier splitting behavior. Existing function-word filtering now sees
+`perché` intact rather than the accidental fragment `perch`. No translation,
+new synonym dictionary or ranking weights are introduced. The legacy graph
+normalizer and its index version remain unchanged. Source index versions below
+4 are rebuilt automatically; stored note text is not rewritten.
+
+See [normalization comparison](local-search-normalization.md): this corrects
+text loss, but does not resolve the broad Italian task in the fixed-snapshot
+comparison. The result must not be presented as a generic ranking improvement.

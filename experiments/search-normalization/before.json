@@ -1,0 +1,91 @@
+[
+  {
+    "query": "Perché la scansione include i log generati dagli esperimenti anche quando sono esclusi tramite .gitignore?",
+    "terms": [
+      "perch",
+      "scansione",
+      "include",
+      "i",
+      "log",
+      "generati",
+      "dagli",
+      "esperimenti",
+      "anche",
+      "quando",
+      "sono",
+      "esclusi",
+      "tramite",
+      "gitignore"
+    ],
+    "paths": [
+      "init_agent/text_tokens.py",
+      "init_agent/trace.py",
+      "experiments/agent-runs/README.md"
+    ],
+    "response_bytes": 5835
+  },
+  {
+    "query": "Come viene gestita la cancellazione dei file già indicizzati?",
+    "terms": [
+      "viene",
+      "gestita",
+      "cancellazione",
+      "dei",
+      "file",
+      "gi",
+      "indicizzati"
+    ],
+    "paths": [
+      "init_agent/trace.py",
+      "tests/test_index_context.py",
+      "experiments/search_scope_cost.py"
+    ],
+    "response_bytes": 6517
+  },
+  {
+    "query": "Where are stale notes checked after source files change?",
+    "terms": [
+      "stale",
+      "notes",
+      "checked",
+      "source",
+      "files",
+      "change"
+    ],
+    "paths": [
+      "README.md",
+      "docs/semantic-search-feasibility.md",
+      "experiments/agent-runs/pilot-tasks.json"
+    ],
+    "response_bytes": 6189
+  },
+  {
+    "query": "prepare_repository",
+    "terms": [
+      "prepare",
+      "repository"
+    ],
+    "paths": [
+      "init_agent/run.py",
+      "tests/test_plan_preparation.py",
+      "init_agent/agent_tools.py"
+    ],
+    "response_bytes": 7310
+  },
+  {
+    "query": "init_agent/local_search.py",
+    "terms": [
+      "init",
+      "agent",
+      "local",
+      "search",
+      "py"
+    ],
+    "paths": [
+      "init_agent/local_search.py",
+      "experiments/search_ranking.py",
+      "docs/commands.md"
+    ],
+    "response_bytes": 6022
+  }
+]

@@ -1,0 +1,188 @@
+{
+  "revision": "4c155672ceb7522af8218cd0f79a25e9b01cc499",
+  "cases": [
+    {
+      "query": "Perché la scansione include i log generati dagli esperimenti anche quando sono esclusi tramite .gitignore?",
+      "before": {
+        "terms": [
+          "perch",
+          "scansione",
+          "include",
+          "i",
+          "log",
+          "generati",
+          "dagli",
+          "esperimenti",
+          "anche",
+          "quando",
+          "sono",
+          "esclusi",
+          "tramite",
+          "gitignore"
+        ],
+        "paths": [
+          "init_agent/text_tokens.py",
+          "experiments/results/.gitignore",
+          "experiments/flow-graph/results/.gitignore"
+        ],
+        "response_bytes": 2194
+      },
+      "after": {
+        "terms": [
+          "scansione",
+          "include",
+          "i",
+          "log",
+          "generati",
+          "dagli",
+          "esperimenti",
+          "anche",
+          "quando",
+          "sono",
+          "esclusi",
+          "tramite",
+          "gitignore"
+        ],
+        "paths": [
+          "experiments/results/.gitignore",
+          "experiments/flow-graph/results/.gitignore",
+          "init_agent/trace.py"
+        ],
+        "response_bytes": 2148
+      }
+    },
+    {
+      "query": "Come viene gestita la cancellazione dei file già indicizzati?",
+      "before": {
+        "terms": [
+          "viene",
+          "gestita",
+          "cancellazione",
+          "dei",
+          "file",
+          "gi",
+          "indicizzati"
+        ],
+        "paths": [
+          "init_agent/trace.py",
+          "experiments/search_scope_cost.py",
+          "tests/test_index_context.py"
+        ],
+        "response_bytes": 4288
+      },
+      "after": {
+        "terms": [
+          "viene",
+          "gestita",
+          "cancellazione",
+          "dei",
+          "file",
+          "già",
+          "indicizzati"
+        ],
+        "paths": [
+          "init_agent/trace.py",
+          "experiments/search_scope_cost.py",
+          "tests/test_index_context.py"
+        ],
+        "response_bytes": 4290
+      }
+    },
+    {
+      "query": "Where are stale notes checked after source files change?",
+      "before": {
+        "terms": [
+          "stale",
+          "notes",
+          "checked",
+          "source",
+          "files",
+          "change"
+        ],
+        "paths": [
+          "README.md",
+          "docs/semantic-search-feasibility.md",
+          "tests/test_cli_tools.py"
+        ],
+        "response_bytes": 3737
+      },
+      "after": {
+        "terms": [
+          "stale",
+          "notes",
+          "checked",
+          "source",
+          "files",
+          "change"
+        ],
+        "paths": [
+          "README.md",
+          "docs/semantic-search-feasibility.md",
+          "tests/test_cli_tools.py"
+        ],
+        "response_bytes": 3737
+      }
+    },
+    {
+      "query": "prepare_repository",
+      "before": {
+        "terms": [
+          "prepare",
+          "repository"
+        ],
+        "paths": [
+          "init_agent/run.py",
+          "tests/test_plan_preparation.py",
+          "init_agent/agent_tools.py"
+        ],
+        "response_bytes": 5047
+      },
+      "after": {
+        "terms": [
+          "prepare",
+          "repository"
+        ],
+        "paths": [
+          "init_agent/run.py",
+          "tests/test_plan_preparation.py",
+          "init_agent/agent_tools.py"
+        ],
+        "response_bytes": 5047
+      }
+    },
+    {
+      "query": "init_agent/local_search.py",
+      "before": {
+        "terms": [
+          "init",
+          "agent",
+          "local",
+          "search",
+          "py"
+        ],
+        "paths": [
+          "init_agent/local_search.py",
+          "experiments/search_ranking.py",
+          "docs/commands.md"
+        ],
+        "response_bytes": 3909
+      },
+      "after": {
+        "terms": [
+          "init",
+          "agent",
+          "local",
+          "search",
+          "py"
+        ],
+        "paths": [
+          "init_agent/local_search.py",
+          "experiments/search_ranking.py",
+          "docs/commands.md"
+        ],
+        "response_bytes": 3909
+      }
+    }
+  ],
+  "scope": "same exported source and ranking; full-text normalization differs; not a blind relevance benchmark"
+}
