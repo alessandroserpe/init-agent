@@ -112,7 +112,7 @@ The experimental maintenance path now uses `init_agent.search_passages`:
 Missing or invalid end lines label only the declaration line. Existing output
 limits and ranking rules remain unchanged; no model or skill prompt is added.
 
-`search_index_meta` stores source index version 2. The next maintenance pass
+`search_index_meta` stores source index version 3. The next maintenance pass
 rebuilds an unversioned/older source index, even with unchanged source hashes.
 Source chunks, indexed hashes and the version are committed in one transaction;
 an unexpected failure rolls them back together. Notes and their FTS triggers
@@ -155,3 +155,17 @@ entry point, including first initialization and subsequent calls. No model
 benchmark was run. Restart the MCP server (or start a new Codex session) after
 updating the package so the client discovers the new tool; skill sync is not
 needed for this change.
+
+
+## Bounded indexing correction
+
+Version 3 additionally limits passages to 8192 characters while preserving line
+ranges. A source with an individually oversized line or metadata field is skipped
+as a whole, without leaving partially inserted hits; maintenance reports the
+skipped file. The MCP tool preserves incomplete-index warnings on later unchanged
+calls. This is a coverage limit, not a claim that excluded files are irrelevant.
+
+Updates delete retired chunks in one SQL pass using a temporary set of changed
+or removed paths. New files require no prior deletion. This avoids repeated
+full-table scans of the unindexed FTS path column. Source rows and their version
+still use the same transaction and rollback behavior. Work budgets are unchanged.

@@ -80,6 +80,10 @@ class McpLocalSearchTests(unittest.TestCase):
                 result=self.call(server)['structuredContent']
             self.assertIn('parser incomplete',result['warnings'])
             self.assertTrue(any('incomplete' in w for w in result['warnings']))
+            with patch('init_agent.search_tool.Maintainer.tick',return_value=None):
+                idle=self.call(server)['structuredContent']
+            self.assertIn('parser incomplete',idle['warnings'])
+            self.assertTrue(any('Some files' in w for w in idle['warnings']))
 
     def test_work_budget_failure_returns_explicit_incomplete_result(self):
         from init_agent.repo_budget import CURRENT_BUDGET, RepoBudget

@@ -3,6 +3,13 @@ from collections import Counter, defaultdict
 from .repo_budget import checkpoint
 
 
+MAX_PASSAGE_CHARS = 8192
+
+
+class OversizedPassage(ValueError):
+    """A single source line cannot fit the bounded passage representation."""
+
+
 def passages(lines, symbols):
     """Split at known scope starts/ends; never infer missing end positions."""
     n = len(lines)
@@ -27,9 +34,19 @@ def passages(lines, symbols):
         checkpoint()
         active.update(events[first])
         active = +active
-        for start in range(first, stop, 20):
-            end = min(start + 24, stop)
+        start = first
+        while start < stop:
+            end, size = start, 0
+            while end < min(start + 24, stop):
+                length = len(lines[end - 1])
+                if length > MAX_PASSAGE_CHARS:
+                    raise OversizedPassage('source line exceeds passage character limit')
+                if size + length + (end > start) > MAX_PASSAGE_CHARS:
+                    break
+                size += length + (end > start)
+                end += 1
             names = set(active)
             for line in range(start, end):
                 names.update(declarations.get(line, ()))
             yield start, end - 1, '\n'.join(lines[start - 1:end - 1]), sorted(names)
+            start = min(start + 20, end)

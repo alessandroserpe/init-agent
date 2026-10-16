@@ -6,14 +6,14 @@ from pathlib import Path
 import sqlite3
 
 from .graph_store import GraphStore
-from .search_passages import passages
+from .search_passages import passages, OversizedPassage
 from .memory import with_live_staleness
 from .metadata_db import connect_metadata
 from .repo_budget import bounded_operation, checkpoint
 from .repo_files import repo_snapshot
 from .text_tokens import FUNCTION_WORDS, identifier_terms
 
-SEARCH_INDEX_VERSION = 2
+SEARCH_INDEX_VERSION = 3
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS search_index_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL);
@@ -82,16 +82,20 @@ def update_search_index(root: Path):
                 conn.execute('DELETE FROM search_files')
             indexed = {p: h for p, h in store.file_hashes().items() if searchable_path(p)}
             previous = dict(conn.execute('SELECT path,sha256 FROM search_files'))
-            for path in previous.keys() - indexed.keys():
-                conn.execute('DELETE FROM search_chunks WHERE path=?', (path,))
-                conn.execute('DELETE FROM search_files WHERE path=?', (path,))
-                result['removed'] += 1
+            removed = previous.keys() - indexed.keys()
+            retired = [path for path, sha in previous.items() if indexed.get(path) != sha]
+            result['removed'] = len(removed)
+            if retired:
+                # FTS path is UNINDEXED: one delete per file scans the whole
+                # corpus repeatedly. Visit it once for the entire changed set.
+                conn.execute('CREATE TEMP TABLE search_retired_paths(path TEXT PRIMARY KEY)')
+                conn.executemany('INSERT INTO search_retired_paths VALUES(?)', ((path,) for path in retired))
+                conn.execute('DELETE FROM search_chunks WHERE path IN (SELECT path FROM search_retired_paths)')
+                conn.execute('DELETE FROM search_files WHERE path IN (SELECT path FROM search_retired_paths)')
             for path, sha in indexed.items():
                 checkpoint()
                 if previous.get(path) == sha:
                     continue
-                conn.execute('DELETE FROM search_chunks WHERE path=?', (path,))
-                conn.execute('DELETE FROM search_files WHERE path=?', (path,))
                 try:
                     snapshot = repo_snapshot(root, path)
                 except OSError:
@@ -102,12 +106,19 @@ def update_search_index(root: Path):
                     continue
                 lines = snapshot.content.splitlines()
                 symbols = list(conn.execute('SELECT s.name,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=?', (path,)))
-                for first, last, excerpt, enclosing in passages(lines, symbols):
-                    names = path + ' ' + ' '.join(enclosing)
-                    body = ' '.join(terms(excerpt))
-                    checkpoint('bytes', len(body.encode()) + len(excerpt.encode()))
-                    conn.execute('INSERT INTO search_chunks VALUES(?,?,?,?,?,?,?)',
-                                 (path, sha, first, last, excerpt, ' '.join(terms(names)), body))
+                records = []
+                try:
+                    for first, last, excerpt, enclosing in passages(lines, symbols):
+                        names = ' '.join(terms(path + ' ' + ' '.join(enclosing)))
+                        body = ' '.join(terms(excerpt))
+                        if max(len(names), len(body), len(excerpt)) > 16384:
+                            raise OversizedPassage('passage field exceeds metadata string limit')
+                        checkpoint('bytes', len(body.encode()) + len(excerpt.encode()) + len(names.encode()))
+                        records.append((path, sha, first, last, excerpt, names, body))
+                except OversizedPassage:
+                    result['skipped'].append(path)
+                    continue
+                conn.executemany('INSERT INTO search_chunks VALUES(?,?,?,?,?,?,?)', records)
                 conn.execute('INSERT INTO search_files VALUES(?,?)', (path, sha))
                 result['updated'] += 1
             conn.execute("INSERT OR REPLACE INTO search_index_meta VALUES('version',?)", (SEARCH_INDEX_VERSION,))

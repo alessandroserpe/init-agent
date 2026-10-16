@@ -1,6 +1,6 @@
 """Structural safety checks for indexed source passages."""
 import unittest
-from init_agent.search_passages import passages
+from init_agent.search_passages import passages, MAX_PASSAGE_CHARS, OversizedPassage
 
 
 class ScopePassageTests(unittest.TestCase):
@@ -32,6 +32,16 @@ class ScopePassageTests(unittest.TestCase):
     def test_same_name_nested_scopes_do_not_remove_parent_context(self):
         chunks = list(passages(['x']*60, [dict(name='same',line=1,end_line=60), dict(name='same',line=5,end_line=10)]))
         self.assertTrue(all('same' in names for _,_,_,names in chunks))
+
+    def test_long_lines_split_passages_without_losing_line_evidence(self):
+        lines = [('marker' + str(i) + ' ' + 'x'*1990) for i in range(40)]
+        chunks = list(passages(lines, []))
+        self.assertEqual(set(i for first,last,_,_ in chunks for i in range(first,last+1)), set(range(1,41)))
+        for first,last,excerpt,_ in chunks:
+            self.assertLessEqual(len(excerpt),MAX_PASSAGE_CHARS)
+            self.assertEqual(excerpt,'\n'.join(lines[first-1:last]))
+        with self.assertRaises(OversizedPassage):
+            list(passages(['x'*(MAX_PASSAGE_CHARS+1)], []))
 
     def test_no_symbols_preserves_fixed_windows_and_empty_input(self):
         chunks = list(passages(['x']*50, []))
