@@ -82,7 +82,8 @@ class LocalSearchTests(unittest.TestCase):
             self.assertEqual(hit['path'],'opaque.py')
             self.assertIn('retention window exhausted',hit['excerpt'])
             self.assertIn('openArchive',[s['name'] for s in hit['symbols']])
-            self.assertTrue(any(r['source']=='caller.py' for r in hit['graph_links']))
+            self.assertTrue(any(e['caller']['path']=='caller.py'
+                                for p in result['call_paths'] for e in p['edges']))
             self.assertEqual(search(root,'open_archive')['results'][0]['path'],'opaque.py')
             self.assertEqual([r['path'] for r in search(root,'open_archive',path_prefixes=['caller.py'])['results']],['caller.py'])
             with self.assertRaises(ValueError):search(root,'x',path_prefixes=['../'])

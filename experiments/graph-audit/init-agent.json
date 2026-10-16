@@ -1,0 +1,666 @@
+{
+  "maintenance_status": "ready",
+  "edges": [
+    {
+      "source": "init_agent/search_tool.py:make_repo_search_handler.handle",
+      "target": "init_agent/local_watch.py:Maintainer.tick",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "tick",
+          "metadata_json": "{\"line\": 42, \"qualified_name\": \"worker.tick\"}"
+        }
+      ],
+      "resolved_calls": []
+    },
+    {
+      "source": "init_agent/local_watch.py:Maintainer.tick",
+      "target": "init_agent/local_watch.py:fingerprint",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "fingerprint",
+          "metadata_json": "{\"line\": 96, \"qualified_name\": \"fingerprint\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 96, \"provenance\": \"resolved\", \"qualified_name\": \"fingerprint\", \"raw_relation_id\": 3327, \"raw_target_id\": \"fingerprint\", \"resolved\": true, \"resolver\": \"same_file_symbol\", \"source_qualified_name\": \"Maintainer.tick\", \"target_path\": \"init_agent/local_watch.py\", \"target_qualified_name\": \"fingerprint\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/local_watch.py:fingerprint",
+      "target": "init_agent/scanner.py:iter_project_files",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "iter_project_files",
+          "metadata_json": "{\"line\": 41, \"qualified_name\": \"iter_project_files\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 41, \"provenance\": \"resolved\", \"qualified_name\": \"iter_project_files\", \"raw_relation_id\": 3303, \"raw_target_id\": \"iter_project_files\", \"resolved\": true, \"resolver\": \"imported_symbol\", \"source_qualified_name\": \"fingerprint\", \"target_path\": \"init_agent/scanner.py\", \"target_qualified_name\": \"iter_project_files\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/scanner.py:iter_project_files",
+      "target": "init_agent/utils.py:iter_indexable_files",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "iter_indexable_files",
+          "metadata_json": "{\"line\": 140, \"qualified_name\": \"iter_indexable_files\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 140, \"provenance\": \"resolved\", \"qualified_name\": \"iter_indexable_files\", \"raw_relation_id\": 7653, \"raw_target_id\": \"iter_indexable_files\", \"resolved\": true, \"resolver\": \"imported_symbol\", \"source_qualified_name\": \"iter_project_files\", \"target_path\": \"init_agent/utils.py\", \"target_qualified_name\": \"iter_indexable_files\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/utils.py:iter_indexable_files",
+      "target": "init_agent/utils.py:_git_indexable_paths",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "_git_indexable_paths",
+          "metadata_json": "{\"line\": 338, \"qualified_name\": \"_git_indexable_paths\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 338, \"provenance\": \"resolved\", \"qualified_name\": \"_git_indexable_paths\", \"raw_relation_id\": 9775, \"raw_target_id\": \"_git_indexable_paths\", \"resolved\": true, \"resolver\": \"same_file_symbol\", \"source_qualified_name\": \"iter_indexable_files\", \"target_path\": \"init_agent/utils.py\", \"target_qualified_name\": \"_git_indexable_paths\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/utils.py:_git_indexable_paths",
+      "target": "init_agent/utils.py:run_git_read",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "run_git_read",
+          "metadata_json": "{\"line\": 398, \"qualified_name\": \"run_git_read\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 398, \"provenance\": \"resolved\", \"qualified_name\": \"run_git_read\", \"raw_relation_id\": 9808, \"raw_target_id\": \"run_git_read\", \"resolved\": true, \"resolver\": \"same_file_symbol\", \"source_qualified_name\": \"_git_indexable_paths\", \"target_path\": \"init_agent/utils.py\", \"target_qualified_name\": \"run_git_read\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/local_watch.py:Maintainer.tick",
+      "target": "init_agent/run.py:prepare_repository",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "prepare_repository",
+          "metadata_json": "{\"line\": 101, \"qualified_name\": \"prepare_repository\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 101, \"provenance\": \"resolved\", \"qualified_name\": \"prepare_repository\", \"raw_relation_id\": 3330, \"raw_target_id\": \"prepare_repository\", \"resolved\": true, \"resolver\": \"imported_symbol\", \"source_qualified_name\": \"Maintainer.tick\", \"target_path\": \"init_agent/run.py\", \"target_qualified_name\": \"prepare_repository\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/local_watch.py:Maintainer.tick",
+      "target": "init_agent/local_search.py:update_search_index",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "update_search_index",
+          "metadata_json": "{\"line\": 105, \"qualified_name\": \"update_search_index\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 105, \"provenance\": \"resolved\", \"qualified_name\": \"update_search_index\", \"raw_relation_id\": 3334, \"raw_target_id\": \"update_search_index\", \"resolved\": true, \"resolver\": \"imported_symbol\", \"source_qualified_name\": \"Maintainer.tick\", \"target_path\": \"init_agent/local_search.py\", \"target_qualified_name\": \"update_search_index\"}"
+        }
+      ]
+    },
+    {
+      "source": "init_agent/search_tool.py:make_repo_search_handler.handle",
+      "target": "init_agent/local_search.py:search",
+      "source_exists": true,
+      "target_exists": true,
+      "raw_calls": [
+        {
+          "relation": "calls",
+          "target_id": "search",
+          "metadata_json": "{\"line\": 45, \"qualified_name\": \"search\"}"
+        }
+      ],
+      "resolved_calls": [
+        {
+          "relation": "calls",
+          "metadata_json": "{\"line\": 45, \"provenance\": \"resolved\", \"qualified_name\": \"search\", \"raw_relation_id\": 7752, \"raw_target_id\": \"search\", \"resolved\": true, \"resolver\": \"imported_symbol\", \"source_qualified_name\": \"make_repo_search_handler.handle\", \"target_path\": \"init_agent/local_search.py\", \"target_qualified_name\": \"search\"}"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "files": 66,
+    "symbols": 1118,
+    "relations": 12748
+  },
+  "queries": {
+    "Maintainer.tick": {
+      "query": "Maintainer.tick",
+      "terms": [
+        "maintainer",
+        "tick"
+      ],
+      "results": [
+        {
+          "path": "init_agent/local_watch.py",
+          "sha256": "36573cb630512c47ae5284c066fd437fa5cec92ec0f085d25d732d3c7d9258f7",
+          "start_line": 93,
+          "end_line": 104,
+          "excerpt": "    def tick(self):\n        started = time.monotonic()\n        inventory_warnings = []\n        observed = fingerprint(self.root, warnings=inventory_warnings)\n        due = self.last_reconcile is None or started - self.last_reconcile >= self.reconcile_seconds\n        if observed == self.previous and inventory_warnings == self.inventory_warnings and not due and (self.root / '.agent/graph.sqlite').is_file():\n            return None\n        before = indexed_hashes(self.root)\n        preparation = prepare_repository(self.root)\n        preparation['warnings'] = list(dict.fromkeys([*preparation['warnings'], *inventory_warnings]))\n        after = indexed_hashes(self.root)\n        failed = any(preparation.get(key) == 'failed' for key in ('init', 'map', 'refresh', 'git'))",
+          "excerpt_truncated": false,
+          "bm25": -10.260603888871033,
+          "retrieval": [
+            "all_terms",
+            "exact_symbol_or_path"
+          ],
+          "symbols": [
+            {
+              "name": "tick",
+              "kind": "method",
+              "line": 93,
+              "end_line": 123
+            },
+            {
+              "name": "Maintainer",
+              "kind": "class",
+              "line": 83,
+              "end_line": 123
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/graph_store.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/local_search.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/private_files.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/repo_budget.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/search_tool.py",
+          "sha256": "d28e05b80501fbcbbbaf3c58a3a3b4c9b31c53b01f50b8b8ca211962fa028a1e",
+          "start_line": 34,
+          "end_line": 42,
+          "excerpt": "            raise ValueError('Use at most eight nonempty repository-relative path prefixes')\n        resolved = root.resolve(strict=True)\n        if worker is None or worker.root != resolved:\n            worker = Maintainer(resolved)\n            last_warnings = []\n        with maintenance_lock(resolved):\n            # Existing initialization/map diagnostics must never corrupt MCP stdout.\n            with redirect_stdout(sys.stderr):\n                event = worker.tick()",
+          "excerpt_truncated": false,
+          "bm25": -5.975714590279762,
+          "retrieval": [
+            "all_terms",
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "handle",
+              "kind": "function",
+              "line": 19,
+              "end_line": 52
+            },
+            {
+              "name": "make_repo_search_handler",
+              "kind": "function",
+              "line": 12,
+              "end_line": 54
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/mcp_server.py",
+              "target": "init_agent/search_tool.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/mcp_tools.py",
+              "target": "init_agent/search_tool.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/search_tool.py",
+              "target": "init_agent/contracts.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/search_tool.py",
+              "target": "init_agent/local_search.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/local_search.py",
+          "sha256": "5bf43783e78aad4b299402f353563bd328d49aaf4bc0ab6370b5903825cfc26f",
+          "start_line": 61,
+          "end_line": 72,
+          "excerpt": "def update_search_index(root: Path):\n    \"\"\"Maintain source passages; rebuild older formats even with unchanged hashes.\"\"\"\n    with GraphStore(root) as store:\n        conn = store.connection\n        conn.executescript(SCHEMA)\n        had_notes = conn.execute(\"SELECT 1 FROM sqlite_master WHERE name='search_notes'\").fetchone()\n        conn.executescript(MEMORY_SCHEMA)\n        if not had_notes:\n            conn.execute(\"INSERT INTO search_notes(search_notes) VALUES('rebuild')\")\n            conn.commit()\n        result = {'updated': 0, 'removed': 0, 'skipped': [], 'rebuilt': False,\n                  'index_version': SEARCH_INDEX_VERSION}",
+          "excerpt_truncated": false,
+          "bm25": -2.7980674517138784,
+          "retrieval": [
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "update_search_index",
+              "kind": "function",
+              "line": 61,
+              "end_line": 131
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_search.py",
+              "target": "init_agent/graph_store.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_search.py",
+              "target": "init_agent/memory.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_search.py",
+              "target": "init_agent/metadata_db.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_search.py",
+              "target": "init_agent/repo_budget.py",
+              "confidence": 0.95
+            }
+          ]
+        }
+      ],
+      "memories": [],
+      "stale_candidates": [],
+      "path_prefixes": [],
+      "candidate_limit_per_channel": 80,
+      "warnings": [
+        "Graph links are index evidence, not proof of test coverage or semantic correctness."
+      ],
+      "excerpt_character_limit": 1400,
+      "candidate_limit_reached": false,
+      "capped_channels": [],
+      "candidate_count": 7
+    },
+    "fingerprint iter_project_files": {
+      "query": "fingerprint iter_project_files",
+      "terms": [
+        "fingerprint",
+        "iter",
+        "project",
+        "files"
+      ],
+      "results": [
+        {
+          "path": "init_agent/local_watch.py",
+          "sha256": "36573cb630512c47ae5284c066fd437fa5cec92ec0f085d25d732d3c7d9258f7",
+          "start_line": 39,
+          "end_line": 50,
+          "excerpt": "def fingerprint(root, *, warnings=None):\n    result = {}\n    for path in iter_project_files(root, warnings=warnings):\n        name = path.relative_to(root).as_posix()\n        with open_repo_file(root, name) as handle:\n            s = os.fstat(handle.fileno())\n        result[name] = (s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_ino)\n    # Rules can change without changing any currently included file.\n    with MetadataDirectory(root) as directory:\n        try:\n            with directory.open('config.json', 'rb') as handle:\n                s = os.fstat(handle.fileno())",
+          "excerpt_truncated": false,
+          "bm25": -15.33151985219382,
+          "retrieval": [
+            "all_terms",
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "fingerprint",
+              "kind": "function",
+              "line": 39,
+              "end_line": 55
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/graph_store.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/local_search.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/private_files.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/repo_budget.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/scanner.py",
+          "sha256": "b04e7ae2f215852edd30cd37e31a2e67059e69328a8a9c26b90dcf3bf7841b0c",
+          "start_line": 139,
+          "end_line": 140,
+          "excerpt": "def iter_project_files(root: Path, *, warnings: list[str] | None = None) -> list[Path]:\n    return iter_indexable_files(root, warnings=warnings)",
+          "excerpt_truncated": false,
+          "bm25": -15.032022577553407,
+          "retrieval": [
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "iter_project_files",
+              "kind": "function",
+              "line": 139,
+              "end_line": 140
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/cli.py",
+              "target": "init_agent/scanner.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/doctor.py",
+              "target": "init_agent/scanner.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/index_health.py",
+              "target": "init_agent/scanner.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/scanner.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/index_health.py",
+          "sha256": "e79cba31b12d472684fee9775bb288d89cbacfd8ce4fcfeb822de1513d827e32",
+          "start_line": 10,
+          "end_line": 17,
+          "excerpt": "from typing import Any\n\nfrom .repo_budget import BudgetConnection, bounded_operation, budgeted, checkpoint\nfrom .scanner import INDEX_VERSION, iter_project_files\nimport os\nfrom .repo_files import open_repo_file, stat_mtime\nfrom .utils import db_path, relative_path\n",
+          "excerpt_truncated": false,
+          "bm25": -7.927762572140683,
+          "retrieval": [
+            "any_term"
+          ],
+          "symbols": [],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/agent_tools.py",
+              "target": "init_agent/index_health.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/doctor.py",
+              "target": "init_agent/index_health.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/index_health.py",
+              "target": "init_agent/metadata_db.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/index_health.py",
+              "target": "init_agent/repo_budget.py",
+              "confidence": 0.95
+            }
+          ]
+        }
+      ],
+      "memories": [],
+      "stale_candidates": [],
+      "path_prefixes": [],
+      "candidate_limit_per_channel": 80,
+      "warnings": [
+        "Graph links are index evidence, not proof of test coverage or semantic correctness."
+      ],
+      "excerpt_character_limit": 1400,
+      "candidate_limit_reached": true,
+      "capped_channels": [
+        "any_term"
+      ],
+      "candidate_count": 80
+    },
+    "Git inventory fallback gitignore": {
+      "query": "Git inventory fallback gitignore",
+      "terms": [
+        "git",
+        "inventory",
+        "fallback",
+        "gitignore"
+      ],
+      "results": [
+        {
+          "path": "init_agent/utils.py",
+          "sha256": "02c0dff26269296a30e5333c904776f440ad77bdb5c060ec20443631ff8c72f3",
+          "start_line": 346,
+          "end_line": 357,
+          "excerpt": "                files.append(path)\n        return sorted(files)\n    if warnings is not None and (os.path.lexists(root / '.git') or (root / '.gitignore').is_file()):\n        warnings.append('Git inventory unavailable; filesystem fallback does not apply .gitignore rules. Configured exclusions still apply.')\n    files = []\n    pending = [root]\n    while pending:\n        checkpoint()\n        directory = pending.pop()\n        with os.scandir(directory) as entries:\n            for entry in entries:\n                checkpoint('entries')",
+          "excerpt_truncated": false,
+          "bm25": -18.884828916765834,
+          "retrieval": [
+            "all_terms",
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "iter_indexable_files",
+              "kind": "function",
+              "line": 336,
+              "end_line": 368
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/agent_tools.py",
+              "target": "init_agent/utils.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/cli.py",
+              "target": "init_agent/utils.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/cli_tool_commands.py",
+              "target": "init_agent/utils.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/cli_trajectory_commands.py",
+              "target": "init_agent/utils.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/local_watch.py",
+          "sha256": "36573cb630512c47ae5284c066fd437fa5cec92ec0f085d25d732d3c7d9258f7",
+          "start_line": 93,
+          "end_line": 104,
+          "excerpt": "    def tick(self):\n        started = time.monotonic()\n        inventory_warnings = []\n        observed = fingerprint(self.root, warnings=inventory_warnings)\n        due = self.last_reconcile is None or started - self.last_reconcile >= self.reconcile_seconds\n        if observed == self.previous and inventory_warnings == self.inventory_warnings and not due and (self.root / '.agent/graph.sqlite').is_file():\n            return None\n        before = indexed_hashes(self.root)\n        preparation = prepare_repository(self.root)\n        preparation['warnings'] = list(dict.fromkeys([*preparation['warnings'], *inventory_warnings]))\n        after = indexed_hashes(self.root)\n        failed = any(preparation.get(key) == 'failed' for key in ('init', 'map', 'refresh', 'git'))",
+          "excerpt_truncated": false,
+          "bm25": -9.485141816218285,
+          "retrieval": [
+            "any_term"
+          ],
+          "symbols": [
+            {
+              "name": "tick",
+              "kind": "method",
+              "line": 93,
+              "end_line": 123
+            },
+            {
+              "name": "Maintainer",
+              "kind": "class",
+              "line": 83,
+              "end_line": 123
+            }
+          ],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/graph_store.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/local_search.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/private_files.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/local_watch.py",
+              "target": "init_agent/repo_budget.py",
+              "confidence": 0.95
+            }
+          ]
+        },
+        {
+          "path": "init_agent/language_detector.py",
+          "sha256": "9d1ab440e291bcb2ae03e97c6052e0903adf8f491c3d46672dd78f18452a1a87",
+          "start_line": 56,
+          "end_line": 61,
+          "excerpt": "    \"webpack.config.js\",\n    \"dockerfile\",\n    \".env\",\n    \".gitignore\",\n}\n",
+          "excerpt_truncated": false,
+          "bm25": -9.006299173039247,
+          "retrieval": [
+            "any_term"
+          ],
+          "symbols": [],
+          "graph_links": [
+            {
+              "relation": "imports_symbol",
+              "source": "init_agent/scanner.py",
+              "target": "init_agent/language_detector.py",
+              "confidence": 0.95
+            },
+            {
+              "relation": "imports",
+              "source": "init_agent/scanner.py",
+              "target": "init_agent/language_detector.py",
+              "confidence": 0.9
+            },
+            {
+              "relation": "calls",
+              "source": "init_agent/language_detector.py",
+              "target": "init_agent/language_detector.py",
+              "confidence": 0.8
+            },
+            {
+              "relation": "calls",
+              "source": "init_agent/scanner.py",
+              "target": "init_agent/language_detector.py",
+              "confidence": 0.8
+            }
+          ]
+        }
+      ],
+      "memories": [],
+      "stale_candidates": [],
+      "path_prefixes": [],
+      "candidate_limit_per_channel": 80,
+      "warnings": [
+        "Graph links are index evidence, not proof of test coverage or semantic correctness."
+      ],
+      "excerpt_character_limit": 1400,
+      "candidate_limit_reached": false,
+      "capped_channels": [],
+      "candidate_count": 44
+    }
+  }
+}

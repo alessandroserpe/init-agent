@@ -1,0 +1,191 @@
+{
+  "tool": "repo_search",
+  "contract": "init-agent.tool.v1",
+  "query": "Warn when Git inventory is unavailable and filesystem fallback does not respect gitignore",
+  "terms": [
+    "warn",
+    "git",
+    "inventory",
+    "unavailable",
+    "filesystem",
+    "fallback",
+    "respect",
+    "gitignore"
+  ],
+  "results": [
+    {
+      "path": "tests/test_git_worktree_inventory.py",
+      "sha256": "e11ba1764f17a690d95ead390cd691c9b47d03d935388a029ed3652fb1ba697d",
+      "start_line": 36,
+      "end_line": 47,
+      "excerpt": "    def test_main_checkout_respects_gitignore_with_linked_worktree(self):\n        with tempfile.TemporaryDirectory() as tmp:\n            root,linked=self.fixture(Path(tmp))\n            self.assertEqual(validated_git_dir(root),root.resolve()/'.git')\n            result=run_git_read(root,'ls-files','-co','--exclude-standard')\n            self.assertEqual(result.returncode,0)\n            paths={p.relative_to(root).as_posix() for p in iter_indexable_files(root)}\n            self.assertTrue({'app.py','new.py','tracked.log','nested/keep.log'} <= paths)\n            self.assertNotIn('nested/generated/output.py',paths)\n            self.assertNotIn('nested/drop.log',paths)\n            # Linked checkout still has an external admin path and is unsupported.\n            with self.assertRaises(OSError):validated_git_dir(linked)",
+      "excerpt_truncated": false,
+      "bm25": -26.397219800584587,
+      "retrieval": [
+        "any_term"
+      ],
+      "symbols": [
+        {
+          "name": "test_main_checkout_respects_gitignore_with_linked_worktree",
+          "kind": "method",
+          "line": 36,
+          "end_line": 47
+        },
+        {
+          "name": "GitWorktreeInventoryTests",
+          "kind": "class",
+          "line": 15,
+          "end_line": 77
+        }
+      ],
+      "graph_links": [
+        {
+          "relation": "imports_symbol",
+          "source": "tests/test_git_worktree_inventory.py",
+          "target": "init_agent/git_boundary.py",
+          "confidence": 0.95
+        },
+        {
+          "relation": "imports_symbol",
+          "source": "tests/test_git_worktree_inventory.py",
+          "target": "init_agent/graph_store.py",
+          "confidence": 0.95
+        },
+        {
+          "relation": "imports_symbol",
+          "source": "tests/test_git_worktree_inventory.py",
+          "target": "init_agent/local_search.py",
+          "confidence": 0.95
+        },
+        {
+          "relation": "imports_symbol",
+          "source": "tests/test_git_worktree_inventory.py",
+          "target": "init_agent/local_watch.py",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "path": "tests/test_ignore_refresh.py",
+      "sha256": "5f5c7a27e87e2fafe69c7c9d950e3bf6311c9cacf709e88eee5b2f26b3506eb6",
+      "start_line": 424,
+      "end_line": 425,
+      "excerpt": "            finally:\n                os.chdir(previous)",
+      "excerpt_truncated": false,
+      "bm25": -24.74493960440531,
+      "retrieval": [
+        "any_term"
+      ],
+      "symbols": [
+        {
+          "name": "test_git_indexing_respects_gitignore_and_internal_excludes",
+          "kind": "method",
+          "line": 404,
+          "end_line": 425
+        },
+        {
+          "name": "IgnoreRefreshTests",
+          "kind": "class",
+          "line": 5,
+          "end_line": 487
+        }
+      ],
+      "graph_links": [
+        {
+          "relation": "inherits",
+          "source": "tests/test_ignore_refresh.py",
+          "target": "tests/support.py",
+          "confidence": 0.95
+        },
+        {
+          "relation": "imports",
+          "source": "tests/test_ignore_refresh.py",
+          "target": "tests/support.py",
+          "confidence": 0.9
+        },
+        {
+          "relation": "calls",
+          "source": "tests/test_ignore_refresh.py",
+          "target": "tests/support.py",
+          "confidence": 0.65
+        }
+      ]
+    },
+    {
+      "path": "docs/local-search-real-use-01.md",
+      "sha256": "045a9deabd9d3af1d8386b353cee768c263cb7eeab1d22d2fa450ef76d96a796",
+      "start_line": 38,
+      "end_line": 43,
+      "excerpt": "  validator recursively visits the administrative tree and rejects that entry.\n\nThus the main checkout's worktree administrative entry triggers the Git refusal,\nthen the fallback inventory includes Git-ignored logs. This is a diagnostic\nfinding, not authorization to bypass Git boundary validation. No .git files,\nworktrees, security checks or exclusion configuration were changed.",
+      "excerpt_truncated": false,
+      "bm25": -20.577537362622685,
+      "retrieval": [
+        "any_term"
+      ],
+      "symbols": [],
+      "graph_links": []
+    }
+  ],
+  "memories": [
+    {
+      "id": 23,
+      "path": "init_agent/agent_tools.py",
+      "scope": "file",
+      "topic": "agent tool contracts",
+      "note": "Owns stable agent-facing contracts. Read-only MCP orientation now exposes lightweight index health, filters deleted paths from candidates and related records, and keeps preparation warnings visible without auto-remapping the repository.",
+      "file_sha256": "351e88a4982450ca02b1c808ef61a734d627873088d555b29295b4e0c52e1bae",
+      "evidence": "implementation_note",
+      "source": "agent",
+      "created_at": "2026-08-04T10:57:47+00:00",
+      "current_file_sha256": "ff3d9e1a3b9bdbbf8fa4329064cceb2a37d12b9636e631bbe9964646c692b40a",
+      "stale": true,
+      "stale_reason": "file changed since memory was recorded",
+      "note_truncated": false
+    },
+    {
+      "id": 36,
+      "path": "init_agent/refresh.py",
+      "scope": "file",
+      "topic": "incremental graph refresh",
+      "note": "Incrementally reindexes changed files and, when inventory or content changes, rebuilds project-wide resolved relations before term statistics. This removes obsolete scoped edges without a full source remap.",
+      "file_sha256": "ee1099c3a3717b4a7566a732ed9c2da3a260629baf6c11f14115dc682250894c",
+      "evidence": "implementation_note",
+      "source": "agent",
+      "created_at": "2026-07-10T07:30:43+00:00",
+      "current_file_sha256": "fcec619775e10f6337bec0120630f76a906438c2e9ba2c449b891220f4e80916",
+      "stale": true,
+      "stale_reason": "file changed since memory was recorded",
+      "note_truncated": false
+    },
+    {
+      "id": 19,
+      "path": "init_agent/trace.py",
+      "scope": "file",
+      "topic": "repo_trace ranking",
+      "note": "repo_trace traverses bounded resolved file paths, now including inheritance and implementation edges derived from resolved symbols. Ambiguous nominal calls remain suppressed and legacy indexes retain fallback traversal.",
+      "file_sha256": "245fc579ee98199b48153035ca9e6a7807691452431cb702b0766a4741f5bef6",
+      "evidence": "implementation_note",
+      "source": "agent",
+      "created_at": "2026-08-03T10:51:56+00:00",
+      "current_file_sha256": "26f82b5c5169fd1d3edc9bcfcdb8ff173930bc795b991a05e28b5f0311b20b5d",
+      "stale": true,
+      "stale_reason": "file changed since memory was recorded",
+      "note_truncated": false
+    }
+  ],
+  "stale_candidates": [],
+  "path_prefixes": [],
+  "candidate_limit_per_channel": 80,
+  "warnings": [
+    "Graph links are index evidence, not proof of test coverage or semantic correctness."
+  ],
+  "excerpt_character_limit": 1400,
+  "candidate_limit_reached": true,
+  "capped_channels": [
+    "any_term"
+  ],
+  "candidate_count": 80,
+  "maintenance": {
+    "status": "ready"
+  }
+}

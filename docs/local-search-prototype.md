@@ -184,3 +184,19 @@ normalizer and its index version remain unchanged. Source index versions below
 See [normalization comparison](local-search-normalization.md): this corrects
 text loss, but does not resolve the broad Italian task in the fixed-snapshot
 comparison. The result must not be presented as a generic ranking improvement.
+
+## Experimental call-path evidence
+
+Source search now expands the first lexical hit through existing resolved-symbol
+calls, with at most two short, freshness-checked paths. When present, call-site
+paths replace the generic file links; lexical ranking remains unchanged.
+Ambiguous branches are reported instead of guessed. See
+[call-path behavior and measurements](local-search-call-paths.md) for bounds,
+response fields, tests and the limited same-index diagnostic comparison.
+
+## Python receiver facts
+
+Graph index version 12 adds conservative local-constructor and annotated-parameter
+method resolution. These edges feed the existing call-path retrieval; ambiguous
+or unsupported receiver cases remain unresolved. See
+[receiver scope and verification](python-typed-receivers.md).

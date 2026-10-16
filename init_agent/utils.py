@@ -333,7 +333,7 @@ def is_indexable_path(path: Path, root: Path, rules: dict[str, set[str]] | None 
 
 
 @bounded_operation
-def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -> list[Path]:
+def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None, *, warnings: list[str] | None = None) -> list[Path]:
     ignore = rules or load_ignore_rules(root)
     git_paths = _git_indexable_paths(root)
     if git_paths is not None:
@@ -345,6 +345,8 @@ def iter_indexable_files(root: Path, rules: dict[str, set[str]] | None = None) -
             if path.is_file() and is_indexable_path(path, root, ignore):
                 files.append(path)
         return sorted(files)
+    if warnings is not None and (os.path.lexists(root / '.git') or (root / '.gitignore').is_file()):
+        warnings.append('Git inventory unavailable; filesystem fallback does not apply .gitignore rules. Configured exclusions still apply.')
     files = []
     pending = [root]
     while pending:

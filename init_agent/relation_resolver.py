@@ -357,6 +357,7 @@ def _rebuild_resolved_symbol_relations(
             file_targets[(int(item["source_id"]), str(item["relation"]), raw_target)].add(target_file_id)
 
     resolved: dict[tuple[int, str, int], dict[str, Any]] = {}
+    typed_module_index = _module_index(path_to_id)
     parent_symbol_ids: dict[int, set[int]] = defaultdict(set)
     ambiguous = 0
     raw_rows.sort(key=lambda item: 0 if str(item["relation"]) in {"inherits", "implements"} else 1)
@@ -380,7 +381,25 @@ def _rebuild_resolved_symbol_relations(
         receiver = qualified.split(".", 1)[0].lower() if "." in qualified else ""
 
         if relation == "calls" and source_file["language"] == "python":
-            if receiver in {"self", "cls", "super"}:
+            if isinstance(metadata.get('receiver_type'), str):
+                receiver_scoped = True
+                type_name = metadata['receiver_type']
+                module = metadata.get('receiver_module')
+                if not type_name or not isinstance(module, str):
+                    continue
+                type_files = (_module_candidates(source_file['path'], 'python', module, path_to_id, typed_module_index)
+                              if module else [source_file_id])
+                if isinstance(type_name, str) and len(type_files)==1:
+                    classes = [s for s in symbols_by_name.get(type_name.lower(), [])
+                               if s['file_id']==type_files[0]
+                               and s['qualified_name']==type_name and not s['container_name']]
+                    if len(classes)==1 and classes[0]['kind']=='class':
+                        candidate_ids = [s['id'] for s in symbols_by_name.get(target_name, [])
+                                         if s['file_id']==classes[0]['file_id'] and s['kind']=='method'
+                                         and s['container_name']==classes[0]['qualified_name']
+                                         and s['name']==raw_name.rsplit('.',1)[-1]]
+                resolver = 'python_typed_receiver'
+            elif receiver in {"self", "cls", "super"}:
                 receiver_scoped = True
                 candidate_ids = _python_receiver_method_ids(
                     symbols_by_name,

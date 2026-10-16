@@ -12,6 +12,7 @@ from .metadata_db import connect_metadata
 from .repo_budget import bounded_operation, checkpoint
 from .repo_files import repo_snapshot
 from .search_tokens import search_terms
+from .search_paths import call_paths
 
 SEARCH_INDEX_VERSION = 4
 
@@ -260,6 +261,17 @@ def search(root: Path, query: str, limit=3, path_prefixes=()):
                 break
         if result['stale_candidates']:
             result['warnings'].append('Changed or missing candidates omitted; maintenance must catch up.')
+        if result['results']:
+            paths, diagnostics = call_paths(conn, root, result['results'][0], query,
+                                             path_prefixes, searchable_path)
+            result['call_paths'] = paths
+            result['call_path_diagnostics'] = diagnostics
+            if paths:
+                # Replace generic file links with actual call-site evidence.
+                for hit in result['results']:
+                    hit['graph_links'] = []
+            if diagnostics['stale_paths']:
+                result['warnings'].append('Changed or missing call-path endpoints omitted.')
         result['warnings'].append('Graph links are index evidence, not proof of test coverage or semantic correctness.')
         return result
     finally:

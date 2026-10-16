@@ -36,9 +36,9 @@ def maintenance_lock(root):
 
 
 @bounded_operation
-def fingerprint(root):
+def fingerprint(root, *, warnings=None):
     result = {}
-    for path in iter_project_files(root):
+    for path in iter_project_files(root, warnings=warnings):
         name = path.relative_to(root).as_posix()
         with open_repo_file(root, name) as handle:
             s = os.fstat(handle.fileno())
@@ -88,15 +88,18 @@ class Maintainer:
         self.reconcile_seconds = reconcile_seconds
         self.previous = None
         self.last_reconcile = None
+        self.inventory_warnings = []
 
     def tick(self):
         started = time.monotonic()
-        observed = fingerprint(self.root)
+        inventory_warnings = []
+        observed = fingerprint(self.root, warnings=inventory_warnings)
         due = self.last_reconcile is None or started - self.last_reconcile >= self.reconcile_seconds
-        if observed == self.previous and not due and (self.root / '.agent/graph.sqlite').is_file():
+        if observed == self.previous and inventory_warnings == self.inventory_warnings and not due and (self.root / '.agent/graph.sqlite').is_file():
             return None
         before = indexed_hashes(self.root)
         preparation = prepare_repository(self.root)
+        preparation['warnings'] = list(dict.fromkeys([*preparation['warnings'], *inventory_warnings]))
         after = indexed_hashes(self.root)
         failed = any(preparation.get(key) == 'failed' for key in ('init', 'map', 'refresh', 'git'))
         search_update = update_search_index(self.root) if not failed else None
@@ -115,6 +118,7 @@ class Maintainer:
         if not failed:
             # Keep the pre-update snapshot: edits during indexing trigger another pass.
             self.previous = observed
+            self.inventory_warnings = inventory_warnings
             self.last_reconcile = started
         return event
 

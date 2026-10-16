@@ -60,6 +60,41 @@ class McpLocalSearchTests(unittest.TestCase):
                 self.assertTrue(self.call(server,query,**arguments)['isError'])
                 self.assertFalse((root/'.agent').exists())
 
+    def test_inventory_warning_persists_and_clears_without_source_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(['/usr/bin/git', 'init', '-q', str(root)], check=True)
+            (root/'a.py').write_text('x="checksum"\n')
+            server = InitAgentMcpServer(root)
+            def fallback_warning(result):
+                return any('filesystem fallback' in w for w in result['warnings'])
+            self.call(server)
+            self.call(server)  # settle config; identical inventory in both modes
+            with patch('init_agent.utils._git_indexable_paths', return_value=None):
+                degraded = self.call(server)['structuredContent']
+                self.assertTrue(fallback_warning(degraded))
+                self.assertEqual(degraded['maintenance']['status'], 'warning')
+                with patch('init_agent.local_watch.prepare_repository', side_effect=AssertionError('idle rebuild')):
+                    idle = self.call(server)['structuredContent']
+                self.assertTrue(fallback_warning(idle))
+                self.assertEqual(idle['maintenance']['status'], 'unchanged')
+            recovered = self.call(server)['structuredContent']
+            self.assertFalse(fallback_warning(recovered))
+            self.assertEqual(recovered['maintenance']['status'], 'ready')
+            self.assertEqual(recovered['results'][0]['path'], 'a.py')
+
+    def test_plain_folder_warns_only_when_ignore_rules_are_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'a.py').write_text('x="checksum"\n')
+            server = InitAgentMcpServer(root)
+            result = self.call(server)['structuredContent']
+            self.assertFalse(any('filesystem fallback' in w for w in result['warnings']))
+            (root/'.gitignore').write_text('a.py\n')
+            result = self.call(server)['structuredContent']
+            self.assertTrue(any('does not apply .gitignore' in w for w in result['warnings']))
+            self.assertEqual(result['results'][0]['path'], 'a.py')
+
     def test_contention_and_failed_preparation_return_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'a.py').write_text('x=1\n');server=InitAgentMcpServer(root)

@@ -1,0 +1,22 @@
+{
+  "fixture_graphify": [
+    {
+      "source": "constructed()",
+      "target": ".tick()",
+      "target_id": "pkg_worker_worker_tick",
+      "confidence": "INFERRED"
+    },
+    {
+      "source": "annotated()",
+      "target": ".tick()",
+      "target_id": "pkg_worker_worker_tick",
+      "confidence": "INFERRED"
+    }
+  ],
+  "fixture_init_agent": [],
+  "actual_graphify_search_tool_tick": [],
+  "actual_graphify_counts": {
+    "nodes": 1220,
+    "edges": 5186
+  }
+}

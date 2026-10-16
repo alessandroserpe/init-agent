@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .signatures import minimize_signature
+from .python_receivers import module_types, receiver_facts
 from .parse_budget import CURRENT_PARSE_BUDGET, ParseBudget, ParseFailure, checked_lines, parser_checkpoint, preflight
 
 
@@ -434,6 +435,7 @@ def _extract_python(content: str, path: str | None = None) -> tuple[list[Extract
 
 def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     tree = ast.parse(content)
+    type_bindings = module_types(tree, lambda module, level: _python_import_module(path, module, level))
     lines = content.splitlines()
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
@@ -446,6 +448,8 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
             self.class_depth = 0
             self.scope_stack: list[str] = []
             self.callable_stack: list[str] = []
+            self.receiver_stack: list[dict] = []
+            self.type_stack: list[dict] = [type_bindings]
 
         def _qualified(self, name: str) -> str:
             return ".".join([*self.scope_stack, name])
@@ -514,7 +518,12 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                 relations.append(ExtractedRelation("route_to_handler", "symbol_name", node.name, route_line, 0.8))
             self.scope_stack.append(node.name)
             self.callable_stack.append(qualified_name)
+            facts, visible_types = receiver_facts(node, self.type_stack[-1])
+            self.receiver_stack.append(facts)
+            self.type_stack.append(visible_types)
             self.generic_visit(node)
+            self.type_stack.pop()
+            self.receiver_stack.pop()
             self.callable_stack.pop()
             self.scope_stack.pop()
 
@@ -587,6 +596,13 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                     )
             if call_name := _python_call_name(node.func):
                 if call_name not in PY_CALL_EXCLUDES:
+                    call_metadata = {"qualified_name": _python_dotted_name(node.func)}
+                    if self.receiver_stack and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                        fact = self.receiver_stack[-1].get(node.func.value.id)
+                        if fact and node.lineno > fact['after_line']:
+                            call_metadata.update(receiver_type=fact['name'],
+                                                 receiver_module=fact['module'],
+                                                 receiver_binding=fact['binding'])
                     relations.append(
                         ExtractedRelation(
                             "calls",
@@ -594,7 +610,7 @@ def _extract_python_ast(content: str, path: str | None = None) -> tuple[list[Ext
                             call_name,
                             node.lineno,
                             0.45,
-                            {"qualified_name": _python_dotted_name(node.func)},
+                            call_metadata,
                             self._current_callable(),
                         )
                     )

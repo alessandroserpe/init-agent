@@ -64,7 +64,7 @@ class FollowupSecurityTests(unittest.TestCase):
                     index_file(root, root / name, store)
                 stored = [row['signature'] for row in store.connection.execute('SELECT signature FROM symbols')]
                 self.assertNotIn('DISTINCTIVE_BODY_LITERAL', str(stored))
-                self.assertEqual(INDEX_VERSION, '11')
+                self.assertGreaterEqual(int(INDEX_VERSION), 11)
 
     def test_signature_shapes_routes_and_literals(self):
         cases = [

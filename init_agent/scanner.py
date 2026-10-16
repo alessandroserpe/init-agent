@@ -15,7 +15,7 @@ from .repo_files import repo_snapshot, stat_mtime
 from .utils import iter_indexable_files, relative_path, utc_now
 
 
-INDEX_VERSION = "11"
+INDEX_VERSION = "12"
 
 
 @bounded_write
@@ -136,8 +136,8 @@ def _relation_metadata(relation: ExtractedRelation) -> dict[str, object]:
     return metadata
 
 
-def iter_project_files(root: Path) -> list[Path]:
-    return iter_indexable_files(root)
+def iter_project_files(root: Path, *, warnings: list[str] | None = None) -> list[Path]:
+    return iter_indexable_files(root, warnings=warnings)
 
 
 def _file_tags(
