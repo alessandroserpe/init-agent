@@ -1427,12 +1427,16 @@ _BOOTSTRAP = """<!doctype html>
   if (!token) return;
   try {
     const response = await fetch("/", {headers: {Authorization: "Bearer " + token}, cache: "no-store"});
-    if (!response.ok) throw new Error("Unauthorized");
+    if (response.status === 401) {
+      sessionStorage.removeItem("init-agent-capability");
+      document.getElementById("status").textContent = "Access expired. Open the current private link from your terminal.";
+      return;
+    }
+    if (!response.ok) throw new Error("Dashboard unavailable");
     const page = await response.text();
     document.open(); document.write(page); document.close();
   } catch (_) {
-    sessionStorage.removeItem("init-agent-capability");
-    document.getElementById("status").textContent = "Access expired. Open the current private link from your terminal.";
+    document.getElementById("status").textContent = "Dashboard unavailable. Refresh to try again; your private link is still saved.";
   }
 })();
 </script></body></html>
