@@ -80,3 +80,27 @@ deviations and evidence links with the results. Preserve both runs so another
 reviewer can inspect what each arm saw and produced. Until actual paired data
 is collected and reviewed, the status remains **pending** and optional features
 remain experimental; do not promote them in release guidance.
+
+## Implementation verification — 2026-10-17
+
+The implementation is delivered behind the optional evidence switch. The known
+init-agent integration snapshot indexed 215 files with zero extraction errors;
+a trace anchored at `init_agent/refresh.py:refresh_index` returned ten paths and
+explicit result-limit/unresolved gaps. All returned endpoint line numbers were
+checked against snapshot files. The 1.461-second local preparation/trace run is
+an integration observation, not an estimate of agent time savings.
+
+The optional TypeScript 5.8.3 compiler was installed explicitly for tests; its
+lockfile has integrity data. Real PHP tree-sitter 0.25.2 / tree-sitter-php 0.24.1
+was tested in a disposable venv. This macOS host cannot enforce the isolated
+native worker limits, so production PHP indexing correctly falls back; real
+parser integration tests invoke the actual parser at a controlled test seam.
+A FlowPilot checkout was not identified in the supplied workspace, so that
+integration remains unverified.
+
+The user had no current novel problem list and requested a security review.
+That review confirmed and fixed one low-severity local refresh failure; see
+[the security report](../security_best_practices_report.md). It did not establish
+a paired utility comparison. No token/context reduction or promotion threshold
+is claimed. Further analyzer expansion and default promotion remain gated on
+independent comparisons, with no paid model API used for this work.
