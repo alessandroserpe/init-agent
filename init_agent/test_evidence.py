@@ -82,7 +82,7 @@ def find_tests(root, module, symbol, limit=3):
             nodes = list(walk_scope(test))
             shadowed = {n.id for n in nodes if isinstance(n,ast.Name) and isinstance(n.ctx,(ast.Store,ast.Del))}
             shadowed.update(a.arg for a in ast.walk(test.args) if isinstance(a,ast.arg))
-            shadowed.update(n.name for n in nodes if n is not test and isinstance(n,(ast.FunctionDef,ast.ClassDef)))
+            shadowed.update(n.name for n in nodes if n is not test and isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)))
             shadowed.update(_capture_names(nodes))
             for n in nodes:
                 if isinstance(n,(ast.Import,ast.ImportFrom)):
