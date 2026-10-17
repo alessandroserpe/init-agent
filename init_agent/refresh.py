@@ -12,6 +12,8 @@ from .relation_resolver import rebuild_resolved_relations
 from .scanner import INDEX_VERSION, index_file, iter_project_files
 from .repo_files import repo_snapshot
 from .utils import agent_dir, db_path, relative_path, utc_now
+from .analysis_capabilities import current_fingerprint, ensure_table, load_capabilities
+from .language_detector import detect_language
 
 
 @bounded_operation
@@ -30,7 +32,9 @@ def refresh_index(root: Path) -> dict[str, Any]:
 
     with GraphStore(root) as store:
         store.initialize()
+        ensure_table(store)
         existing_hashes = store.file_hashes()
+        existing_analysis = load_capabilities(store)
         if not existing_hashes:
             return {
                 "status": "ERROR",
@@ -75,10 +79,15 @@ def refresh_index(root: Path) -> dict[str, Any]:
                     snapshot = repo_snapshot(root, rel_path)
                     current_hash = snapshot.sha256
                     old_hash = existing_hashes.get(rel_path)
+                    capabilities = existing_analysis.get(rel_path, {})
+                    analyzer_stale = capabilities.get("analyzer_fingerprint") != current_fingerprint(detect_language(path))
                     if old_hash is None:
                         index_file(root, path, store, snapshot=snapshot)
                         result["added"].append(rel_path)
                     elif old_hash != current_hash:
+                        index_file(root, path, store, snapshot=snapshot)
+                        result["updated"].append(rel_path)
+                    elif analyzer_stale:
                         index_file(root, path, store, snapshot=snapshot)
                         result["updated"].append(rel_path)
                     else:

@@ -13,6 +13,7 @@ from .symbol_extractor import ExtractedRelation, ExtractedSymbol, extract_symbol
 from .text_tokens import is_query_noise_token, tokenize_query
 from .repo_files import repo_snapshot, stat_mtime
 from .utils import iter_indexable_files, relative_path, utc_now
+from .analysis_capabilities import build_capabilities, ensure_table, save_capabilities
 
 
 INDEX_VERSION = "12"
@@ -20,6 +21,7 @@ INDEX_VERSION = "12"
 
 @bounded_write
 def scan_project(root: Path, store: Any) -> dict[str, Any]:
+    ensure_table(store)
     errors: list[str] = []
     error_count = 0
     indexed_files = 0
@@ -67,7 +69,14 @@ def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, i
     language = detect_language(path)
     role = detect_role(path)
     content = snapshot.content
-    symbols, extracted_relations = extract_symbols_and_relations(content, language, rel_path)
+    extraction_errors: list[str] = []
+    try:
+        symbols, extracted_relations = extract_symbols_and_relations(content, language, rel_path)
+    except ParseFailure as exc:
+        # Keep the file itself indexed and searchable even when bounded analysis
+        # cannot finish. Empty graph records replace stale results below.
+        symbols, extracted_relations = [], []
+        extraction_errors.append(str(exc)[:300])
     file_id = store.upsert_file(
         {
             "path": rel_path,
@@ -121,6 +130,11 @@ def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, i
             for symbol in symbols
         ],
         relations,
+    )
+    save_capabilities(
+        store,
+        file_id,
+        build_capabilities(language, content, symbols, extracted_relations, extraction_errors),
     )
     if hasattr(store, "replace_file_tags"):
         store.replace_file_tags(file_id, _file_tags(rel_path, language, role, symbols, extracted_relations))

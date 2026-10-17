@@ -42,8 +42,9 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
         int(row["id"]): {
             "path": str(row["path"]),
             "language": str(row["language"] or ""),
+            "sha256": str(row["sha256"] or ""),
         }
-        for row in budgeted(connection.execute("SELECT id, path, language FROM files"))
+        for row in budgeted(connection.execute("SELECT id, path, language, sha256 FROM files"))
     }
     path_to_id = {item["path"]: file_id for file_id, item in budgeted(files.items())}
     module_index = _module_index(path_to_id)
@@ -113,6 +114,8 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
                 "resolved": True,
                 "resolver": resolver,
                 "raw_relation_id": int(row["id"]),
+                "source_sha256": files[source_id]["sha256"],
+                "target_sha256": files[target_file_id]["sha256"],
                 "raw_target_type": str(row["target_type"]),
                 "raw_target_id": str(row["target_id"]),
             }
