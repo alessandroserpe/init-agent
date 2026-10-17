@@ -10,7 +10,7 @@ MAX_INPUT_BYTES = 65536
 MAX_STORAGE_BYTES = 64 * 1024 * 1024
 TABLE_LIMITS = {
     'orientation_feedback': 5000, 'agent_notes': 1000, 'agent_tasks': 1000,
-    'agent_task_notes': 5000, 'reading_plans': 1000, 'reading_plan_items': 10000,
+    'agent_task_notes': 5000, 'agent_task_checks': 5000, 'reading_plans': 1000, 'reading_plan_items': 10000,
     'reading_plan_events': 10000, 'reading_plan_workstreams': 1000,
 }
 

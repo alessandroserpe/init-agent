@@ -71,9 +71,16 @@ from .agent_tools import (
     repo_workstream_review,
 )
 from .utils import project_root, safe_print as print
+from .test_evidence import find_tests
 
 
 def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    test_parser = tool_subparsers.add_parser("repo_test_candidates", help="Find direct Python test evidence for a known function.")
+    test_parser.add_argument("--module", required=True)
+    test_parser.add_argument("--symbol", required=True)
+    test_parser.add_argument("--limit", type=int, default=3)
+    test_parser.add_argument("--json", action="store_true")
+    test_parser.set_defaults(handler=cmd_tool_repo_test_candidates)
     repo_graph_search_parser = tool_subparsers.add_parser("repo_graph_search", help="Search the local graph for an agent task.")
     repo_graph_search_parser.add_argument("--query", required=True, help="Free-text task or question.")
     repo_graph_search_parser.add_argument("--limit", type=int, default=10, help="Maximum candidate files to return.")
@@ -337,7 +344,7 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_task_update_parser.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
     repo_task_update_parser.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
     repo_task_update_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
-    repo_task_update_parser.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    repo_task_update_parser.add_argument("--remaining", action="append", default=None, help="Replace remaining work; omit to preserve, pass an empty string to clear. Can be repeated.")
     repo_task_update_parser.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement source.")
     repo_task_update_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_task_update_parser.set_defaults(handler=cmd_tool_repo_task_update)
@@ -346,10 +353,16 @@ def register_tool_subcommands(tool_subparsers: argparse._SubParsersAction[argpar
     repo_task_close_parser.add_argument("--id", type=int, required=True, help="Task id.")
     repo_task_close_parser.add_argument("--summary", help="Closing summary.")
     repo_task_close_parser.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
-    repo_task_close_parser.add_argument("--remaining", action="append", default=[], help="Known follow-up despite closing. Can be repeated.")
+    repo_task_close_parser.add_argument("--remaining", action="append", default=[], help="Replace remaining work on closing; omitted means none. Can be repeated.")
     repo_task_close_parser.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
     repo_task_close_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     repo_task_close_parser.set_defaults(handler=cmd_tool_repo_task_close)
+
+
+def cmd_tool_repo_test_candidates(args: argparse.Namespace) -> int:
+    result = find_tests(project_root(), args.module, args.symbol, args.limit)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
 
 
 def cmd_tool_repo_graph_search(args: argparse.Namespace) -> int:

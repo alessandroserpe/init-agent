@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .metadata_limits import bounded_metadata
+from .task_checks import attach_checks
 from .graph_store import GraphStore
 from .utils import ensure_agent_dir, normalize_repo_path, utc_now
 
@@ -104,7 +105,7 @@ def list_tasks(
             """,
             params,
         ).fetchall()
-    return [_row_to_task(row, notes=[]) for row in rows]
+    return attach_checks(root, [_row_to_task(row, notes=[]) for row in rows])
 
 
 def get_task(root: Path, task_id: int) -> dict[str, Any] | None:
@@ -117,7 +118,7 @@ def get_task(root: Path, task_id: int) -> dict[str, Any] | None:
         if row is None:
             return None
         notes = _fetch_task_notes(store, task_id)
-    return _row_to_task(row, notes=notes)
+    return attach_checks(root, [_row_to_task(row, notes=notes)])[0]
 
 
 @bounded_metadata
@@ -156,7 +157,10 @@ def update_task(
             "memory_ids_json": _json_list(_merge_unique(task["memory_ids"], memory_ids or [])),
             "feedback_ids_json": _json_list(_merge_unique(task["feedback_ids"], feedback_ids or [])),
             "tests_json": _json_list(_merge_unique(task["tests"], [item.strip() for item in tests or [] if item.strip()])),
-            "remaining_json": _json_list(_merge_unique(task["remaining"], [item.strip() for item in remaining or [] if item.strip()])),
+            "remaining_json": _json_list(
+                task["remaining"] if remaining is None else
+                _merge_unique([], [item.strip() for item in remaining if item.strip()])
+            ),
             "source": updated_source,
             "updated_at": now,
             "closed_at": now if updated_status == "done" and not task.get("closed_at") else task.get("closed_at"),
@@ -284,7 +288,7 @@ def close_task(
         status="done",
         summary=summary,
         tests=tests,
-        remaining=remaining,
+        remaining=remaining or [],
         source=source,
     )
 

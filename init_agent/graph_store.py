@@ -156,6 +156,15 @@ CREATE TABLE IF NOT EXISTS agent_task_notes (
     FOREIGN KEY(task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS agent_task_checks (
+    task_id INTEGER NOT NULL,
+    test TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    PRIMARY KEY (task_id, test),
+    FOREIGN KEY(task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS reading_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query TEXT NOT NULL,

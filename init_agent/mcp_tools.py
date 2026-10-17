@@ -9,6 +9,7 @@ from typing import Any
 from .metadata_limits import bounded_metadata, validate_input, MAX_ITEMS, MAX_STRING
 from .mcp_compact import compact_mcp_result
 from .search_tool import make_repo_search_handler
+from .test_evidence import handle_test_candidates
 
 from .agent_tools import (
     repo_entrypoints,
@@ -52,6 +53,7 @@ ToolHandler = Callable[[Path, dict[str, Any]], dict[str, Any]]
 MCP_CORE_TOOL_NAMES = frozenset(
     {
         "repo_search",
+        "repo_test_candidates",
         "repo_overview",
         "repo_reading_plan",
         "repo_reading_plan_finish",
@@ -407,7 +409,7 @@ def _handle_repo_task_update(root: Path, arguments: dict[str, Any]) -> dict[str,
         memory_ids=_int_list(arguments.get("memory_ids")),
         feedback_ids=_int_list(arguments.get("feedback_ids")),
         tests=_string_list(arguments.get("tests")),
-        remaining=_string_list(arguments.get("remaining")),
+        remaining=_string_list(arguments["remaining"]) if "remaining" in arguments else None,
         source=str(arguments["source"]).strip() if "source" in arguments else None,
     )
 
@@ -459,6 +461,7 @@ def _mcp_result(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, 
 
 MCP_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "repo_search": make_repo_search_handler(),
+    "repo_test_candidates": handle_test_candidates,
     "repo_graph_search": _handle_repo_graph_search,
     "repo_trace": _handle_repo_trace,
     "repo_reading_plan": _handle_repo_reading_plan,
@@ -501,6 +504,20 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
     if normalized_profile not in MCP_TOOL_PROFILES:
         raise ValueError(f"unknown MCP tool profile: {profile}")
     definitions = [
+        {
+            "name": "repo_test_candidates",
+            "description": "Find Python tests for a known module/function instead of manually searching tests. Returns direct calls, assertions, test source and candidate commands; never runs tests. No match does not mean no coverage.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "module": {"type": "string", "maxLength": 200, "description": "Dotted module, e.g. package.logic."},
+                    "symbol": {"type": "string", "maxLength": 200, "description": "Top-level function name."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+                },
+                "required": ["module", "symbol"],
+                "additionalProperties": False,
+            },
+        },
         {
             "name": "repo_search",
             "description": "Search source passages and saved notes for a coding question. Automatically initializes/refreshes the local index; returns line evidence and freshness warnings. No preparation call needed.",
@@ -1007,7 +1024,7 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
                     "memory_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related memory ids."},
                     "feedback_ids": {"type": "array", "items": {"type": "integer"}, "description": "Related feedback ids."},
                     "tests": {"type": "array", "items": {"type": "string"}, "description": "Verification performed."},
-                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Remaining follow-up."},
+                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Replace remaining work; omit to preserve, use [] to clear."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"]},
                 },
                 "required": ["id"],
@@ -1023,7 +1040,7 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
                     "id": {"type": "integer", "minimum": 1, "description": "Task id."},
                     "summary": {"type": "string", "description": "Closing summary."},
                     "tests": {"type": "array", "items": {"type": "string"}, "description": "Verification performed."},
-                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Known follow-up despite closing."},
+                    "remaining": {"type": "array", "items": {"type": "string"}, "description": "Replace remaining work on closing; omitted or [] means none."},
                     "source": {"type": "string", "enum": ["agent", "user", "benchmark"], "default": "agent"},
                 },
                 "required": ["id"],

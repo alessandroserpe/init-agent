@@ -338,6 +338,7 @@ def _compact_task(item: dict[str, Any]) -> dict[str, Any]:
         "feedback_ids": list(item.get("feedback_ids") or [])[:20],
         "tests": list(item.get("tests") or [])[:10],
         "remaining": list(item.get("remaining") or [])[:10],
+        **({"checks": item["checks"], "checks_truncated": item.get("checks_truncated", False)} if "checks" in item else {}),
         "source": item.get("source", "agent"),
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),

@@ -112,6 +112,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "web" and not args.snapshot_json:
             return args.handler(args)
+        if args.command == "task" and args.task_command == "verify":
+            from .repo_budget import RepoBudget
+            with budget_scope(RepoBudget(max_seconds=min(max(args.timeout, 0), 300) + 30)):
+                return args.handler(args)
         with budget_scope():
             return args.handler(args)
     except WorkBudgetExceeded as exc:
@@ -309,16 +313,23 @@ def build_parser() -> argparse.ArgumentParser:
     task_update.add_argument("--memory-id", type=int, action="append", default=[], help="Related memory id. Can be repeated.")
     task_update.add_argument("--feedback-id", type=int, action="append", default=[], help="Related feedback id. Can be repeated.")
     task_update.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
-    task_update.add_argument("--remaining", action="append", default=[], help="Remaining follow-up. Can be repeated.")
+    task_update.add_argument("--remaining", action="append", default=None, help="Replace remaining work; omit to preserve, pass an empty string to clear. Can be repeated.")
     task_update.add_argument("--source", choices=["user", "agent", "benchmark"], help="Replacement source.")
     task_update.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     task_update.set_defaults(handler=cmd_task_update)
+
+    task_verify = task_subparsers.add_parser("verify", help="Run a selected unittest and save evidence using the task's linked files.")
+    task_verify.add_argument("id", type=int, help="Existing task id.")
+    task_verify.add_argument("--test", required=True, help="Dotted unittest selector to execute.")
+    task_verify.add_argument("--timeout", type=float, default=60, help="Execution timeout in seconds, at most 300.")
+    task_verify.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    task_verify.set_defaults(handler=cmd_task_verify)
 
     task_close = task_subparsers.add_parser("close", help="Mark a local task/session memory item done.")
     task_close.add_argument("id", type=int, help="Task id.")
     task_close.add_argument("--summary", help="Closing summary.")
     task_close.add_argument("--test", action="append", default=[], help="Verification performed. Can be repeated.")
-    task_close.add_argument("--remaining", action="append", default=[], help="Known follow-up despite closing. Can be repeated.")
+    task_close.add_argument("--remaining", action="append", default=[], help="Replace remaining work on closing; omitted means none. Can be repeated.")
     task_close.add_argument("--source", default="agent", choices=["user", "agent", "benchmark"], help="Task source.")
     task_close.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     task_close.set_defaults(handler=cmd_task_close)
@@ -976,6 +987,22 @@ def cmd_task_add(args: argparse.Namespace) -> int:
     else:
         print(render_repo_task_add_text(result))
     return 0 if result.get("recorded") else 1
+
+
+def cmd_task_verify(args: argparse.Namespace) -> int:
+    from .task_checks import verify_task
+
+    try:
+        result = verify_task(project_root(), args.id, args.test, timeout=args.timeout)
+    except (ValueError, OSError) as exc:
+        print(f"Task verification failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"Task #{args.id}: {result['state']} — {result['test']}")
+        print(result['output'])
+    return 0 if result['state'] == 'passed' else 1
 
 
 def cmd_task_list(args: argparse.Namespace) -> int:

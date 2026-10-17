@@ -15,6 +15,7 @@ class McpTests(InitAgentTestCase):
                 tool_names,
                 {
                     "repo_search",
+                    "repo_test_candidates",
                     "repo_graph_search",
                     "repo_reading_plan",
                     "repo_reading_plan_read",
@@ -59,6 +60,7 @@ class McpTests(InitAgentTestCase):
                 {item["name"] for item in listed["result"]["tools"]},
                 {
                     "repo_search",
+                    "repo_test_candidates",
                     "repo_overview",
                     "repo_reading_plan",
                     "repo_reading_plan_finish",

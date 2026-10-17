@@ -173,6 +173,9 @@ and session close. Administrative and legacy contracts remain available through
 the CLI or the explicit MCP `full` profile. The experimental `repo_search` tool
 returns source passages and saved notes, initializing/refreshing its local index
 within the call; no manual preparation or background service is required.
+The optional [`repo_test_candidates`](docs/test-candidates.md) tool replaces manual
+test lookup for a known Python function with direct call/assertion evidence and
+candidate commands. It does not run tests or require an additional skill step.
 
 Core orientation responses include a lightweight `index_health` check. Agents
 can see when files changed, disappeared or were added after the last map instead
@@ -324,3 +327,5 @@ More documentation:
 - [Validation experiments](docs/experiments.md)
 - [Roadmap](docs/roadmap.md)
 - [Security and privacy](docs/security.md)
+
+Optional [task verification](docs/task-checks.md) runs a selected unittest and records file-version evidence for normal task retrieval.

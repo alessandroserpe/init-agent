@@ -797,6 +797,10 @@ def render_repo_task_list_text(result: dict[str, Any]) -> str:
             lines.append(f"  files: {', '.join(task['files'][:5])}")
         if task.get("remaining"):
             lines.append(f"  remaining: {'; '.join(task['remaining'][:3])}")
+        for check in task.get("checks", []):
+            lines.append(f"  check: [{check['state']}] {check['test']}")
+        if task.get("checks_truncated"):
+            lines.append("  checks: showing latest five")
     _append_warnings(lines, result["warnings"])
     return terminal_safe("\n".join(lines))
 
@@ -897,6 +901,8 @@ def render_repo_session_summary_text(result: dict[str, Any]) -> str:
             lines.append(f"  topic: {item['topic']}")
         if item.get("remaining"):
             lines.append(f"  remaining: {'; '.join(item['remaining'][:3])}")
+        for check in item.get("checks", []):
+            lines.append(f"  check: [{check['state']}] {check['test']}")
 
     lines.extend(["", "Follow-up commands:"])
     _append_commands(lines, result.get("followup_commands") or [])
@@ -961,6 +967,8 @@ def render_repo_session_close_text(result: dict[str, Any]) -> str:
         lines.append(f"- #{item['id']} [{item['status']}] {item['title']}")
         if item.get("remaining"):
             lines.append(f"  remaining: {'; '.join(item['remaining'][:3])}")
+        for check in item.get("checks", []):
+            lines.append(f"  check: [{check['state']}] {check['test']}")
 
     plan_activity = result.get("plan_activity") or {}
     lines.extend(["", "Reading plans:"])
