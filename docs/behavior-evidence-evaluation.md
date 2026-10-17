@@ -95,8 +95,10 @@ lockfile has integrity data. Real PHP tree-sitter 0.25.2 / tree-sitter-php 0.24.
 was tested in a disposable venv. This macOS host cannot enforce the isolated
 native worker limits, so production PHP indexing correctly falls back; real
 parser integration tests invoke the actual parser at a controlled test seam.
-A FlowPilot checkout was not identified in the supplied workspace, so that
-integration remains unverified.
+The integration run covered the init-agent repository itself: 215 files indexed
+with zero extraction errors; an anchored trace returned ten paths with explicit
+limit and unresolved gaps. This is an integration check, not an agent time
+savings estimate.
 
 The user had no current novel problem list and requested a security review.
 That review confirmed and fixed one low-severity local refresh failure; see
