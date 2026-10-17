@@ -262,7 +262,7 @@ def repo_entrypoints(root: Path, prepare: bool = True, limit: int = 12) -> dict[
     }
 
 
-def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prepare: bool = True) -> dict[str, Any]:
+def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prepare: bool = True, *, evidence: bool = False, anchor: dict | None = None) -> dict[str, Any]:
     """Return likely investigation paths through the local graph."""
 
     bounded_limit = max(1, min(limit, 30))
@@ -288,8 +288,14 @@ def repo_trace(root: Path, query: str, limit: int = 10, max_depth: int = 4, prep
     suggested_first_reads = [
         path for path in trace.get("suggested_first_reads", []) if is_live_repo_file(root, path)
     ]
+    evidence_result = {"paths": [], "gaps": [{"reason": "index_not_ready"}], "capabilities": {}, "execution_observed": False}
+    if (evidence or anchor) and (prepare or readiness["ready"]):
+        from .evidence_trace import trace_evidence
+        evidence_result = trace_evidence(root, [s["path"] for s in starts],
+                                         anchor=anchor, limit=bounded_limit, max_depth=bounded_depth)
     return {
         "tool": "repo_trace",
+        **({"evidence": evidence_result} if evidence or anchor else {}),
         "contract": TOOL_CONTRACT_VERSION,
         "query": query,
         "preparation": preparation,

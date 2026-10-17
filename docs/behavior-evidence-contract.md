@@ -45,7 +45,7 @@ status labels describe availability, not proven usefulness on every project.
 | Available | Task-specific plans, graph trace, related files and symbol callers | These return ranked or resolved metadata from the local index. Dynamic dispatch, reflection, dependency injection and ambiguous targets can remain unresolved. |
 | Available | Local memory and feedback | Notes can be searched and audited; file-scoped note freshness is checked against file hashes. Feedback records an agent's stated outcome and is not independent validation. |
 | Available | Reading-plan outcome records | Agents can record files read, verified, useful, noisy or missing. The records depend on accurate agent reporting and do not observe editor activity automatically. |
-| Available | Index health and incremental refresh | Health checks report path-level changes; `refresh` updates changed files. Refresh is not dependency-aware and health checks do not certify extracted relations. |
+| Available | Index health and incremental refresh | Health checks report path-level changes; `refresh` updates changed files. Refresh rebuilds dependent resolved relations, invalidates changed analyzer fingerprints and checks TypeScript source/configuration dependencies. Health checks do not certify extracted relations. |
 | Available | Optional test candidate lookup and saved task checks | Candidate lookup reports source-level call/assertion evidence but does not run tests. Optional task checks run a selected unittest and record scoped file-version evidence. |
 | Available | Optional redacted trajectory and read-only dashboard | Trajectory capture requires separate setup and records bounded lifecycle metadata. It does not capture prompts, full commands, patches or model reasoning. |
 | Experimental | `repo_search` source-passage search as the full-text MCP entry point | It includes line evidence and freshness warnings and can initialize or refresh its local index during a search call. Its behavior and utility still require evaluation on representative tasks; see [MCP integration](mcp.md). Treat ranking as a lead and inspect the source. |
@@ -64,3 +64,25 @@ truth, including unresolved and false-link cases. Utility evidence must use
 the paired protocol in [Behavior evidence evaluation](behavior-evidence-evaluation.md)
 and report failures as well as successes. Until those conditions are met,
 describe the capability as experimental and keep release claims narrow.
+
+## First milestone: answers and acceptance
+
+| Question | Current response surface | Status and example |
+|---|---|---|
+| Where do I start? | `repo_search`, entrypoints, existing ranking | Available passages; experimental ranking. Example: `handler.py:20–31`, matching request validation tokens, with source hash and excerpt. |
+| What connects these points? | `repo_trace(evidence=true, anchor={path,symbol})` | Experimental. Example: `handler.py:24 handle -> storage.py:8 save`, with resolution method and both SHA-256 hashes. This is a static binding, never observed execution. |
+| Where does reconstruction stop? | `evidence.gaps`, `evidence.hints`, per-file capabilities | Experimental. Example: caller line 28, target name `obj.save`, `unresolved_or_insufficient_proof`; receiver dispatch remains a hint. A depth, neighbor, result or work limit is an explicit boundary. |
+| Can prior work be reused? | Existing notes/search and their file hashes; persisted index | Available note freshness and source evidence. Example: an old note remains stored but reports a changed referenced file after refresh. Analyzer invalidation preserves notes and tasks. Automatic saved investigation bundles are not introduced. |
+| What verifies the hypothesis? | Existing test candidates and task checks | Available candidate/record surfaces; automatic path-to-check attachment is missing. Evidence trace explicitly returns `verification.status=no_linked_evidence` and never runs a new check to fill it. |
+
+Per-file metadata distinguishes `indexed`, `text_search`, `structural`, analyzer
+identity/fingerprint, extracted counts and partial errors. An indexed file need
+not have structural analysis. A parsed file need not have resolved links.
+Regex output alone cannot support an admitted evidence edge.
+
+Acceptance requires source/target/line checks and no falsely resolved edges in
+negative fixtures, including duplicate names, lexical shadowing, dynamic calls,
+changed/deleted files and unavailable analyzers. Existing response fields stay
+available. Evidence mode is opt-in and must not become a mandatory skill step.
+Value propagation, complete runtime behavior and exhaustive test selection are
+outside this milestone.

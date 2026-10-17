@@ -81,7 +81,8 @@ def _handle_repo_trace(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("repo_trace requires query")
     limit = int(arguments.get("limit") or 10)
     max_depth = int(arguments.get("max_depth") or 4)
-    return repo_trace(root, query, limit=limit, max_depth=max_depth, prepare=False)
+    return repo_trace(root, query, limit=limit, max_depth=max_depth, prepare=False,
+                      evidence=bool(arguments.get("evidence", False)), anchor=arguments.get("anchor"))
 
 
 def _handle_repo_reading_plan(root: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -553,6 +554,8 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
                 "properties": {
                     "query": {"type": "string", "description": "Free-text task or question."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10},
+                    "evidence": {"type": "boolean", "default": False, "description": "Opt into experimental static paths with provenance and gaps."},
+                    "anchor": {"type": "object", "properties": {"path": {"type": "string"}, "symbol": {"type": "string"}}, "required": ["path"], "additionalProperties": False},
                     "max_depth": {"type": "integer", "minimum": 1, "maximum": 6, "default": 4},
                 },
                 "required": ["query"],

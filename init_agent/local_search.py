@@ -253,7 +253,8 @@ def search(root: Path, query: str, limit=3, path_prefixes=()):
             first = int(row['first_line']) + start
             symbols = [dict(s) for s in conn.execute('SELECT s.name,s.kind,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=? AND s.line<=? AND (s.end_line>=? OR s.line>=?) ORDER BY s.line DESC LIMIT 3', (path, first+len(selected)-1, first, first))]
             links = [dict(r) for r in conn.execute("SELECT r.relation,f.path AS source,r.target_id AS target,r.confidence FROM relations r JOIN files f ON f.id=r.source_id WHERE r.source_type='file' AND r.target_type='resolved_file' AND (f.path=? OR r.target_id=?) ORDER BY r.confidence DESC,f.path,r.target_id LIMIT 4", (path,path))]
-            result['results'].append({'path': path, 'sha256': snapshot.sha256,
+            from .evidence_trace import capabilities
+            result['results'].append({'capabilities': capabilities(conn, path), 'path': path, 'sha256': snapshot.sha256,
                 'start_line': first, 'end_line': first+len(selected)-1,
                 'excerpt': text[:1400], 'excerpt_truncated': len(text)>1400,
                 'bm25': row['rank'], 'retrieval': row['channels'], 'symbols': symbols, 'graph_links': links})

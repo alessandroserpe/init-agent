@@ -238,8 +238,7 @@ def _build_graph(
             resolved = _resolve_template(target_id, path_to_id)
             if resolved is not None:
                 targets.add(resolved)
-        elif target_type == "symbol_name" and relation in {"calls", "route_to_handler"}:
-            targets.update(symbols.get(target_id.lower(), set()))
+        # Nominal equality never establishes a dependency, including old indexes.
         if len(targets) > 25:
             budget.truncated = True
         for target in sorted(targets)[:25]:
@@ -250,6 +249,7 @@ def _build_graph(
                     "target_id": target_id,
                     "confidence": float(row["confidence"] or 0.0),
                     "resolved": target_type == "resolved_file",
+                    "provenance": _relation_metadata(row) or {},
                 }
                 key = (target, relation)
                 existing = graph_items[source].get(key)
@@ -455,6 +455,8 @@ def _edge_details(source: dict[str, Any], target: dict[str, Any], edge: dict[str
         "from": str(source["path"]),
         "to": str(target["path"]),
         "relation": relation,
+        "provenance": edge.get("provenance", {}),
+        "evidence_status": "legacy_index_candidate",
         "confidence": round(float(edge.get("confidence") or 0.0), 3),
         "resolved": bool(edge.get("resolved")),
         "reason": f"followed {'resolved ' if edge.get('resolved') else ''}{relation} relation to {target_id}",

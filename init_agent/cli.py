@@ -170,6 +170,9 @@ def build_parser() -> argparse.ArgumentParser:
     trace_parser.add_argument("text", nargs="+", help="Free-text task or question.")
     trace_parser.add_argument("--limit", type=int, default=10, help="Maximum traced paths to return.")
     trace_parser.add_argument("--max-depth", type=int, default=4, help="Maximum graph traversal depth.")
+    trace_parser.add_argument("--evidence", action="store_true", help="Include experimental static evidence and gaps.")
+    trace_parser.add_argument("--anchor-path", help="Repository-relative evidence start.")
+    trace_parser.add_argument("--anchor-symbol", default="", help="Qualified symbol at the evidence start.")
     trace_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     trace_parser.set_defaults(handler=cmd_trace)
 
@@ -561,7 +564,8 @@ def cmd_estimate(args: argparse.Namespace) -> int:
 
 def cmd_trace(args: argparse.Namespace) -> int:
     root = project_root()
-    result = repo_trace(root, _text_arg(args.text), limit=args.limit, max_depth=args.max_depth)
+    result = repo_trace(root, _text_arg(args.text), limit=args.limit, max_depth=args.max_depth,
+                        evidence=args.evidence, anchor={"path": args.anchor_path, "symbol": args.anchor_symbol} if args.anchor_path else None)
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:

@@ -92,6 +92,16 @@ def render_repo_trace_text(result: dict[str, Any]) -> str:
             lines.append(f"   stop: {item['stop_reason']}")
         for reason in item.get("reasons", [])[:4]:
             lines.append(f"   - {reason}")
+    if "evidence" in result:
+        proof = result["evidence"]
+        lines.extend(["", "Experimental static evidence (not observed execution):"])
+        for item in proof.get("paths", [])[:10]:
+            for edge in item.get("resolved_edges", [])[:6]:
+                lines.append(f"- {edge.get('from')}:{edge.get('line')} [{edge.get('source_symbol') or 'module'}] --{edge.get('relation')}--> {edge.get('to')}:{edge.get('target_line')} [{edge.get('target_symbol') or 'module'}] ({edge.get('method')})")
+        lines.append("Gaps:")
+        for gap in proof.get("gaps", [])[:20]:
+            lines.append(f"- {gap.get('path', '')}:{gap.get('line', '')} {gap.get('reason')}")
+        lines.append("Verification: " + proof.get("verification", {}).get("status", "no_linked_evidence"))
     lines.extend(["", "Suggested first reads:"])
     if not result.get("suggested_first_reads"):
         lines.append("-")

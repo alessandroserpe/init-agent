@@ -6,8 +6,10 @@
 
 - Python uses the standard-library `ast` module.
 - PHP uses the built-in lightweight parser.
-- JavaScript, TypeScript, Go, Rust, Markdown and config files use lightweight
-  built-in extraction.
+- JavaScript, Go, Rust, Markdown and config files use lightweight built-in extraction.
+- TypeScript optionally uses the isolated pinned compiler worker described in
+  [behavior evidence release notes](behavior-evidence-release.md); without it,
+  lightweight extraction remains available as hints.
 
 The index stores metadata, symbols, relations, file hashes and estimates. It
 does not store full source code.
@@ -55,8 +57,8 @@ as cause evidence. File-wide imports remain a weaker fallback, so a large test
 module does not automatically promote every imported module.
 
 Ambiguous calls remain unresolved instead of being connected to every symbol
-with the same name. `trace` prefers resolved edges on current indexes and uses
-nominal fallback traversal only for older indexes. Raw relations remain in the
+with the same name. `trace` prefers resolved edges on current indexes and never connects symbols
+solely by matching names, including older indexes. Raw relations remain in the
 database for inspection and future resolver improvements.
 
 Static resolution is deliberately conservative. Dynamic dispatch, reflection,
