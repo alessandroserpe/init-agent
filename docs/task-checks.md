@@ -54,3 +54,13 @@ suite, timeout, and edits during execution.
 
 This combines execution and recording and reuses the existing task file list.
 It does not demonstrate a measured overall time/token improvement.
+
+## Graph index guidance
+
+An outdated, missing or empty graph index does not by itself block session handoff.
+The refresh checklist item is optional and applies before graph orientation;
+`repo_search` prepares its own index. Task retrieval and check freshness use live
+files without rebuilding the graph. Index inspection errors still require
+attention, and open tasks, stale memory and Git changes retain their existing
+handoff checks. The index health check is based on path, size and mtime; a ready
+result is not a full content-hash audit.

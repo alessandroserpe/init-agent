@@ -19,6 +19,10 @@ from .utils import db_path, relative_path
 _CACHE_TTL_SECONDS = 2.0
 _HEALTH_CACHE: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
 _PATH_SAMPLE_LIMIT = 5
+INDEX_USAGE_GUIDANCE = (
+    "repo_search prepares its index automatically; no preparation call is needed. "
+    "Task retrieval and saved test checks do not require a current graph index."
+)
 
 
 @bounded_operation
@@ -35,7 +39,8 @@ def index_readiness(root: Path, *, use_cache: bool = True) -> dict[str, Any]:
     if not database.is_file():
         return _unavailable(
             "missing",
-            "init-agent index not found. Run: init-agent run --overview --markdown",
+            "init-agent index not found. " + INDEX_USAGE_GUIDANCE
+            + " Before using graph orientation, run: init-agent run --overview --markdown",
         )
 
     try:
@@ -84,7 +89,8 @@ def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
     if not rows:
         return _unavailable(
             "empty",
-            "init-agent index is empty. Run: init-agent run --overview --markdown",
+            "init-agent index is empty. " + INDEX_USAGE_GUIDANCE
+            + " Before using graph orientation, run: init-agent run --overview --markdown",
         )
 
     indexed = {
@@ -126,12 +132,14 @@ def _inspect_index(root: Path, database: Path) -> dict[str, Any]:
     stale = bool(changed or missing or unindexed or version_stale)
     warnings: list[str] = []
     if version_stale:
-        warnings.append("init-agent index uses an older extractor. Run: init-agent map")
+        warnings.append("init-agent index uses an older extractor. " + INDEX_USAGE_GUIDANCE
+                        + " Before using graph orientation, run: init-agent map")
     if changed or missing or unindexed:
         warnings.append(
             "init-agent index may be stale: "
             f"{len(changed)} changed, {len(missing)} removed, {len(unindexed)} unindexed files. "
-            "Run: init-agent map"
+            + INDEX_USAGE_GUIDANCE
+            + " Before using graph orientation, run: init-agent map"
         )
 
     health = {

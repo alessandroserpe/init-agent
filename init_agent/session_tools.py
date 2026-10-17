@@ -10,7 +10,7 @@ from .contracts import TOOL_CONTRACT_VERSION
 from .feedback import list_feedback
 from .git_reader import current_branch, git_available, status_short
 from .graph_store import GraphStore
-from .index_health import index_readiness
+from .index_health import index_readiness, INDEX_USAGE_GUIDANCE
 from .memory import audit_notes, list_notes
 from .plan_feedback import list_reading_plans
 from .tasks import list_tasks
@@ -122,6 +122,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     index_health = summary.get("index_health") or {}
     index_status = str(index_health.get("status") or "missing")
     index_needs_attention = index_status != "ready"
+    index_error = index_status not in {"ready", "stale", "missing", "empty"}
 
     checklist: list[dict[str, Any]] = []
     checklist.append(
@@ -140,14 +141,21 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
     checklist.append(
         {
             "id": "refresh_repository_index",
-            "status": "needed" if index_needs_attention else "clean",
-            "title": "Refresh repository index",
+            "status": "needed" if index_error else ("optional" if index_needs_attention else "clean"),
+            "title": "Check repository index" if index_error else "Refresh index before graph orientation",
             "reason": (
-                "Repository index is not current; refresh it before relying on graph orientation."
-                if index_needs_attention
-                else "Repository index matches the current project files."
+                "Index inspection failed; inspect the reported error before relying on repository context."
+                if index_error else (
+                    "Repository index is not current. " + INDEX_USAGE_GUIDANCE
+                    + " Refresh it only before using graph orientation."
+                    if index_needs_attention
+                    else "No index drift detected by the path/size/mtime check."
+                )
             ),
-            "command": "init-agent map",
+            "command": "" if index_error or not index_needs_attention else (
+                "init-agent run --overview --markdown" if index_status in {"missing", "empty"}
+                else "init-agent map"
+            ),
         }
     )
     checklist.append(
@@ -241,7 +249,7 @@ def repo_session_close(root: Path, limit: int = 10) -> dict[str, Any]:
             and stale_count == 0
             and quality_issue_count == 0
             and task_count == 0
-            and not index_needs_attention
+            and not index_error
         ),
         "followup_commands": summary.get("followup_commands", []),
         "warnings": summary.get("warnings", []),

@@ -89,7 +89,8 @@ class IndexHealthTests(InitAgentTestCase):
             commands = [item["command"] for item in closed["suggested_memory"]]
             self.assertFalse(any(target in command for command in commands))
             self.assertEqual(closed["index_health"]["status"], "stale")
-            self.assertFalse(closed["close_ready"])
+            # Graph drift alone does not block a metadata handoff.
+            self.assertTrue(closed["close_ready"])
 
     def test_session_close_does_not_suggest_duplicate_fresh_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
