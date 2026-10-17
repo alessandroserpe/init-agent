@@ -96,7 +96,12 @@ For a human-readable local dashboard:
 init-agent web
 ```
 
-The dashboard is read-only and shows local memory, feedback, open tasks,
+The dashboard opens with open work and recent saved test verifications, including
+checks for completed tasks. It distinguishes historical results from changed or
+unchecked files; opening or refreshing the view does not execute tests or rebuild
+the index. Keyboard-accessible tabs, filtering and JSON download expose the details.
+
+The dashboard is read-only and also shows local memory, feedback, open tasks,
 reading plans, orientation scorecard metrics, recurring files and optional
 observable trajectory events.
 

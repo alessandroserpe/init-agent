@@ -25,7 +25,10 @@ from .plan_feedback import scorecard_evidence_confidence
 from .memory import _with_staleness
 from .trajectory import stored_tool_status
 from .repo_files import open_repo_file
-from .utils import db_path, safe_print as print
+from .utils import db_path, safe_print as print, utc_now
+from .index_health import index_readiness
+from .repo_budget import RepoBudget, budget_scope, WorkBudgetExceeded
+from .web_dashboard import work_overview, task_list, checks_list, DASHBOARD_CSS
 
 
 def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
@@ -36,6 +39,9 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
     if not database.exists():
         return {
             "project": project,
+            "generated_at": utc_now(),
+            "index_health": {"status": "missing"},
+            "recent_checks": [],
             "counts": {},
             "scorecard": {},
             "recent_memory": [],
@@ -63,6 +69,7 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         recent_memory = _recent_memory(conn, bounded_limit, root)
         recent_feedback = _recent_feedback(conn, bounded_limit)
         open_tasks = _open_tasks(conn, bounded_limit)
+        recent_checks = _recent_checks(conn, bounded_limit, root)
         recent_plans = _recent_plans(conn, bounded_limit)
         file_activity = _file_activity(conn, bounded_limit)
         scorecard = _scorecard(conn, bounded_limit)
@@ -73,7 +80,19 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         trajectory_sessions = _trajectory_sessions(conn, bounded_limit)
         trajectory_events = _trajectory_events(conn, bounded_limit)
 
+    try:
+        budget = RepoBudget(max_seconds=1.0)
+        budget.limits.update({'steps': 100000, 'entries': 5000, 'rows': 10000,
+                              'bytes': 8 * 1024 * 1024, 'git_bytes': 1024 * 1024, 'sql_steps': 1000000})
+        with budget_scope(budget):
+            health = index_readiness(root)["health"]
+    except (WorkBudgetExceeded, OSError, ValueError, sqlite3.Error):
+        health = {"status": "unknown", "check": "not_completed"}
+
     return {
+        "generated_at": utc_now(),
+        "index_health": health,
+        "recent_checks": recent_checks,
         "project": project,
         "counts": counts,
         "scorecard": scorecard,
@@ -85,7 +104,7 @@ def build_web_snapshot(root: Path, limit: int = 25) -> dict[str, Any]:
         "trajectory_summary": trajectory_summary,
         "trajectory_sessions": trajectory_sessions,
         "trajectory_events": trajectory_events,
-        "warnings": ["Table counts are capped at 10,000; a count at the cap is a lower bound.", f"Activity and trajectory use the latest {SNAPSHOT_ROWS} records; scorecard detail is capped at {SNAPSHOT_ROWS} selected records; live hash reads are capped at 8 MiB."],
+        "warnings": ["Table counts are capped at 10,000; a count at the cap is a lower bound.", f"Activity and trajectory use the latest {SNAPSHOT_ROWS} records; scorecard detail is capped at {SNAPSHOT_ROWS} selected records; live hash reads are capped at 8 MiB per evidence section."],
     }
 
 
@@ -95,7 +114,8 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
     counts = snapshot.get("counts", {})
     title = f"init-agent · {project.get('name') or 'project'}"
     tabs = [
-        ("overview", "Overview"),
+        ("overview", "Work & verification"),
+        ("checks", "Verifications"),
         ("memory", "Memory"),
         ("feedback", "Feedback"),
         ("tasks", "Tasks"),
@@ -113,7 +133,7 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
             f"<title>{_e(title)}</title>",
             "<style>",
-            _CSS,
+            _CSS + DASHBOARD_CSS,
             "</style>",
             "</head>",
             "<body>",
@@ -124,58 +144,49 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
             f"<span>{_e(project.get('root') or '')}</span>",
             "</div>",
             "<nav>",
-            '<a href="/">Dashboard</a>',
-            '<a href="/api/snapshot">JSON</a>',
+            '<button id="refresh-view" class="action" type="button">Refresh view</button>',
+            '<a href="/api/snapshot">Download JSON</a>',
             "</nav>",
             "</header>",
             '<main class="layout">',
-            _warning_block(snapshot.get("warnings") or []),
+            f'<p class="snapshot-meta">Read-only · Updated {_e(snapshot.get("generated_at") or "at page load")} <span id="view-status" role="status"></span></p>',
             '<section class="toolbar">',
             '<div class="tabs" role="tablist" aria-label="Dashboard sections">',
             "".join(
-                f'<button class="tab{" active" if key == "overview" else ""}" data-tab-target="{key}" type="button">{_e(label)}</button>'
+                f'<button class="tab{" active" if key == "overview" else ""}" role="tab" id="tab-{key}" aria-controls="panel-{key}" aria-selected="{"true" if key == "overview" else "false"}" tabindex="{0 if key == "overview" else -1}" data-tab-target="{key}" type="button">{_e(label)}</button>'
                 for key, label in tabs
             ),
             "</div>",
             '<label class="search"><span>Search</span><input id="table-search" type="search" placeholder="Filter path, topic, note, query..." autocomplete="off"></label>',
             "</section>",
-            '<section class="tab-panel active" data-tab="overview">',
+            '<section class="tab-panel active" data-tab="overview" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">',
+            work_overview(snapshot),
+            '<details class="technical"><summary>Repository totals & data limits</summary>',
             _counts_block(counts),
-            '<div class="overview-grid dashboard-grid">',
-            _compact_list("Open Tasks", ["id", "status", "topic", "title", "remaining"], snapshot.get("open_tasks") or []),
-            _scorecard_block(snapshot.get("scorecard") or {}),
-            _compact_list("Recent Plans", ["id", "status", "query", "summary"], snapshot.get("recent_plans") or []),
-            _compact_list("Top File Activity", ["path", "memory", "feedback", "plan_events", "total"], snapshot.get("file_activity") or []),
-            _trajectory_block(snapshot.get("trajectory_summary") or {}),
-            _compact_list(
-                "Recent Trajectory Sessions",
-                ["session_id", "status", "model", "event_count", "tool_call_count", "error_count"],
-                snapshot.get("trajectory_sessions") or [],
-            ),
-            "</div>",
+            _warning_block(snapshot.get("warnings") or []),
+            '</details>',
             "</section>",
-            '<section class="tab-panel" data-tab="memory">',
+            '<section class="tab-panel" data-tab="checks" id="panel-checks" role="tabpanel" aria-labelledby="tab-checks" tabindex="0">',
+            checks_list(snapshot.get("recent_checks") or []),
+            "</section>",
+            '<section class="tab-panel" data-tab="memory" id="panel-memory" role="tabpanel" aria-labelledby="tab-memory" tabindex="0">',
             _table_block(
                 "Recent Memory",
                 ["id", "scope", "path", "topic", "evidence", "stale", "note"],
                 snapshot.get("recent_memory") or [],
             ),
             "</section>",
-            '<section class="tab-panel" data-tab="feedback">',
+            '<section class="tab-panel" data-tab="feedback" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" tabindex="0">',
             _table_block(
                 "Recent Feedback",
                 ["id", "rating", "path", "query", "source", "reason"],
                 snapshot.get("recent_feedback") or [],
             ),
             "</section>",
-            '<section class="tab-panel" data-tab="tasks">',
-            _table_block(
-                "Open Tasks",
-                ["id", "status", "topic", "title", "summary", "files", "remaining"],
-                snapshot.get("open_tasks") or [],
-            ),
+            '<section class="tab-panel" data-tab="tasks" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0">',
+            task_list(snapshot.get("open_tasks") or []),
             "</section>",
-            '<section class="tab-panel" data-tab="scorecard">',
+            '<section class="tab-panel" data-tab="scorecard" id="panel-scorecard" role="tabpanel" aria-labelledby="tab-scorecard" tabindex="0">',
             _scorecard_block(snapshot.get("scorecard") or {}),
             _table_block(
                 "Included Plans",
@@ -183,21 +194,21 @@ def render_dashboard_html(snapshot: dict[str, Any]) -> str:
                 (snapshot.get("scorecard") or {}).get("plans") or [],
             ),
             "</section>",
-            '<section class="tab-panel" data-tab="plans">',
+            '<section class="tab-panel" data-tab="plans" id="panel-plans" role="tabpanel" aria-labelledby="tab-plans" tabindex="0">',
             _table_block(
                 "Recent Reading Plans",
                 ["id", "status", "kind", "read_budget", "query", "summary", "created_at"],
                 snapshot.get("recent_plans") or [],
             ),
             "</section>",
-            '<section class="tab-panel" data-tab="files">',
+            '<section class="tab-panel" data-tab="files" id="panel-files" role="tabpanel" aria-labelledby="tab-files" tabindex="0">',
             _table_block(
                 "File Activity",
                 ["path", "memory", "feedback", "plan_events", "total"],
                 snapshot.get("file_activity") or [],
             ),
             "</section>",
-            '<section class="tab-panel" data-tab="trajectory">',
+            '<section class="tab-panel" data-tab="trajectory" id="panel-trajectory" role="tabpanel" aria-labelledby="tab-trajectory" tabindex="0">',
             _trajectory_block(snapshot.get("trajectory_summary") or {}),
             _table_block(
                 "Trajectory Sessions",
@@ -388,6 +399,9 @@ def _bounded_staleness(root: Path, notes: list[dict[str, Any]]) -> list[dict[str
                     limited.add(path)
                     continue
                 data = handle.read(allowance + 1)
+                after = os.fstat(handle.fileno())
+                if (info.st_size, info.st_mtime_ns, info.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                    limited.add(path)
                 remaining -= len(data)
                 if len(data) > allowance or time.monotonic() >= deadline:
                     limited.add(path)
@@ -477,6 +491,50 @@ def _open_tasks(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
             }
         )
     return tasks
+
+
+def _recent_checks(conn: sqlite3.Connection, limit: int, root: Path) -> list[dict[str, Any]]:
+    if not _has_table(conn, "agent_task_checks") or not _has_table(conn, "agent_tasks"):
+        return []
+    rows = conn.execute(
+        "SELECT c.task_id, c.test, c.checked_at, c.evidence_json, t.title, t.status, t.files_json "
+        "FROM agent_task_checks c JOIN agent_tasks t ON t.id=c.task_id "
+        "ORDER BY c.checked_at DESC, c.task_id DESC, c.test LIMIT ?", (limit,),
+    ).fetchall()
+    records, notes = [], []
+    for row in rows:
+        try:
+            evidence = json.loads(row["evidence_json"])
+            files = evidence["files"]
+            if not isinstance(files, dict) or len(files) > 100 or any(not isinstance(p, str) or not isinstance(h, str) for p, h in files.items()):
+                raise ValueError('Invalid file scope')
+            if evidence.get('run_state') not in {'passed', 'not_verified', 'timeout', 'needs_rerun'} or not isinstance(evidence.get('counts'), dict):
+                raise ValueError('Invalid run evidence')
+            record = {'task_id': row['task_id'], 'title': row['title'], 'task_status': row['status'],
+                      'test': row['test'], 'checked_at': row['checked_at'],
+                      'run_state': evidence['run_state'], 'state': evidence['run_state'],
+                      'counts': evidence.get('counts', {}), 'files': list(files),
+                      'changed_files': [], 'unchecked_files': [],
+                      'uncovered_files': sorted(set(_json_list(row['files_json'])) - set(files))}
+            if evidence.get('root') != str(root.resolve()) or record['uncovered_files']:
+                record['state'] = 'needs_rerun'
+            start = len(notes)
+            notes.extend({'path': name, 'scope': 'file', 'file_sha256': digest} for name, digest in files.items())
+            records.append((record, start, len(notes)))
+        except (ValueError, KeyError, TypeError):
+            records.append(({'task_id': row['task_id'], 'title': row['title'], 'task_status': row['status'],
+                             'test': row['test'], 'checked_at': row['checked_at'],
+                             'state': 'unknown', 'run_state': 'unknown', 'counts': {},
+                             'files': [], 'changed_files': [], 'unchecked_files': [], 'uncovered_files': []}, len(notes), len(notes)))
+    checked = _bounded_staleness(root, notes)
+    for record, start, end in records:
+        record['changed_files'] = [item['path'] for item in checked[start:end] if item['stale'] is True]
+        record['unchecked_files'] = [item['path'] for item in checked[start:end] if item['stale'] is None]
+        if record['changed_files']:
+            record['state'] = 'needs_rerun'
+        elif record['unchecked_files'] and record['state'] != 'needs_rerun':
+            record['state'] = 'unknown'
+    return [record for record, _, _ in records]
 
 
 def _recent_plans(conn: sqlite3.Connection, limit: int) -> list[dict[str, Any]]:
@@ -1382,38 +1440,79 @@ _BOOTSTRAP = """<!doctype html>
 
 
 _JS = """
-document.querySelector('a[href="/api/snapshot"]')?.addEventListener("click", async (event) => {
-  event.preventDefault();
-  const token = sessionStorage.getItem("init-agent-capability") || "";
-  const response = await fetch("/api/snapshot", {headers: {Authorization: "Bearer " + token}, cache: "no-store"});
-  if (!response.ok) { alert("Access expired. Reopen the private dashboard link."); return; }
-  const pre = document.createElement("pre");
-  pre.textContent = await response.text();
-  document.body.replaceChildren(pre);
-});
-
-const tabs = Array.from(document.querySelectorAll("[data-tab-target]"));
-const panels = Array.from(document.querySelectorAll("[data-tab]"));
-const search = document.getElementById("table-search");
-
-function activateTab(name) {
-  tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tabTarget === name));
-  panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.tab === name));
+const statusMessage = document.getElementById('view-status');
+const tabs = Array.from(document.querySelectorAll('[data-tab-target]'));
+const panels = Array.from(document.querySelectorAll('[data-tab]'));
+const search = document.getElementById('table-search');
+const storageKey = 'init-agent-view:' + location.pathname;
+let saved = {};
+try { saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}'); } catch (_) {}
+let active = tabs.some(t => t.dataset.tabTarget === saved.tab) ? saved.tab : 'overview';
+if (search) search.value = saved.query || '';
+function remember() {
+  try { sessionStorage.setItem(storageKey, JSON.stringify({tab: active, query: search?.value || ''})); } catch (_) {}
+}
+function filterRows() {
+  const query = (search?.value || '').trim().toLowerCase();
+  panels.forEach(panel => {
+    const rows = Array.from(panel.querySelectorAll('.filter-row'));
+    rows.forEach(row => row.classList.toggle('hidden', !!query && !(row.dataset.search || '').includes(query)));
+    let empty = panel.querySelector('.filter-empty');
+    if (!empty) { empty = document.createElement('p'); empty.className = 'filter-empty'; empty.setAttribute('role', 'status'); panel.prepend(empty); }
+    empty.hidden = !query || rows.some(row => !row.classList.contains('hidden'));
+    empty.textContent = 'No matches in this section. Change or clear the search.';
+  });
+  remember();
+}
+function activateTab(name, focus = false) {
+  active = name;
+  tabs.forEach(tab => {
+    const selected = tab.dataset.tabTarget === name;
+    tab.classList.toggle('active', selected);
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected && focus) tab.focus();
+  });
+  panels.forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.tab === name);
+    panel.hidden = panel.dataset.tab !== name;
+  });
   filterRows();
 }
-
-function filterRows() {
-  const query = (search?.value || "").trim().toLowerCase();
-  panels.forEach((panel) => {
-    panel.querySelectorAll(".filter-row").forEach((row) => {
-      const matches = !query || (row.dataset.search || "").includes(query);
-      row.classList.toggle("hidden", !matches);
-    });
+tabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => activateTab(tab.dataset.tabTarget));
+  tab.addEventListener('keydown', event => {
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = tabs.length - 1;
+    else return;
+    event.preventDefault(); activateTab(tabs[next].dataset.tabTarget, true);
   });
-}
-
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => activateTab(tab.dataset.tabTarget));
 });
-search?.addEventListener("input", filterRows);
+document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => {
+  if (search) search.value = '';
+  activateTab(button.dataset.go, true);
+}));
+search?.addEventListener('input', filterRows);
+document.getElementById('refresh-view')?.addEventListener('click', event => {
+  remember(); event.currentTarget.disabled = true;
+  statusMessage.textContent = 'Refreshing…'; location.reload();
+});
+document.querySelector('a[href="/api/snapshot"]')?.addEventListener('click', async event => {
+  event.preventDefault();
+  statusMessage.textContent = 'Preparing download…';
+  try {
+    const token = sessionStorage.getItem('init-agent-capability') || '';
+    const response = await fetch('/api/snapshot', {headers: {Authorization: 'Bearer ' + token}, cache: 'no-store'});
+    if (!response.ok) throw new Error(response.status === 401 ? 'Access expired. Reopen the private dashboard link.' : 'Snapshot unavailable. Try refreshing the view.');
+    const url = URL.createObjectURL(new Blob([await response.text()], {type: 'application/json'}));
+    const link = document.createElement('a'); link.href = url; link.download = 'init-agent-snapshot.json';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    statusMessage.textContent = 'Snapshot downloaded.';
+  } catch (error) { statusMessage.textContent = error.message; }
+});
+activateTab(active);
 """
