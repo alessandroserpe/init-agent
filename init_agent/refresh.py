@@ -81,17 +81,20 @@ def refresh_index(root: Path) -> dict[str, Any]:
                     old_hash = existing_hashes.get(rel_path)
                     capabilities = existing_analysis.get(rel_path, {})
                     analyzer_stale = capabilities.get("analyzer_fingerprint") != current_fingerprint(detect_language(path))
+                    summary = {}
                     if old_hash is None:
-                        index_file(root, path, store, snapshot=snapshot)
+                        summary = index_file(root, path, store, snapshot=snapshot)
                         result["added"].append(rel_path)
                     elif old_hash != current_hash:
-                        index_file(root, path, store, snapshot=snapshot)
+                        summary = index_file(root, path, store, snapshot=snapshot)
                         result["updated"].append(rel_path)
                     elif analyzer_stale:
-                        index_file(root, path, store, snapshot=snapshot)
+                        summary = index_file(root, path, store, snapshot=snapshot)
                         result["updated"].append(rel_path)
                     else:
                         result["unchanged"] += 1
+                    if summary.get("errors") and len(result["errors"]) < 50:
+                        result["errors"].append(f"{rel_path}: {summary['errors'][0]}")
                 except (OSError, ParseFailure, RecursionError, MemoryError) as exc:
                     store.delete_file_by_path(rel_path)
                     result["removed"].append(rel_path)
@@ -102,6 +105,20 @@ def refresh_index(root: Path) -> dict[str, Any]:
             for rel_path in sorted(path for path in existing_hashes if path not in real_paths):
                 store.delete_file_by_path(rel_path)
                 result["removed"].append(rel_path)
+
+            # Compiler output depends on imported sources and configuration as
+            # well as its own bytes. Reanalyse only affected unchanged files.
+            current_hashes = store.file_hashes()
+            changed = set(result["added"] + result["updated"] + result["removed"])
+            for rel_path, analysis in existing_analysis.items():
+                if rel_path not in real_paths or rel_path in changed or analysis.get("analyzer") != "typescript-compiler":
+                    continue
+                dependencies = dict(store.connection.execute("SELECT d.path,d.sha256 FROM analysis_dependencies d JOIN files f ON f.id=d.file_id WHERE f.path=?", (rel_path,)))
+                config_changed = any(Path(p).name in {"tsconfig.json", "package.json"} for p in changed)
+                if result["added"] or result["removed"] or config_changed or any(current_hashes.get(p) != sha for p, sha in dependencies.items()):
+                    index_file(root, root / rel_path, store)
+                    result["updated"].append(rel_path)
+                    result["unchanged"] -= 1
 
             if result["added"] or result["updated"] or result["removed"]:
                 result["resolved_relations"] = rebuild_resolved_relations(store)

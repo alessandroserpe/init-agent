@@ -7,12 +7,20 @@ import re
 import tomllib
 import ast
 import copy
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
 from .signatures import minimize_signature
 from .python_receivers import module_types, receiver_facts
 from .parse_budget import CURRENT_PARSE_BUDGET, ParseBudget, ParseFailure, checked_lines, parser_checkpoint, preflight
+
+
+CURRENT_ANALYZER_OUTCOME: ContextVar[str] = ContextVar("analysis_outcome", default="regex")
+
+
+def last_analyzer_outcome() -> str:
+    return CURRENT_ANALYZER_OUTCOME.get()
 
 
 @dataclass(frozen=True)
@@ -264,6 +272,7 @@ def extract_symbols_and_relations(
     if content is None:
         return [], []
     token = CURRENT_PARSE_BUDGET.set(ParseBudget())
+    CURRENT_ANALYZER_OUTCOME.set("regex")
     try:
         preflight(content, language)
         result = _extract_symbols_and_relations(content, language, path)
@@ -275,6 +284,8 @@ def extract_symbols_and_relations(
         raise ParseFailure(f"parser failed ({type(exc).__name__})") from None
     finally:
         CURRENT_PARSE_BUDGET.reset(token)
+        # Keep the completed outcome available to the caller until its next
+        # extraction. The token is intentionally not reset here.
 
 
 def _extract_symbols_and_relations(
@@ -428,8 +439,11 @@ def _clean_heading(text: str) -> str:
 
 def _extract_python(content: str, path: str | None = None) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
     try:
-        return _extract_python_ast(content, path)
-    except SyntaxError:
+        result = _extract_python_ast(content, path)
+        CURRENT_ANALYZER_OUTCOME.set("python-ast")
+        return result
+    except SyntaxError as exc:
+        CURRENT_ANALYZER_OUTCOME.set(f"python-regex-fallback:{exc.msg[:120]}")
         return _extract_python_regex(content, path)
 
 
@@ -784,9 +798,21 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
         ts_symbols, ts_relations = extract_php_isolated(content)
     except (ParseFailure, RecursionError, MemoryError):
         raise
-    except Exception:
-        return _extract_php_regex(content)
+    except Exception as exc:
+        detail = "PHP structural parser unavailable" if isinstance(exc, ImportError) else type(exc).__name__
+        CURRENT_ANALYZER_OUTCOME.set(f"php-regex-fallback:{detail}")
+        return _mark_php_fallback(_extract_php_regex(content))
+    CURRENT_ANALYZER_OUTCOME.set("php-tree-sitter")
     regex_symbols, regex_relations = _extract_php_regex(content)
+    regex_supplements = [
+        ExtractedRelation(
+            relation.relation, relation.target_type, relation.target, relation.line,
+            relation.confidence, relation.metadata, relation.source_qualified_name,
+            "regex_supplement",
+        )
+        for relation in regex_relations
+        if relation.relation in {"route_to_handler", "include", "include_once", "require", "require_once"}
+    ]
     symbols = _dedupe_symbols(
         [
             *ts_symbols,
@@ -796,14 +822,22 @@ def _extract_php(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRel
     relations = _dedupe_relations(
         [
             *ts_relations,
-            *(
-                relation
-                for relation in regex_relations
-                if relation.relation in {"route_to_handler", "include", "include_once", "require", "require_once"}
-            ),
+            *regex_supplements,
         ]
     )
     return symbols, relations
+
+
+def _mark_php_fallback(result):
+    symbols, relations = result
+    return symbols, [
+        ExtractedRelation(
+            relation.relation, relation.target_type, relation.target, relation.line,
+            relation.confidence, relation.metadata, relation.source_qualified_name,
+            "regex_fallback",
+        )
+        for relation in relations
+    ]
 
 
 def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
@@ -898,7 +932,7 @@ def _extract_php_regex(content: str) -> tuple[list[ExtractedSymbol], list[Extrac
     return symbols, relations
 
 
-def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+def _extract_php_tree_sitter(content: str, *, with_status: bool = False):
     """Worker-only native extraction; production callers must use isolation."""
     parser, language = _php_tree_sitter_parser()
     parser.language = language
@@ -908,20 +942,60 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
     symbols: list[ExtractedSymbol] = []
     relations: list[ExtractedRelation] = []
 
-    def walk(node: object, class_name: str = "", callable_name: str = "") -> None:
+    def walk(
+        node: object,
+        class_name: str = "",
+        callable_name: str = "",
+        namespace_name: str = "",
+        aliases: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         parser_checkpoint(node=True)
         node_type = getattr(node, "type", "")
         line_no = getattr(node, "start_point")[0] + 1
+        aliases = {kind: dict(values) for kind, values in (aliases or {}).items()}
+        if node_type == "namespace_definition":
+            name_node = getattr(node, "child_by_field_name")("name")
+            namespace_name = _tree_sitter_text(source, name_node).strip("\\") if name_node is not None else ""
+            queue = list(getattr(node, "named_children", []))
+            while queue:
+                child = queue.pop(0)
+                child_type = getattr(child, "type", "")
+                if child_type == "namespace_use_declaration":
+                    _php_add_use_aliases(aliases, _tree_sitter_text(source, child))
+                elif child_type != "namespace_definition":
+                    queue[0:0] = list(getattr(child, "named_children", []))
+        elif node_type == "program":
+            current_namespace = ""
+            current_aliases: dict[str, dict[str, str]] = {}
+            for child in getattr(node, "named_children", []):
+                if getattr(child, "type", "") == "namespace_definition":
+                    name_node = getattr(child, "child_by_field_name")("name")
+                    current_namespace = _tree_sitter_text(source, name_node).strip("\\") if name_node is not None else ""
+                    current_aliases = {}
+                    children = list(getattr(child, "named_children", []))
+                    body = next((item for item in children if getattr(item, "type", "") in {"compound_statement", "declaration_list"}), None)
+                    if body is not None:
+                        # Bracketed namespaces own their statements. Unbracketed
+                        # namespace declarations instead affect following siblings.
+                        _php_collect_namespace_aliases(source, body, current_aliases)
+                        walk(body, "", "", current_namespace, current_aliases)
+                    continue
+                if getattr(child, "type", "") == "namespace_use_declaration":
+                    _php_add_use_aliases(current_aliases, _tree_sitter_text(source, child))
+                    walk(child, "", "", current_namespace, current_aliases)
+                    continue
+                walk(child, "", "", current_namespace, current_aliases)
+            return
         if node_type == "class_declaration":
             if name := _tree_sitter_name(source, node):
-                class_name = name
+                class_name = _php_declaration_name(name, namespace_name)
                 symbols.append(
                     ExtractedSymbol(
                         name,
                         "class",
                         line_no,
                         _tree_sitter_line(lines, line_no),
-                        name,
+                        class_name,
                         "",
                         getattr(node, "end_point")[0] + 1,
                     )
@@ -934,34 +1008,34 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                             target.rsplit("\\", 1)[-1],
                             line_no,
                             0.85,
-                            {"qualified_name": target},
-                            name,
+                            {"qualified_name": _php_qualify_name(target, namespace_name, aliases)},
+                            class_name,
                         )
                     )
         elif node_type in {"interface_declaration", "trait_declaration", "enum_declaration"}:
             if name := _tree_sitter_name(source, node):
-                class_name = name
+                class_name = _php_declaration_name(name, namespace_name)
                 symbols.append(
                     ExtractedSymbol(
                         name,
                         node_type.removesuffix("_declaration"),
                         line_no,
                         _tree_sitter_line(lines, line_no),
-                        name,
+                        class_name,
                         "",
                         getattr(node, "end_point")[0] + 1,
                     )
                 )
         elif node_type == "function_definition":
             if name := _tree_sitter_name(source, node):
-                callable_name = name
+                callable_name = _php_declaration_name(name, namespace_name)
                 symbols.append(
                     ExtractedSymbol(
                         name,
                         "function",
                         line_no,
                         _tree_sitter_line(lines, line_no),
-                        name,
+                        callable_name,
                         "",
                         getattr(node, "end_point")[0] + 1,
                     )
@@ -983,6 +1057,7 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
         elif node_type in {"function_call_expression", "member_call_expression", "scoped_call_expression"}:
             if name := _tree_sitter_call_name(source, node):
                 if name.lower() not in PHP_CALL_EXCLUDES and not _tree_sitter_php_route_call(source, node, name):
+                    call_metadata = _tree_sitter_php_call_metadata(source, node, namespace_name, aliases)
                     relations.append(
                         ExtractedRelation(
                             "calls",
@@ -990,21 +1065,28 @@ def _extract_php_tree_sitter(content: str) -> tuple[list[ExtractedSymbol], list[
                             name,
                             line_no,
                             0.45,
-                            None,
+                            call_metadata,
                             callable_name,
                         )
                     )
         elif node_type in {"include_expression", "include_once_expression", "require_expression", "require_once_expression"}:
-            if target := _tree_sitter_first_string(source, node):
-                relations.append(ExtractedRelation(node_type.removesuffix("_expression"), "file", target, line_no, 0.8))
+            if target := _tree_sitter_static_include_target(source, node):
+                relations.append(
+                    ExtractedRelation(
+                        node_type.removesuffix("_expression"), "file", target, line_no, 0.8,
+                        {"include_kind": node_type}, callable_name,
+                    )
+                )
         for child in getattr(node, "named_children", []):
-            walk(child, class_name, callable_name)
+            walk(child, class_name, callable_name, namespace_name, aliases)
 
     walk(tree.root_node)
     for line_no, line in enumerate(lines, start=1):
         parser_checkpoint()
         for table in _sql_tables_in_text(line):
             relations.append(ExtractedRelation("uses_table", "sql_table", table, line_no, 0.6))
+    if with_status:
+        return symbols, relations, bool(getattr(tree.root_node, "has_error", False))
     return symbols, relations
 
 
@@ -1016,6 +1098,133 @@ def _php_declaration_relations(declaration: str) -> list[tuple[str, str]]:
     if match := PHP_IMPLEMENTS_RE.search(header):
         relations.extend(("implements", item) for item in _php_type_list(match.group(1)))
     return relations
+
+
+def _php_use_binding(statement: str) -> tuple[str, str, str] | None:
+    """Read one simple class/function/constant import; grouped imports are opaque."""
+    match = re.match(r"\s*use\s+(?:(function|const)\s+)?([^;]+);", statement, re.IGNORECASE)
+    if not match:
+        return None
+    kind = (match.group(1) or "class").lower()
+    target = match.group(2).strip().lstrip("\\")
+    # Do not guess where aliases apply in comma-separated or grouped imports.
+    if any(char in target for char in ",{}"):
+        return None
+    as_match = re.match(r"(.+?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$", target, re.IGNORECASE)
+    if as_match:
+        target, alias = as_match.group(1).strip(), as_match.group(2)
+    else:
+        alias = target.rsplit("\\", 1)[-1]
+    return kind, alias, target
+
+
+def _php_add_use_aliases(aliases: dict[str, dict[str, str]], statement: str) -> None:
+    binding = _php_use_binding(statement)
+    if binding is None:
+        return
+    kind, alias, target = binding
+    aliases.setdefault(kind, {})[alias.lower()] = target
+
+
+def _php_collect_namespace_aliases(
+    source: bytes,
+    body: object,
+    aliases: dict[str, dict[str, str]],
+) -> None:
+    queue = list(getattr(body, "named_children", []))
+    while queue:
+        child = queue.pop(0)
+        child_type = getattr(child, "type", "")
+        if child_type == "namespace_use_declaration":
+            _php_add_use_aliases(aliases, _tree_sitter_text(source, child))
+        elif child_type != "namespace_definition":
+            queue[0:0] = list(getattr(child, "named_children", []))
+
+
+def _php_use_aliases(statement: str) -> dict[str, str]:
+    """Compatibility helper for class import aliases in simple use clauses."""
+    binding = _php_use_binding(statement)
+    if binding is None or binding[0] != "class":
+        return {}
+    _, alias, target = binding
+    return {alias.lower(): target}
+
+
+def _php_declaration_name(name: str, namespace_name: str) -> str:
+    """Declaration names are defined in their namespace, never via imports."""
+    clean = name.strip().lstrip("\\")
+    return f"{namespace_name}\\{clean}" if namespace_name and clean else clean
+
+
+def _php_qualify_name(name: str, namespace_name: str, aliases: dict[str, Any], kind: str = "class") -> str:
+    """Resolve a referenced PHP name with the matching import category."""
+    absolute = name.strip().startswith("\\")
+    value = name.strip().lstrip("\\")
+    if not value:
+        return value
+    first, separator, tail = value.partition("\\")
+    categorized = aliases.get(kind) if isinstance(aliases.get(kind), dict) else aliases
+    imported = None if absolute else categorized.get(first.lower())
+    if imported:
+        return imported + (separator + tail if separator else "")
+    if absolute or not namespace_name:
+        return value
+    return f"{namespace_name}\\{value}"
+
+
+def _tree_sitter_static_include_target(source: bytes, node: object) -> str:
+    expression = _tree_sitter_text(source, node).strip()
+    match = re.match(r"(?is)^(?:include|include_once|require|require_once)\s*(?:\(\s*)?(?P<expr>.*?)(?:\s*\))?\s*;?$", expression)
+    if not match:
+        return ""
+    expr = match.group("expr").strip()
+    return _php_static_path_expression(expr)
+
+
+def _php_static_path_expression(expr: str) -> str:
+    expr = expr.strip().rstrip(";").strip()
+    if expr.startswith("(") and expr.endswith(")"):
+        expr = expr[1:-1].strip()
+    literal = r"(?:'([^'\\]*(?:\\.[^'\\]*)*)'|\"([^\"\\]*(?:\\.[^\"\\]*)*)\")"
+    found = re.fullmatch(literal, expr)
+    if found:
+        return (found.group(1) if found.group(1) is not None else found.group(2)).replace("\\\\", "\\")
+    static_dir = re.fullmatch(rf"__DIR__\s*\.\s*{literal}", expr)
+    if static_dir:
+        target = static_dir.group(1) if static_dir.group(1) is not None else static_dir.group(2)
+        return target.replace("\\\\", "\\").lstrip("/")
+    return ""
+
+
+def _tree_sitter_php_call_metadata(
+    source: bytes,
+    node: object,
+    namespace_name: str,
+    aliases: dict[str, dict[str, str]],
+) -> dict[str, str]:
+    node_type = getattr(node, "type", "")
+    metadata: dict[str, str] = {}
+    if node_type == "member_call_expression":
+        receiver = getattr(node, "child_by_field_name")("object")
+        metadata["dispatch_kind"] = "member"
+        if receiver is not None:
+            metadata["receiver"] = _tree_sitter_text(source, receiver)[:120]
+    elif node_type == "scoped_call_expression":
+        scope = getattr(node, "child_by_field_name")("scope")
+        method = getattr(node, "child_by_field_name")("name")
+        if scope is not None:
+            scope_text = _tree_sitter_text(source, scope)
+            metadata["dispatch_kind"] = "static"
+            qualified_scope = _php_qualify_name(scope_text, namespace_name, aliases)
+            method_text = _tree_sitter_text(source, method) if method is not None else ""
+            metadata["qualified_name"] = f"{qualified_scope}::{method_text}" if method_text else qualified_scope
+    else:
+        function = getattr(node, "child_by_field_name")("function")
+        if function is not None:
+            function_text = _tree_sitter_text(source, function)
+            metadata["dispatch_kind"] = "function"
+            metadata["qualified_name"] = _php_qualify_name(function_text, namespace_name, aliases, "function")
+    return metadata
 
 
 def _php_type_list(value: str) -> list[str]:
@@ -1165,16 +1374,13 @@ def _php_includes_in_line(line: str) -> list[tuple[str, str, dict[str, object]]]
     )
     if not match:
         return []
-    expression = match.group("expr").strip().rstrip(")").strip()
-    string_match = re.search(r"[\"']([^\"']+)[\"']", expression)
-    if not string_match:
+    expression = match.group("expr").strip()
+    target = _php_static_path_expression(expression)
+    if not target:
         return []
-    target = string_match.group(1).replace("\\", "/")
+    target = target.replace("\\", "/")
     metadata: dict[str, object] = {"path_base": "runtime", "expression": expression[:160]}
-    if "dirname(__DIR__)" in expression:
-        target = f"../{target.lstrip('/')}"
-        metadata["path_base"] = "source_dir"
-    elif "__DIR__" in expression or "dirname(__FILE__)" in expression:
+    if "__DIR__" in expression:
         target = target.lstrip("/")
         metadata["path_base"] = "source_dir"
     return [(match.group(1).lower(), target, metadata)]

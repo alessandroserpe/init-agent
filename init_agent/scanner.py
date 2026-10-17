@@ -33,6 +33,10 @@ def scan_project(root: Path, store: Any) -> dict[str, Any]:
         try:
             indexed_paths.add(relative_path(path, root))
             summary = index_file(root, path, store)
+            if summary.get("errors"):
+                error_count += 1
+                if len(errors) < 50:
+                    errors.append(f"{summary['path']}: {summary['errors'][0]}")
             indexed_files += 1
             indexed_symbols += summary["symbols"]
             indexed_relations += summary["relations"]
@@ -77,6 +81,15 @@ def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, i
         # cannot finish. Empty graph records replace stale results below.
         symbols, extracted_relations = [], []
         extraction_errors.append(str(exc)[:300])
+    compiler_analysis = None
+    if language == "typescript":
+        from .typescript_analyzer import analyze
+        compiler_analysis = analyze(root, rel_path)
+        if compiler_analysis.get("structural"):
+            symbols = [ExtractedSymbol(name=item["name"], kind=item["kind"], line=item["line"],
+                                       signature="", qualified_name=item["qualified_name"],
+                                       end_line=item["end_line"])
+                       for item in compiler_analysis["symbols"]]
     file_id = store.upsert_file(
         {
             "path": rel_path,
@@ -115,6 +128,11 @@ def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, i
         }
         for relation in extracted_relations
     )
+    if compiler_analysis and compiler_analysis.get("structural"):
+        relations.extend({"relation": edge["relation"], "target_type": "structural_file",
+                          "target_id": edge["target_path"], "confidence": 1.0,
+                          "metadata": {**edge, "source_qualified_name": edge.get("source_symbol", "")}}
+                         for edge in compiler_analysis.get("edges", []))
     store.replace_file_symbols_and_relations(
         file_id,
         [
@@ -131,14 +149,21 @@ def index_file(root: Path, path: Path, store: Any, snapshot=None) -> dict[str, i
         ],
         relations,
     )
-    save_capabilities(
-        store,
-        file_id,
-        build_capabilities(language, content, symbols, extracted_relations, extraction_errors),
-    )
+    analysis = build_capabilities(language, content, symbols, extracted_relations, extraction_errors)
+    if compiler_analysis is not None:
+        analysis.update({key: value for key, value in compiler_analysis.items() if key not in {"symbols", "edges", "dependencies", "gaps"}})
+        analysis["symbols"] = len(symbols)
+        analysis["partial"] = bool(compiler_analysis.get("gaps"))
+        analysis["errors"] = compiler_analysis.get("gaps", [])[:20]
+        analysis["resolved_links"] = len(compiler_analysis.get("edges", []))
+    store.connection.execute("CREATE TABLE IF NOT EXISTS analysis_dependencies (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE, path TEXT NOT NULL, sha256 TEXT NOT NULL, PRIMARY KEY(file_id,path))")
+    store.connection.execute("DELETE FROM analysis_dependencies WHERE file_id=?", (file_id,))
+    if compiler_analysis:
+        store.connection.executemany("INSERT INTO analysis_dependencies VALUES(?,?,?)", ((file_id, p, sha) for p, sha in compiler_analysis.get("dependencies", {}).items()))
+    save_capabilities(store, file_id, analysis)
     if hasattr(store, "replace_file_tags"):
         store.replace_file_tags(file_id, _file_tags(rel_path, language, role, symbols, extracted_relations))
-    return {"path": rel_path, "symbols": len(symbols), "relations": len(relations) + len(symbols)}
+    return {"path": rel_path, "symbols": len(symbols), "relations": len(relations) + len(symbols), "errors": extraction_errors}
 
 
 def _relation_metadata(relation: ExtractedRelation) -> dict[str, object]:

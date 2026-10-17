@@ -41,4 +41,4 @@ init-agent-hook = "init_agent.trajectory_hook_cli:main"
 include = ["init_agent*"]
 
 [tool.setuptools.package-data]
-init_agent = ["resources/skills/init-agent-orientation/SKILL.md"]
+init_agent = ["resources/skills/init-agent-orientation/SKILL.md", "typescript_worker/worker.js", "typescript_worker/package.json", "typescript_worker/package-lock.json"]

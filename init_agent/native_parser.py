@@ -15,6 +15,10 @@ NATIVE_MEMORY_BYTES = 512 * 1024 * 1024
 NATIVE_OUTPUT_BYTES = 4 * 1024 * 1024
 
 
+class PHPStructuralSyntaxError(ValueError):
+    """Tree-sitter completed, but its tree contains syntax error nodes."""
+
+
 def _worker_command():
     trusted_paths = [str(Path(__file__).resolve().parents[1])]
     trusted_paths += list(dict.fromkeys(sysconfig.get_path(key) for key in ('purelib', 'platlib')))
@@ -41,8 +45,12 @@ def extract_php_isolated(content):
     try:
         value = json.loads(result.stdout)
         from .symbol_extractor import ExtractedSymbol, ExtractedRelation
+        if value.get('syntax_errors'):
+            raise PHPStructuralSyntaxError('PHP structural parser reported syntax errors')
         return ([ExtractedSymbol(**row) for row in value['symbols']],
                 [ExtractedRelation(**row) for row in value['relations']])
+    except PHPStructuralSyntaxError:
+        raise
     except (ValueError, KeyError, TypeError, RecursionError) as exc:
         raise ParseFailure('invalid bounded native parser result') from exc
 
@@ -71,9 +79,10 @@ def worker_main():
         token = CURRENT_PARSE_BUDGET.set(ParseBudget())
         try:
             preflight(content, 'php')
-            symbols, relations = _extract_php_tree_sitter(content)
+            symbols, relations, syntax_errors = _extract_php_tree_sitter(content, with_status=True)
             payload = json.dumps({'symbols': [asdict(item) for item in symbols],
-                                  'relations': [asdict(item) for item in relations]},
+                                  'relations': [asdict(item) for item in relations],
+                                  'syntax_errors': syntax_errors},
                                  separators=(',', ':'))
             if len(payload.encode('utf-8')) > NATIVE_OUTPUT_BYTES:
                 return 1

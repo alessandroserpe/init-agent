@@ -1,0 +1,9 @@
+{
+  "name": "init-agent-typescript-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated TypeScript compiler API worker for init-agent",
+  "dependencies": {
+    "typescript": "5.8.3"
+  }
+}

@@ -54,7 +54,7 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
     symbols_by_file: dict[int, set[str]] = defaultdict(set)
     symbol_by_id: dict[int, dict[str, Any]] = {}
     for row in connection.execute(
-        "SELECT id, file_id, name, kind, qualified_name, container_name FROM symbols"
+        "SELECT id, file_id, name, kind, qualified_name, container_name, line, end_line FROM symbols"
     ):
         checkpoint()
         item = {
@@ -64,6 +64,8 @@ def rebuild_resolved_relations(store: Any) -> dict[str, int]:
             "kind": str(row["kind"]),
             "qualified_name": str(row["qualified_name"] or row["name"]),
             "container_name": str(row["container_name"] or ""),
+            "line": row["line"],
+            "end_line": row["end_line"],
         }
         symbols_by_name[item["name"].lower()].append(item)
         symbols_by_file[item["file_id"]].add(item["name"].lower())
@@ -383,6 +385,17 @@ def _rebuild_resolved_symbol_relations(
         receiver_scoped = False
         receiver = qualified.split(".", 1)[0].lower() if "." in qualified else ""
 
+        if relation == "calls" and source_file["language"] == "php" and metadata.get("dispatch_kind") == "function":
+            # Native namespace/import attribution identifies a lexical function,
+            # unlike a same-leaf-name guess or dynamic method dispatch.
+            receiver_scoped = True
+            component = include_components.get(source_file_id)
+            candidate_ids = [s["id"] for s in symbols_by_name.get(target_name, [])
+                             if s["kind"] == "function" and s["qualified_name"].lower() == qualified.lower()
+                             and (s["file_id"] == source_file_id or
+                                  (component is not None and include_components.get(s["file_id"]) == component))]
+            resolver = "php_namespace_function"
+
         if relation == "calls" and source_file["language"] == "python":
             if isinstance(metadata.get('receiver_type'), str):
                 receiver_scoped = True
@@ -478,6 +491,9 @@ def _rebuild_resolved_symbol_relations(
             "source_qualified_name": source_symbol["qualified_name"],
             "target_path": files[int(target_symbol["file_id"])]["path"],
             "target_qualified_name": target_symbol["qualified_name"],
+            "target_line": target_symbol["line"],
+            "source_sha256": files[source_file_id]["sha256"],
+            "target_sha256": files[int(target_symbol["file_id"])]["sha256"],
         }
         source_symbol_id = int(source_symbol["id"])
         key = (source_symbol_id, relation, target_symbol_id)

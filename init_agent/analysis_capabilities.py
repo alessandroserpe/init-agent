@@ -1,8 +1,11 @@
 """Persist the analysis capabilities actually available for each indexed file."""
 from __future__ import annotations
 
-import ast
+from functools import lru_cache
+import importlib.metadata
+import importlib.util
 import json
+import sys
 from typing import Any
 
 CAPABILITY_SCHEMA_VERSION = 1
@@ -25,7 +28,30 @@ def ensure_table(store: Any) -> None:
 
 
 def analyzer_fingerprint(language: str) -> str:
-    return f"{language}:{ANALYZER_VERSIONS.get(language, 'regex-v1')}"
+    base = f"{language}:{ANALYZER_VERSIONS.get(language, 'regex-v1')}"
+    if language == "typescript":
+        from .typescript_analyzer import compiler_fingerprint
+        return compiler_fingerprint()
+    if language == "python":
+        return f"{base}:py{sys.version_info.major}.{sys.version_info.minor}"
+    if language == "php":
+        return f"{base}:{_optional_package_fingerprint('tree_sitter', 'tree-sitter')}:{_optional_package_fingerprint('tree_sitter_php', 'tree-sitter-php')}"
+    return base
+
+
+@lru_cache(maxsize=4)
+def _optional_package_fingerprint(module: str, distribution: str) -> str:
+    try:
+        available = importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        available = False
+    if not available:
+        return f"{module}=missing"
+    try:
+        version = importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        version = "unknown-version"
+    return f"{module}={version}"
 
 
 def current_fingerprint(language: str) -> str:
@@ -36,29 +62,14 @@ def current_fingerprint(language: str) -> str:
 def build_capabilities(language: str, content: str, symbols: list[Any],
                        relations: list[Any], errors: list[str] | None = None) -> dict[str, Any]:
     errors = list(errors or [])
-    analyzer = "regex"
-    structural = False
-    if language == "python":
-        try:
-            ast.parse(content)
-            analyzer, structural = "python-ast", True
-        except SyntaxError:
-            analyzer = "python-regex-fallback"
-            errors.append("Python syntax error; regex extraction used")
-        except Exception as exc:
-            analyzer = "python-regex-fallback"
-            errors.append(f"Python AST unavailable: {type(exc).__name__}")
-    elif language == "php":
-        try:
-            from .native_parser import extract_php_isolated
-            extract_php_isolated(content)
-            analyzer, structural = "php-tree-sitter", True
-        except ImportError:
-            analyzer = "php-regex-fallback"
-            errors.append("optional PHP structural parser unavailable; regex extraction used")
-        except Exception as exc:
-            analyzer = "php-regex-fallback"
-            errors.append(f"structural parser unavailable: {type(exc).__name__}")
+    from .symbol_extractor import last_analyzer_outcome
+    outcome = last_analyzer_outcome()
+    analyzer = outcome.split(":", 1)[0] if outcome != "regex" else "regex"
+    structural = analyzer in {"python-ast", "php-tree-sitter"} and not errors
+    if ":" in outcome:
+        errors.append(outcome.split(":", 1)[1])
+    if analyzer.endswith("regex-fallback") and not errors:
+        errors.append("structural parser unavailable; regex extraction used")
 
     calls = sum(1 for relation in relations if relation.relation == "calls")
     imports = sum(1 for relation in relations if relation.relation in {
