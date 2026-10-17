@@ -269,10 +269,10 @@ PY_CALL_EXCLUDES = {
 def extract_symbols_and_relations(
     content: str | None, language: str, path: str | None = None,
 ) -> tuple[list[ExtractedSymbol], list[ExtractedRelation]]:
+    CURRENT_ANALYZER_OUTCOME.set("regex")
     if content is None:
         return [], []
     token = CURRENT_PARSE_BUDGET.set(ParseBudget())
-    CURRENT_ANALYZER_OUTCOME.set("regex")
     try:
         preflight(content, language)
         result = _extract_symbols_and_relations(content, language, path)

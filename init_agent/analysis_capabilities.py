@@ -8,6 +8,8 @@ import json
 import sys
 from typing import Any
 
+from .persisted_json import decode_persisted_object, CorruptMetadata
+
 CAPABILITY_SCHEMA_VERSION = 1
 ANALYZER_VERSIONS = {
     "python": "python-ast-or-regex-v1",
@@ -80,7 +82,7 @@ def build_capabilities(language: str, content: str, symbols: list[Any],
         "analyzer": analyzer,
         "analyzer_fingerprint": analyzer_fingerprint(language),
         "indexed": True,
-        "text_search": True,
+        "text_search": content is not None,
         "structural": structural,
         "symbols": len(symbols),
         "call_contexts": calls,
@@ -105,12 +107,14 @@ def load_capabilities(store: Any) -> dict[str, dict[str, Any]]:
     rows = store.connection.execute(
         "SELECT files.path, files.language, file_analysis.metadata_json "
         "FROM files LEFT JOIN file_analysis ON file_analysis.file_id=files.id"
-    ).fetchall()
+    )
     for row in rows:
         try:
-            value = json.loads(row["metadata_json"] or "{}")
-        except (TypeError, ValueError):
+            # Persisted capability data has the same trust boundary as relations.
+            value = decode_persisted_object(row["metadata_json"])
+        except CorruptMetadata:
             value = {}
-        value.setdefault("analyzer_fingerprint", "")
+        if not isinstance(value.get("analyzer_fingerprint"), str):
+            value["analyzer_fingerprint"] = ""
         result[row["path"]] = value
     return result

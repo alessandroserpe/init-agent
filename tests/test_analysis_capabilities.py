@@ -60,6 +60,28 @@ class AnalysisCapabilitiesTests(unittest.TestCase):
                 note_count = store.connection.execute("SELECT COUNT(*) AS n FROM agent_notes").fetchone()["n"]
                 self.assertEqual(note_count, 1)
 
+    def test_corrupt_capability_roots_are_reindexed_without_crashing(self):
+        for payload in ('[]', 'null', 'true', '42', '"text"', '{"analyzer_fingerprint":[]}', '['*40+'0'+']'*40):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root/'safe.py').write_text('def run(): pass\n')
+                self._scan(root)
+                with GraphStore(root) as store:
+                    store.connection.execute('UPDATE file_analysis SET metadata_json=?', (payload,))
+                    store.connection.commit()
+                result = refresh_index(root)
+                self.assertEqual(result['status'], 'OK')
+                self.assertEqual(result['updated'], ['safe.py'])
+
+    def test_empty_source_does_not_inherit_previous_analyzer(self):
+        from init_agent.symbol_extractor import extract_symbols_and_relations
+        from init_agent.analysis_capabilities import build_capabilities
+        extract_symbols_and_relations('def run(): pass', 'python')
+        symbols, relations = extract_symbols_and_relations(None, 'python')
+        capability = build_capabilities('python', None, symbols, relations)
+        self.assertFalse(capability['structural'])
+        self.assertFalse(capability['text_search'])
+
 
 if __name__ == "__main__":
     unittest.main()
