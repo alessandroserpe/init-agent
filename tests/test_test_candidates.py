@@ -75,3 +75,23 @@ class TestCandidatesTests(unittest.TestCase):
             self.assertTrue(result['truncated'])
             self.assertIn('tests/bad.py',result['skipped_paths'])
             self.assertTrue(result['warnings'])
+
+
+    def test_batch_reads_once_matches_single_calls_and_refreshes(self):
+        from init_agent import test_evidence
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            targets = [('package.logic', 'decide'), ('package.logic', 'missing')]
+            expected = [find_tests(root, *target) for target in targets]
+            with patch.object(test_evidence, 'repo_snapshot', wraps=test_evidence.repo_snapshot) as read:
+                actual = test_evidence._find_tests_many(root, targets)
+                self.assertEqual(read.call_count, 1)
+            self.assertEqual(actual, expected)
+            (root/'tests/test_work.py').write_text('from package.logic import missing\ndef test_new():\n    assert missing()\n')
+            refreshed = test_evidence._find_tests_many(root, targets)
+            self.assertFalse(refreshed[0]['candidates'])
+            self.assertEqual(refreshed[1]['candidates'][0]['test'], 'test_new')
+            for invalid in ([], targets * 26):
+                with self.assertRaises(ValueError):
+                    test_evidence._find_tests_many(root, invalid)
