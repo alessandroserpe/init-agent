@@ -69,10 +69,10 @@ def recent_commits(root: Path, limit: int = 50) -> list[dict[str, object]]:
 
 @bounded_operation
 def commit_files(root: Path, commit_hash: str) -> list[str]:
-    result = _git(root, "show", "--pretty=format:", "--name-only", "--no-ext-diff", "--no-textconv", commit_hash)
+    result = _git(root, "show", "--pretty=format:", "--name-only", "-z", "--no-ext-diff", "--no-textconv", commit_hash)
     if result.returncode != 0:
         return []
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [path for path in result.stdout.split("\0") if path]
 
 
 @bounded_operation
