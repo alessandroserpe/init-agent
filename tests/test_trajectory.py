@@ -1,6 +1,7 @@
 from tests.support import *
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 
 from init_agent.trajectory import CODEX_HOOK_EVENTS, ingest_codex_hook, tool_response_status
 from init_agent.trajectory_hook_cli import main as hook_main
@@ -137,7 +138,7 @@ class TrajectoryTests(InitAgentTestCase):
             self.assertEqual(result["duration_ms"], 2250)
             self.assertFalse(duplicate["recorded"])
             self.assertEqual(duplicate["status"], "duplicate")
-            with sqlite3.connect(root / ".agent" / "graph.sqlite") as conn:
+            with closing(sqlite3.connect(root / ".agent" / "graph.sqlite")) as conn:
                 event_rows = conn.execute(
                     "SELECT event_name, status, duration_ms, metadata_json FROM trajectory_events ORDER BY id"
                 ).fetchall()
@@ -314,7 +315,7 @@ class TrajectoryTests(InitAgentTestCase):
                 recorded_at="2026-08-20T10:02:00.000+00:00",
             )
 
-            with sqlite3.connect(root / ".agent" / "graph.sqlite") as conn:
+            with closing(sqlite3.connect(root / ".agent" / "graph.sqlite")) as conn:
                 session = conn.execute(
                     "SELECT started_at, ended_at, end_reason FROM trajectory_sessions"
                 ).fetchone()
