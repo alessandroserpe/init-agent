@@ -24,15 +24,12 @@ class DocsInstallTests(InitAgentTestCase):
         content = skill_path.read_text(encoding="utf-8")
         self.assertEqual(content, bundled_path.read_text(encoding="utf-8"))
         self.assertIn("init-agent run --overview", content)
-        self.assertIn("Use the smallest useful loop", content)
         self.assertIn("repo_reading_plan", content)
         self.assertIn("repo_reading_plan_finish", content)
         self.assertIn("repo_related_file", content)
         self.assertIn("repo_symbol_callers", content)
         self.assertIn("repo_memory_add", content)
         self.assertIn("repo_session_close", content)
-        self.assertIn("Do not call every available command", content)
-        self.assertIn("Delegation advice is disabled by default", content)
 
     def test_agent_skill_readme_documents_install_and_shim(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -104,7 +101,7 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("init-agent install-skill codex", content)
         self.assertIn("init-agent sync", content)
         self.assertIn("init-agent doctor --check-updates", content)
-        self.assertIn("recommended daily workflow", content)
+        self.assertIn("Choose the operation that answers the current question", content)
         self.assertIn('init-agent plan "<task>" --read 3', content)
         self.assertIn("init-agent session close", content)
         self.assertIn("init-agent web", content)
@@ -152,7 +149,6 @@ class DocsInstallTests(InitAgentTestCase):
         self.assertIn("repo_reading_plan", skill)
         self.assertIn("repo_memory_add", skill)
         self.assertIn("repo_session_close", skill)
-        self.assertIn("Only then broaden filesystem exploration", skill)
         self.assertIn("pipx inject init-agent tree-sitter tree-sitter-php", commands)
         self.assertIn("tree-sitter", parsing)
         self.assertIn("falls back to the built-in PHP parser", parsing)

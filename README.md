@@ -81,14 +81,16 @@ init-agent run --overview --markdown
 init-agent run "fix login session bug" --markdown
 ```
 
-For day-to-day agent work, prefer the smaller loop:
+When you do not know where to start reading, use a bounded plan:
 
 ```bash
 init-agent plan "fix login session bug" --read 3
 # read and verify the suggested files
 init-agent plan finish --id <id> --read-file <path> --verified <path> --central <path> --support <path> --summary "short outcome"
-init-agent session close
 ```
+
+If the relevant code is already located, read it directly. Use
+`init-agent session close` when a continuity check helps a handoff; it is optional.
 
 For a human-readable local dashboard:
 
@@ -151,15 +153,16 @@ Query: fix login session bug
 
 ## Core Workflow
 
-You do not need to remember every command. The recommended daily workflow is:
+Choose the operation that answers the current question. These are optional
+entry points, not a sequence required before every code change:
 
 | Step | Command | Use when |
 |---|---|---|
-| Orient | `init-agent overview` | You are new to a repository. |
-| Plan | `init-agent plan "<task>" --read 3` | You are about to inspect or change code. |
+| Orient | `init-agent overview` | You need broad repository context. |
+| Plan | `init-agent plan "<task>" --read 3` | You do not know where to start reading. |
 | Verify | read files directly | The context pack only suggests where to look. |
-| Close loop | `init-agent plan finish --id <id> ...` | You know what was useful, noisy or missing. |
-| Handoff | `init-agent session close` | You are wrapping up work. |
+| Close loop | `init-agent plan finish --id <id> ...` | You used a plan and verified what was useful, noisy or missing. |
+| Handoff | `init-agent session close` | A continuity check helps someone resume the work. |
 | Observe | `init-agent web` | A human wants a local dashboard. |
 
 Useful follow-ups:

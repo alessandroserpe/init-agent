@@ -1,57 +1,38 @@
 ---
 name: init-agent-orientation
-description: Orient coding work in an unfamiliar repository and reuse verified local context across tasks. Use reading plans, targeted graph queries, feedback and memory; skip trivial edits with known files.
+description: Use local repository context when the implementation location is unclear, dependencies remain ambiguous, or prior work and decisions need to be recovered across sessions.
 ---
 
 # Init Agent Orientation
 
-Use the smallest useful loop. Do not call every available command. Suggestions
-are hypotheses: verify source and tests before editing or claiming correctness.
+Use only the operation that answers a concrete need. Skip orientation when the
+implementation is already located; ordinary search and reads need no prior tool
+call. Stop consulting tools once you have enough evidence to act.
 
-## Orient and investigate
+- **Unknown starting point:** consider `repo_reading_plan` with a specific query
+  and `read_budget=3`. Reuse a supplied current plan; do not request it again.
+  Use `repo_overview` only for missing broad context. Verify suggestions in source;
+  if they miss the target, use direct search rather than a mandatory recovery loop.
+- **Unclear dependencies:** use `repo_related_file` or `repo_symbol_callers` for a
+  known file/symbol when ordinary exploration leaves an ambiguity. Keep compact
+  output unless missing evidence requires details.
+- **Resuming work:** consult relevant memory with `repo_memory_search` and recover
+  existing tasks when needed. Reading plans locate code; persistent tasks track
+  unfinished work. Use task tools through CLI help or the full MCP profile only
+  when continuity is useful; do not duplicate another maintained work plan.
+- **Worth retaining:** use `repo_memory_add` for verified decisions, constraints
+  or discoveries costly to reconstruct. Keep notes short, scoped and supported
+  by truthful evidence; omit routine narration, duplicates and secrets.
 
-- Reuse a supplied, current reading plan and its id; do not request it again.
-  Otherwise call `repo_reading_plan` with a concrete query and `read_budget=3`.
-  Use `repo_overview` only when broad repository context is missing.
-- Read the `read_now` files. If they miss the target, narrow the query to a
-  symptom/symbol, then use `repo_related_file` or `repo_symbol_callers` as needed.
-  Only then broaden filesystem exploration. Stop orientation once the relevant
-  implementation is found. Keep compact output; request `include_details=true`
-  only for missing evidence, not by default.
-- Check `preparation.index_health`. Missing/empty indexes need preparation;
-  stale indexes need refresh before graph-sensitive work. If CLI is available,
-  run `init-agent run --overview --markdown` once from the repository root.
-  Do not repeatedly rebuild or silently treat stale results as current.
-  If preparation is unavailable, disclose it and use direct source searches.
+Before relying on stored context, check available freshness warnings. Verify
+stale notes against live source; fresh means unchanged, not necessarily correct.
+Revalidate only after verification. Missing indexes or stale graph data may need
+`init-agent run --overview --markdown` before graph use; prepare only if that
+lookup is worthwhile and CLI is available, otherwise use direct source search.
 
-## Finish and retain useful context
-
-Call `repo_reading_plan_finish` once after verification, using the plan id,
-ordered `read` paths and truthful classifications:
-`central` = existing implementation owner; `support` = supporting existing file;
-`created` = new file; `verification` = tests/docs used to verify;
-`noisy` = suggested but irrelevant; `missing` = important existing file omitted.
-This records feedback; do not duplicate it separately. Set a non-real `kind`
-for experiments, diagnostics, smoke tests, planning or documentation-only work.
-
-Use `repo_memory_search` when returning to a known area. Verify stale notes
-against live files; fresh means unchanged, not necessarily correct.
-Use `repo_memory_add` only for a verified, durable fact that saves future work:
-short note, topic, tags and truthful evidence. Use file scope for file behavior,
-repo scope for project decisions. Do not store source snippets, secrets, personal
-data, speculative claims, task narration or duplicate notes. Revalidate stale
-memory only after checking it; editing a note alone does not refresh its evidence.
-
-After non-trivial work call `repo_session_close`; its checklist is advisory.
-Report actual verification and remaining issues. Keep `.agent/` local.
-
-## Optional operations
-
-Keep task administration, scorecards and memory maintenance outside the default
-loop; consult the relevant CLI `--help` or full-profile tool schema when needed.
-Delegation advice is disabled by default; request `delegate=true` only for useful,
-independent workstreams. Review worker evidence before accepting their outcomes.
-Do not add telemetry calls or install trajectory hooks implicitly. Trajectory
-is redacted metadata, not prompts, source, tool output or model reasoning;
-unknown outcomes are not successes. If doctor reports a skill mismatch, tell
-the user to run `init-agent sync`; do not check remote updates implicitly.
+If a reading plan was used, finish it once with `repo_reading_plan_finish`: plan
+id, ordered read paths and verified classifications (central, support, created,
+verification, noisy, missing). Do not duplicate feedback. Use a non-real `kind`
+for experiments or planning. Use `repo_session_close` when a continuity check
+helps a handoff; it is advisory, not required after every edit. Keep `.agent/`
+local. Do not add telemetry calls, install hooks or enable delegation implicitly.
