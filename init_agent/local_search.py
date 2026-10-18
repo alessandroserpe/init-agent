@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from .graph_store import GraphStore
-from .search_passages import passages, OversizedPassage
+from .search_passages import passages, OversizedPassage, source_excerpt
 from .memory import with_live_staleness
 from .metadata_db import connect_metadata
 from .repo_budget import bounded_operation, checkpoint
@@ -201,7 +201,9 @@ def _source_candidates(conn, query, query_terms, path_prefixes):
 
 
 @bounded_operation
-def search(root: Path, query: str, limit=3, path_prefixes=()):
+def search(root: Path, query: str, limit=3, path_prefixes=(), *, include_relations=False):
+    if type(include_relations) is not bool:
+        raise ValueError("include_relations must be a boolean")
     if not 1 <= limit <= 10 or len(query) > 1000:
         raise ValueError('limit must be 1..10; query at most 1000 characters')
     if len(path_prefixes) > 8 or any(Path(p).is_absolute() or '..' in Path(p).parts for p in path_prefixes):
@@ -244,25 +246,27 @@ def search(root: Path, query: str, limit=3, path_prefixes=()):
                 result['stale_candidates'].append(path)
                 continue
             seen.add(path)
-            lines = row['excerpt'].splitlines()
-            # Center the returned evidence on a matching line within the hit chunk.
-            position = max(range(len(lines)), key=lambda i: len(set(terms(lines[i])) & set(query_terms))) if lines else 0
-            start = max(0, position-3)
-            selected = lines[start:start+12]
-            text = '\n'.join(selected)
-            first = int(row['first_line']) + start
-            symbols = [dict(s) for s in conn.execute('SELECT s.name,s.kind,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=? AND s.line<=? AND (s.end_line>=? OR s.line>=?) ORDER BY s.line DESC LIMIT 3', (path, first+len(selected)-1, first, first))]
-            links = [dict(r) for r in conn.execute("SELECT r.relation,f.path AS source,r.target_id AS target,r.confidence FROM relations r JOIN files f ON f.id=r.source_id WHERE r.source_type='file' AND r.target_type='resolved_file' AND (f.path=? OR r.target_id=?) ORDER BY r.confidence DESC,f.path,r.target_id LIMIT 4", (path,path))]
+            chunk_lines = row['excerpt'].splitlines()
+            position = max(range(len(chunk_lines)), key=lambda i: len(set(terms(chunk_lines[i])) & set(query_terms))) if chunk_lines else 0
+            anchor = int(row['first_line']) + position
+            scope = conn.execute("SELECT s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id "
+                                 "WHERE f.path=? AND s.kind IN ('function','method') AND s.line<=? AND s.end_line>=? "
+                                 "ORDER BY (s.end_line-s.line),s.line DESC LIMIT 1", (path,anchor,anchor)).fetchone()
+            first, last, text, truncated, complete = source_excerpt(
+                snapshot.content.splitlines(), anchor, scope, limit=1400)
+            symbols = [dict(s) for s in conn.execute('SELECT s.name,s.kind,s.line,s.end_line FROM symbols s JOIN files f ON f.id=s.file_id WHERE f.path=? AND s.line<=? AND (s.end_line>=? OR s.line>=?) ORDER BY s.line DESC LIMIT 3', (path, last, first, first))]
+            links = [dict(r) for r in conn.execute("SELECT r.relation,f.path AS source,r.target_id AS target,r.confidence FROM relations r JOIN files f ON f.id=r.source_id WHERE r.source_type='file' AND r.target_type='resolved_file' AND (f.path=? OR r.target_id=?) ORDER BY r.confidence DESC,f.path,r.target_id LIMIT 4", (path,path))] if include_relations else []
             from .evidence_trace import capabilities
             result['results'].append({'capabilities': capabilities(conn, path), 'path': path, 'sha256': snapshot.sha256,
-                'start_line': first, 'end_line': first+len(selected)-1,
-                'excerpt': text[:1400], 'excerpt_truncated': len(text)>1400,
+                'start_line': first, 'end_line': last,
+                'excerpt': text, 'excerpt_truncated': truncated, 'complete_symbol': complete,
                 'bm25': row['rank'], 'retrieval': row['channels'], 'symbols': symbols, 'graph_links': links})
             if len(result['results']) >= limit:
                 break
         if result['stale_candidates']:
             result['warnings'].append('Changed or missing candidates omitted; maintenance must catch up.')
-        if result['results']:
+        result['call_paths'] = []
+        if result['results'] and include_relations:
             paths, diagnostics = call_paths(conn, root, result['results'][0], query,
                                              path_prefixes, searchable_path)
             result['call_paths'] = paths
@@ -273,7 +277,8 @@ def search(root: Path, query: str, limit=3, path_prefixes=()):
                     hit['graph_links'] = []
             if diagnostics['stale_paths']:
                 result['warnings'].append('Changed or missing call-path endpoints omitted.')
-        result['warnings'].append('Graph links are index evidence, not proof of test coverage or semantic correctness.')
+        if include_relations:
+            result['warnings'].append('Graph links are index evidence, not proof of test coverage or semantic correctness.')
         return result
     finally:
         conn.close()
@@ -285,9 +290,10 @@ def main(argv=None):
     parser.add_argument('--root',type=Path,default=Path.cwd())
     parser.add_argument('--limit',type=int,default=3)
     parser.add_argument('--path-prefix',action='append',default=[],help='Restrict source hits; repeat for multiple directories')
+    parser.add_argument('--include-relations', action='store_true', help='Expand indexed file links and call paths')
     args=parser.parse_args(argv)
     try:
-        print(json.dumps(search(args.root.resolve(),args.query,args.limit,args.path_prefix),indent=2,ensure_ascii=False))
+        print(json.dumps(search(args.root.resolve(),args.query,args.limit,args.path_prefix,include_relations=args.include_relations),indent=2,ensure_ascii=False))
         return 0
     except (OSError, ValueError, sqlite3.Error) as exc:
         print(json.dumps({'status':'error','error':str(exc)}))

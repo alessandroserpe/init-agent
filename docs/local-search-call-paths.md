@@ -3,7 +3,7 @@
 2026-10-16. Experimental source implementation; no skill prompt, new dependency,
 model, index migration or receiver-resolution changes.
 
-`repo_search` now uses the enclosing callable of the strongest matching line in
+`repo_search` with `include_relations=true` uses the enclosing callable of the strongest matching line in
 its first lexical result as a seed. It follows existing resolved-symbol call
 edges and returns `call_paths`, with at most one outgoing and one incoming path,
 each at most two edges. Each edge includes caller/callee paths, qualified names,
@@ -16,6 +16,21 @@ When no path is available, legacy file links remain. `call_path_diagnostics`
 reports the seed, omitted branches, stale endpoints and the depth bound. New
 fields are present for nonempty lexical results. No result is a claim that the
 path is exhaustive, executed at runtime, or sufficient to solve the task.
+
+## Compact default (2026-10-18)
+
+Search now returns source evidence and freshness-checked memories without automatic
+relations. `call_paths` and each hit's `graph_links` are empty by default; path
+diagnostics are returned only for requested expansion. Use `include_relations=true`
+in MCP/Python or `--include-relations` in `python -m init_agent.local_search` to
+recover the expanded response. This is an intentional default-behavior change.
+
+A hit inside a function or method returns that complete parser-bounded scope when
+it fits within 1,400 characters, including across indexed passage boundaries.
+`complete_symbol=true` distinguishes this from a window into a larger scope.
+The source hash is verified before expansion. Large functions keep a bounded
+window around the matching line; unknown scope ends are never invented.
+Memory freshness warnings and retrieval ranking are unchanged.
 
 ## Selection and bounds
 
@@ -91,3 +106,22 @@ bounds intentionally sacrifice coverage. This prototype demonstrates delivery
 of additional verified structural evidence; it does not demonstrate lower total
 agent tokens or faster task completion. Local constructor/parameter type
 resolution remains a separate next change, with conservative negative cases.
+
+## Compact response check, 2026-10-18
+
+Compared the current response with `HEAD`'s previous search implementation on the
+same existing local index, restricted to `init_agent/` with `limit=1`. This is a
+known-case output comparison, not a blind agent benchmark or measured time saving.
+The first file stayed unchanged for all three queries.
+
+| Query | Previous JSON characters | Compact JSON characters | Compact scope |
+| --- | ---: | ---: | --- |
+| saved note stale file changed deleted hash | 5,431 | 4,143 | memory.py:444–472, complete |
+| with_live_staleness | 4,724 | 3,609 | memory.py:437–441, complete |
+| search_terms | 5,711 | 4,247 | search_tokens.py:8–26, complete |
+
+Sizes use `len(json.dumps(response))`, not model tokens. The first query previously
+returned lines 450–461 plus a deletion-related incoming path; the compact response
+contains the complete decision and leaves relationship expansion to the caller.
+Regression tests also cover three distinct decision vocabularies across passage
+boundaries, large functions, nested scopes, long preceding lines, and MCP opt-in.

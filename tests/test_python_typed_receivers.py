@@ -35,7 +35,7 @@ class TypedReceiverTests(unittest.TestCase):
             self.assertTrue(all(e['target']=='Worker.send' for e in edges))
             self.assertTrue(all(json.loads(e['metadata_json'])['resolver']=='python_typed_receiver' for e in edges))
             with contextlib.redirect_stdout(io.StringIO()),maintenance_lock(root):Maintainer(root).tick()
-            paths=search(root,'checkout')['call_paths']
+            paths=search(root,'checkout',include_relations=True)['call_paths']
             self.assertEqual(paths[0]['edges'][0]['callee']['symbol'],'Worker.send')
 
     def test_unknown_rebound_conditional_and_shadowed_receivers_abstain(self):

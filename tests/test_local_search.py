@@ -77,7 +77,7 @@ class LocalSearchTests(unittest.TestCase):
             (root/'opaque.py').write_text('def openArchive():\n    raise ValueError("retention window exhausted")\n')
             (root/'caller.py').write_text('from opaque import openArchive\ndef run():\n    return openArchive()\n')
             self.prepare(root)
-            result=search(root,'retention exhausted')
+            result=search(root,'retention exhausted',include_relations=True)
             hit=result['results'][0]
             self.assertEqual(hit['path'],'opaque.py')
             self.assertIn('retention window exhausted',hit['excerpt'])

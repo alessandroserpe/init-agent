@@ -53,6 +53,8 @@ class McpLocalSearchTests(unittest.TestCase):
                           {'query':'x','limit':True},{'query':'x','limit':11},
                           {'query':'x','path_prefixes':['../']},
                           {'query':'x','path_prefixes':'src'},
+                          {'query':'x','include_relations':'yes'},
+                          {'query':'x','include_relations':1},
                           {'query':'x','unexpected':1}):
             with self.subTest(arguments=arguments), tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);server=InitAgentMcpServer(root)

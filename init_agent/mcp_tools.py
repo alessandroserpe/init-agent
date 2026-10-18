@@ -521,12 +521,13 @@ def mcp_tool_definitions(profile: str = "core") -> list[dict[str, Any]]:
         },
         {
             "name": "repo_search",
-            "description": "Search source passages and saved notes for a coding question. Automatically initializes/refreshes the local index; returns line evidence and freshness warnings. No preparation call needed.",
+            "description": "Search source passages and saved notes for a coding question. Automatically initializes/refreshes the local index; returns line evidence and freshness warnings. Short functions are returned whole when they fit. Set include_relations=true only when file links or call paths are needed. No preparation call needed.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "minLength": 1, "maxLength": 1000},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
+                    "include_relations": {"type": "boolean", "default": False, "description": "Expand indexed file links and call paths; omitted by default."},
                     "path_prefixes": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Optional relative prefixes restricting source hits; notes remain repository-wide."},
                 },
                 "required": ["query"],

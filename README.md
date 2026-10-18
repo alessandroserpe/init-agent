@@ -178,6 +178,9 @@ and session close. Administrative and legacy contracts remain available through
 the CLI or the explicit MCP `full` profile. The experimental `repo_search` tool
 returns source passages and saved notes, initializing/refreshing its local index
 within the call; no manual preparation or background service is required.
+Short functions are returned whole within the 1,400-character excerpt budget.
+File links and call paths are opt-in with `include_relations=true`; the default
+keeps source evidence and memory freshness warnings.
 The optional [`repo_test_candidates`](docs/test-candidates.md) tool replaces manual
 test lookup for a known Python function with direct call/assertion evidence and
 candidate commands. It does not run tests or require an additional skill step.

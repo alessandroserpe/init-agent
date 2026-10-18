@@ -27,7 +27,7 @@ def main():
                 for mode in (('lexical','paths') if i%2 else ('paths','lexical')):
                     context=patch('init_agent.local_search.call_paths',return_value=([],{'stale_paths':[]})) if mode=='lexical' else contextlib.nullcontext()
                     with context:
-                        start=time.perf_counter();r=search(root,q);elapsed=time.perf_counter()-start
+                        start=time.perf_counter();r=search(root,q,include_relations=(mode=='paths'));elapsed=time.perf_counter()-start
                     if mode=='lexical':
                         r.pop('call_paths',None);r.pop('call_path_diagnostics',None)
                     times[mode].append(elapsed*1000);responses[mode]=r

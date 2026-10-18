@@ -50,3 +50,33 @@ def passages(lines, symbols):
                 names.update(declarations.get(line, ()))
             yield start, end - 1, '\n'.join(lines[start - 1:end - 1]), sorted(names)
             start = min(start + 20, end)
+
+
+def source_excerpt(lines, anchor, scope=None, *, limit=1400):
+    """Prefer a complete enclosing callable when it fits the response budget.
+
+    Scope bounds come from the parser and a hash-verified source snapshot.
+    Large or unknown scopes retain a bounded window around the matching line.
+    """
+    if scope is not None:
+        first, last = scope['line'], scope['end_line']
+        if 1 <= first <= anchor <= last <= len(lines):
+            # Newlines alone bound how many lines can fit; avoid a large join.
+            if last - first < limit:
+                text = '\n'.join(lines[first-1:last])
+                if len(text) <= limit:
+                    return first, last, text, False, True
+    first = max(1, anchor - 3)
+    last = min(len(lines), first + 11)
+    if scope is not None:
+        first = max(first, scope['line'])
+        last = min(last, scope['end_line'])
+    text = '\n'.join(lines[first-1:last])
+    # Keep the matching line visible even when preceding lines fill the budget.
+    if len('\n'.join(lines[first-1:anchor])) > limit:
+        first = anchor
+        text = '\n'.join(lines[first-1:last])
+    truncated = len(text) > limit
+    text = text[:limit]
+    last = first + text.count('\n')
+    return first, last, text, truncated, False

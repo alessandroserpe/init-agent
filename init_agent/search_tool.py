@@ -18,11 +18,14 @@ def make_repo_search_handler():
     @bounded_metadata
     def handle(root: Path, arguments: dict):
         nonlocal worker, last_warnings
-        if set(arguments) - {'query', 'limit', 'path_prefixes'}:
+        if set(arguments) - {'query', 'limit', 'path_prefixes', 'include_relations'}:
             raise ValueError('Unknown repo_search argument')
         query = arguments.get('query')
         limit = arguments.get('limit', 3)
         prefixes = arguments.get('path_prefixes', [])
+        include_relations = arguments.get('include_relations', False)
+        if type(include_relations) is not bool:
+            raise ValueError('include_relations must be a boolean')
         if not isinstance(query, str) or not query.strip() or len(query) > 1000:
             raise ValueError('repo_search requires a nonempty query of at most 1000 characters')
         if type(limit) is not int or not 1 <= limit <= 10:
@@ -42,7 +45,7 @@ def make_repo_search_handler():
                 event = worker.tick()
             if event is not None and event['status'] == 'error':
                 raise RuntimeError('Repository maintenance failed; retry after resolving index errors')
-            result = search(resolved, query.strip(), limit, prefixes)
+            result = search(resolved, query.strip(), limit, prefixes, include_relations=include_relations)
         if event is not None:
             last_warnings = list(event.get('preparation', {}).get('warnings', []))
             if (event.get('search_index') or {}).get('skipped_count'):
