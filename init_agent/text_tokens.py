@@ -16,7 +16,6 @@ QUERY_NOISE_TOKENS = {
     "project",
     "repo",
     "repository",
-    "skill",
     "usando",
 }
 
@@ -26,6 +25,7 @@ FUNCTION_WORDS = {
     "and",
     "are",
     "before",
+    "but",
     "che",
     "come",
     "con",
@@ -60,6 +60,7 @@ FUNCTION_WORDS = {
     "se",
     "the",
     "to",
+    "too",
     "un",
     "una",
     "when",
